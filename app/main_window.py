@@ -31,6 +31,10 @@ class MainWindow(QMainWindow):
 
         self.selected_rect = -1
 
+        self.dragging = False
+        self.last_mouse_x = 0
+        self.last_mouse_y = 0
+
         central = QWidget()
         self.setCentralWidget(central)
 
@@ -232,12 +236,64 @@ class MainWindow(QMainWindow):
                 and original_y <= y + h
             ):
                 self.selected_rect = index
+                self.dragging = True
+                self.last_mouse_x = original_x
+                self.last_mouse_y = original_y
+
                 print(f"選択: {index}")
+
                 self.show_image()
                 return
 
         self.selected_rect = -1
         self.show_image()
+
+    def mouseMoveEvent(self, event):
+        if not self.dragging:
+            return
+
+        if self.selected_rect < 0:
+            return
+
+        if self.current_pixmap is None:
+            return
+
+        pos = event.position()
+
+        scaled_pixmap = self.current_pixmap.scaled(
+            self.preview_area.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        displayed_w = scaled_pixmap.width()
+        displayed_h = scaled_pixmap.height()
+
+        scale_x = self.current_pixmap.width() / displayed_w
+        scale_y = self.current_pixmap.height() / displayed_h
+
+        current_x = pos.x() * scale_x
+        current_y = pos.y() * scale_y
+
+        dx = current_x - self.last_mouse_x
+        dy = current_y - self.last_mouse_y
+
+        x, y, w, h = self.detected_rects[self.selected_rect]
+
+        self.detected_rects[self.selected_rect] = (
+            int(x + dx),
+            int(y + dy),
+            w,
+            h,
+        )
+
+        self.last_mouse_x = current_x
+        self.last_mouse_y = current_y
+
+        self.show_image()
+
+    def mouseReleaseEvent(self, event):
+        self.dragging = False
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
