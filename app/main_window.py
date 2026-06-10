@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, QRect
+from PySide6.QtGui import QPixmap, QPainter, QPen, QColor
 from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QGroupBox,
 )
 
+from core.photo_detector import detect_photos
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -25,6 +27,7 @@ class MainWindow(QMainWindow):
 
         self.current_image_path = None
         self.current_pixmap = None
+        self.detected_rects = []
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -77,6 +80,7 @@ class MainWindow(QMainWindow):
 
         self.detect_button = QPushButton("写真を検出")
         self.detect_button.setMinimumHeight(40)
+        self.detect_button.clicked.connect(self.detect_photos)
 
         button_layout.addWidget(self.open_button)
         button_layout.addWidget(self.detect_button)
@@ -109,6 +113,7 @@ class MainWindow(QMainWindow):
 
         self.current_image_path = str(path)
         self.current_pixmap = pixmap
+        self.detected_rects = []
         self.show_image()
 
     def show_image(self):
@@ -121,7 +126,43 @@ class MainWindow(QMainWindow):
             Qt.TransformationMode.SmoothTransformation,
         )
 
-        self.preview_area.setPixmap(scaled_pixmap)
+        display_pixmap = QPixmap(scaled_pixmap)
+
+        if self.detected_rects:
+            painter = QPainter(display_pixmap)
+            pen = QPen(QColor(255, 0, 0))
+            pen.setWidth(3)
+            painter.setPen(pen)
+
+            original_w = self.current_pixmap.width()
+            original_h = self.current_pixmap.height()
+            displayed_w = scaled_pixmap.width()
+            displayed_h = scaled_pixmap.height()
+
+            scale_x = displayed_w / original_w
+            scale_y = displayed_h / original_h
+
+            for x, y, w, h in self.detected_rects:
+                painter.drawRect(
+                    QRect(
+                        int(x * scale_x),
+                        int(y * scale_y),
+                        int(w * scale_x),
+                        int(h * scale_y),
+                    )
+                )
+
+            painter.end()
+
+        self.preview_area.setPixmap(display_pixmap)
+
+    def detect_photos(self):
+        if not self.current_image_path:
+            self.preview_area.setText("先に画像を読み込んでください。")
+            return
+
+        self.detected_rects = detect_photos(self.current_image_path)
+        self.show_image()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
