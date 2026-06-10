@@ -81,11 +81,14 @@ class MainWindow(QMainWindow):
         self.detect_button = QPushButton("写真を検出")
         self.detect_button.setMinimumHeight(40)
         self.detect_button.clicked.connect(self.detect_photos)
-
         button_layout.addWidget(self.open_button)
         button_layout.addWidget(self.detect_button)
 
         main_layout.addLayout(button_layout)
+
+        self.status_label = QLabel("検出数: 0")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.status_label)
 
     def open_image(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -158,12 +161,20 @@ class MainWindow(QMainWindow):
 
     def detect_photos(self):
         if not self.current_image_path:
-            self.preview_area.setText("先に画像を読み込んでください。")
+            self.preview_area.setText(
+                "先に画像を読み込んでください。"
+            )
             return
 
-        self.detected_rects = detect_photos(self.current_image_path)
-        self.show_image()
+        self.detected_rects = detect_photos(
+            self.current_image_path
+        )
 
+        self.status_label.setText(
+            f"検出数: {len(self.detected_rects)}"
+        )
+
+        self.show_image()
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
