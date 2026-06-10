@@ -1,5 +1,7 @@
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QFileDialog,
     QLabel,
     QMainWindow,
     QPushButton,
@@ -18,18 +20,20 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("AlbumCrop Studio")
         self.resize(1000, 700)
 
+        self.current_image_path = None
+        self.current_pixmap = None
+
         central = QWidget()
         self.setCentralWidget(central)
 
         main_layout = QVBoxLayout(central)
 
-        # ドラッグ&ドロップ領域
-        self.drop_area = QLabel(
-            "画像をここへドラッグ＆ドロップ\n\nまたは今後追加する『開く』ボタンを使用"
+        self.preview_area = QLabel(
+            "画像をここへドラッグ＆ドロップ\n\nまたは『画像を開く』ボタンを使用"
         )
-        self.drop_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.drop_area.setMinimumHeight(400)
-        self.drop_area.setStyleSheet(
+        self.preview_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_area.setMinimumHeight(400)
+        self.preview_area.setStyleSheet(
             """
             QLabel {
                 border: 2px dashed gray;
@@ -38,9 +42,8 @@ class MainWindow(QMainWindow):
             """
         )
 
-        main_layout.addWidget(self.drop_area)
+        main_layout.addWidget(self.preview_area)
 
-        # 設定
         settings_box = QGroupBox("出力設定")
         settings_layout = QHBoxLayout()
 
@@ -61,11 +64,57 @@ class MainWindow(QMainWindow):
         settings_layout.addWidget(self.margin_spin)
 
         settings_box.setLayout(settings_layout)
-
         main_layout.addWidget(settings_box)
 
-        # ボタン
+        button_layout = QHBoxLayout()
+
+        self.open_button = QPushButton("画像を開く")
+        self.open_button.setMinimumHeight(40)
+        self.open_button.clicked.connect(self.open_image)
+
         self.detect_button = QPushButton("写真を検出")
         self.detect_button.setMinimumHeight(40)
 
-        main_layout.addWidget(self.detect_button)
+        button_layout.addWidget(self.open_button)
+        button_layout.addWidget(self.detect_button)
+
+        main_layout.addLayout(button_layout)
+
+    def open_image(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "画像を開く",
+            "",
+            "Image Files (*.jpg *.jpeg *.png *.tif *.tiff)",
+        )
+
+        if not file_path:
+            return
+
+        pixmap = QPixmap(file_path)
+
+        if pixmap.isNull():
+            self.preview_area.setText("画像を読み込めませんでした。")
+            return
+
+        self.current_image_path = file_path
+        self.current_pixmap = pixmap
+        self.show_image()
+
+    def show_image(self):
+        if self.current_pixmap is None:
+            return
+
+        scaled_pixmap = self.current_pixmap.scaled(
+            self.preview_area.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        self.preview_area.setPixmap(scaled_pixmap)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        if self.current_pixmap is not None:
+            self.show_image()
