@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -19,6 +21,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("AlbumCrop Studio")
         self.resize(1000, 700)
+        self.setAcceptDrops(True)
 
         self.current_image_path = None
         self.current_pixmap = None
@@ -88,16 +91,23 @@ class MainWindow(QMainWindow):
             "Image Files (*.jpg *.jpeg *.png *.tif *.tiff)",
         )
 
-        if not file_path:
+        if file_path:
+            self.load_image(file_path)
+
+    def load_image(self, file_path):
+        path = Path(file_path)
+
+        if path.suffix.lower() not in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
+            self.preview_area.setText("対応していないファイル形式です。")
             return
 
-        pixmap = QPixmap(file_path)
+        pixmap = QPixmap(str(path))
 
         if pixmap.isNull():
             self.preview_area.setText("画像を読み込めませんでした。")
             return
 
-        self.current_image_path = file_path
+        self.current_image_path = str(path)
         self.current_pixmap = pixmap
         self.show_image()
 
@@ -118,3 +128,20 @@ class MainWindow(QMainWindow):
 
         if self.current_pixmap is not None:
             self.show_image()
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            file_path = event.mimeData().urls()[0].toLocalFile()
+            suffix = Path(file_path).suffix.lower()
+
+            if suffix in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
+                event.acceptProposedAction()
+                return
+
+        event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            file_path = event.mimeData().urls()[0].toLocalFile()
+            self.load_image(file_path)
+            event.acceptProposedAction()
