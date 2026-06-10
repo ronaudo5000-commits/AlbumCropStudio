@@ -29,6 +29,8 @@ class MainWindow(QMainWindow):
         self.current_pixmap = None
         self.detected_rects = []
 
+        self.selected_rect = -1
+
         central = QWidget()
         self.setCentralWidget(central)
 
@@ -145,7 +147,15 @@ class MainWindow(QMainWindow):
             scale_x = displayed_w / original_w
             scale_y = displayed_h / original_h
 
-            for x, y, w, h in self.detected_rects:
+            for index, (x, y, w, h) in enumerate(self.detected_rects):
+                if index == self.selected_rect:
+                    pen = QPen(QColor(255, 255, 0))  # 選択中は黄色
+                else:
+                    pen = QPen(QColor(255, 0, 0))    # 通常は赤
+
+                pen.setWidth(3)
+                painter.setPen(pen)
+
                 painter.drawRect(
                     QRect(
                         int(x * scale_x),
@@ -175,6 +185,26 @@ class MainWindow(QMainWindow):
         )
 
         self.show_image()
+
+def mousePressEvent(self, event):
+    pos = event.position()
+
+    for index, (x, y, w, h) in enumerate(self.detected_rects):
+
+        if (
+            pos.x() >= x
+            and pos.x() <= x + w
+            and pos.y() >= y
+            and pos.y() <= y + h
+        ):
+            self.selected_rect = index
+
+            print(f"選択: {index}")
+
+            self.show_image()
+
+            return
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
