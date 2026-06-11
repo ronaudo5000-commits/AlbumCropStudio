@@ -1,4 +1,5 @@
 from pathlib import Path
+from PIL import Image
 
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QPixmap, QPainter, QPen, QColor
@@ -82,9 +83,14 @@ class MainWindow(QMainWindow):
         self.add_rect_button.setCheckable(True)
         self.add_rect_button.clicked.connect(self.toggle_add_mode)
 
+        self.save_button = QPushButton("保存")
+        self.save_button.setMinimumHeight(40)
+        self.save_button.clicked.connect(self.save_crops)
+
         button_layout.addWidget(self.open_button)
         button_layout.addWidget(self.detect_button)
         button_layout.addWidget(self.add_rect_button)
+        button_layout.addWidget(self.save_button)
 
         main_layout.addLayout(button_layout)
 
@@ -149,6 +155,36 @@ class MainWindow(QMainWindow):
         self.preview_area.set_add_mode(
             self.add_rect_button.isChecked()
         )
+
+    def save_crops(self):
+        if not self.current_image_path:
+            print("画像が読み込まれていません")
+            return
+
+        if not self.preview_area.rects:
+            print("保存する枠がありません")
+            return
+
+        output_dir = Path(self.current_image_path).parent / "cropped_photos"
+        output_dir.mkdir(exist_ok=True)
+
+        image = Image.open(self.current_image_path)
+
+        for index, (x, y, w, h) in enumerate(self.preview_area.rects, start=1):
+            crop = image.crop(
+                (
+                    int(x),
+                    int(y),
+                    int(x + w),
+                    int(y + h),
+                )
+            )
+
+            output_path = output_dir / f"photo_{index:03}.jpg"
+            crop.save(output_path, "JPEG", quality=95, dpi=(350, 350))
+
+        print(f"{len(self.preview_area.rects)}枚の写真を保存しました")
+        print(f"保存先: {output_dir}")
 
     def mousePressEvent(self, event):
         if self.current_pixmap is None:
