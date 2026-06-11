@@ -20,6 +20,9 @@ class PhotoCanvas(QWidget):
         self.add_start_x = 0
         self.add_start_y = 0
 
+        self.resizing = False
+        self.resize_handle_size = 10
+
         self.setMinimumHeight(400)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -100,6 +103,19 @@ class PhotoCanvas(QWidget):
                 int(h * scale_y),
             )
 
+            if index == self.selected_rect:
+                handle_size = self.resize_handle_size
+                handle_x = int(x_offset + (x + w) * scale_x) - handle_size // 2
+                handle_y = int(y_offset + (y + h) * scale_y) - handle_size // 2
+
+                painter.fillRect(
+                    handle_x,
+                    handle_y,
+                    handle_size,
+                    handle_size,
+                    QColor(255, 200, 0),
+                )
+
     def mousePressEvent(self, event):
         if self.pixmap is None:
             return
@@ -114,6 +130,22 @@ class PhotoCanvas(QWidget):
 
         image_x = (pos.x() - x_offset) / scale_x
         image_y = (pos.y() - y_offset) / scale_y
+
+        if self.selected_rect >= 0:
+            x, y, w, h = self.rects[self.selected_rect]
+
+            handle_area = self.resize_handle_size / scale_x
+
+            if (
+                x + w - handle_area <= image_x <= x + w + handle_area
+                and y + h - handle_area <= image_y <= y + h + handle_area
+            ):
+                self.resizing = True
+                self.dragging = False
+                self.adding_rect = False
+                self.last_image_x = image_x
+                self.last_image_y = image_y
+                return
 
         self.selected_rect = -1
 
@@ -146,6 +178,32 @@ class PhotoCanvas(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
+        if self.resizing:
+            info = self.image_display_info()
+            if info is None:
+                return
+
+            _, x_offset, y_offset, scale_x, scale_y = info
+            pos = event.position()
+
+            image_x = (pos.x() - x_offset) / scale_x
+            image_y = (pos.y() - y_offset) / scale_y
+
+            x, y, w, h = self.rects[self.selected_rect]
+
+            new_w = max(5, image_x - x)
+            new_h = max(5, image_y - y)
+
+            self.rects[self.selected_rect] = (
+                x,
+                y,
+                int(new_w),
+                int(new_h),
+            )
+
+            self.update()
+            return
+
         if self.adding_rect:
             info = self.image_display_info()
             if info is None:
@@ -207,7 +265,8 @@ class PhotoCanvas(QWidget):
 
     def mouseReleaseEvent(self, event):
         self.dragging = False
-        self.adding_rect = False      
+        self.adding_rect = False
+        self.resizing = False     
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete:
