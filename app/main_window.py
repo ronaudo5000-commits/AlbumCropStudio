@@ -186,8 +186,17 @@ class MainWindow(QMainWindow):
             print("保存する枠がありません")
             return
 
-        output_dir = Path(self.current_image_path).parent / "cropped_photos"
-        output_dir.mkdir(exist_ok=True)
+        output_dir_text = QFileDialog.getExistingDirectory(
+            self,
+            "保存先フォルダを選択",
+            str(Path(self.current_image_path).parent),
+        )
+
+        if not output_dir_text:
+            print("保存がキャンセルされました")
+            return
+
+        output_dir = Path(output_dir_text)
 
         image = Image.open(self.current_image_path)
 
