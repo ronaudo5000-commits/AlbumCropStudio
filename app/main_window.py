@@ -76,8 +76,15 @@ class MainWindow(QMainWindow):
         self.detect_button = QPushButton("写真を検出")
         self.detect_button.setMinimumHeight(40)
         self.detect_button.clicked.connect(self.detect_photos)
+
+        self.add_rect_button = QPushButton("枠追加")
+        self.add_rect_button.setMinimumHeight(40)
+        self.add_rect_button.setCheckable(True)
+        self.add_rect_button.clicked.connect(self.toggle_add_mode)
+
         button_layout.addWidget(self.open_button)
         button_layout.addWidget(self.detect_button)
+        button_layout.addWidget(self.add_rect_button)
 
         main_layout.addLayout(button_layout)
 
@@ -120,7 +127,7 @@ class MainWindow(QMainWindow):
 
         self.preview_area.set_image(self.current_pixmap)
         self.preview_area.set_rects(self.detected_rects)
-        
+
     def detect_photos(self):
         if not self.current_image_path:
             self.preview_area.setText(
@@ -137,6 +144,11 @@ class MainWindow(QMainWindow):
         )
 
         self.show_image()
+
+    def toggle_add_mode(self):
+        self.preview_area.set_add_mode(
+            self.add_rect_button.isChecked()
+        )
 
     def mousePressEvent(self, event):
         if self.current_pixmap is None:
