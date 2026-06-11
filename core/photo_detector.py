@@ -12,89 +12,51 @@ def detect_photos(image_path):
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-    edges = cv2.Canny(
-        blurred,
-        50,
-        150,
+    # 黒い台紙から、明るい写真部分を抽出
+    _, mask = cv2.threshold(
+        gray,
+        60,
+        255,
+        cv2.THRESH_BINARY,
     )
 
     contours, _ = cv2.findContours(
-        edges,
-        cv2.RETR_LIST,
+        mask,
+        cv2.RETR_EXTERNAL,
         cv2.CHAIN_APPROX_SIMPLE,
     )
 
     candidates = []
 
     for contour in contours:
-
-        perimeter = cv2.arcLength(
-            contour,
-            True,
-        )
-
-        approx = cv2.approxPolyDP(
-            contour,
-            0.02 * perimeter,
-            True,
-        )
-
-        if len(approx) != 4:
-            continue
-
-        x, y, w, h = cv2.boundingRect(
-            approx
-        )
-
+        x, y, w, h = cv2.boundingRect(contour)
         area = w * h
 
-        if area < image_area * 0.03:
+        if area < image_area * 0.015:
             continue
 
-        if area > image_area * 0.80:
+        if area > image_area * 0.60:
             continue
 
-        aspect_ratio = w / h
+        aspect_ratio = w / h if h else 0
 
-        if aspect_ratio < 0.5:
+        if aspect_ratio < 0.3:
             continue
 
-        if aspect_ratio > 2.5:
+        if aspect_ratio > 3.5:
             continue
 
-        candidates.append(
-            (x, y, w, h)
-        )
+        if w < width * 0.06:
+            continue
 
-    filtered = []
+        if h < height * 0.06:
+            continue
 
-    for rect in candidates:
+        candidates.append((x, y, w, h))
 
-        x1, y1, w1, h1 = rect
-
-        duplicate = False
-
-        for existing in filtered:
-
-            x2, y2, w2, h2 = existing
-
-            if (
-                abs(x1 - x2) < 20
-                and abs(y1 - y2) < 20
-                and abs(w1 - w2) < 20
-                and abs(h1 - h2) < 20
-            ):
-                duplicate = True
-                break
-
-        if not duplicate:
-            filtered.append(rect)
-
-    filtered = sorted(
-        filtered,
-        key=lambda r: (r[1], r[0])
+    candidates = sorted(
+        candidates,
+        key=lambda r: (r[1], r[0]),
     )
 
-    return filtered
+    return candidates
