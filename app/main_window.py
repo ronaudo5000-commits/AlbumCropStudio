@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
 
 from core.photo_detector import detect_photos
 
+from app.photo_canvas import PhotoCanvas
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -40,20 +42,7 @@ class MainWindow(QMainWindow):
 
         main_layout = QVBoxLayout(central)
 
-        self.preview_area = QLabel(
-            "画像をここへドラッグ＆ドロップ\n\nまたは『画像を開く』ボタンを使用"
-        )
-        self.preview_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_area.setMinimumHeight(400)
-        self.preview_area.setStyleSheet(
-            """
-            QLabel {
-                border: 2px dashed gray;
-                font-size: 16px;
-            }
-            """
-        )
-
+        self.preview_area = PhotoCanvas()
         main_layout.addWidget(self.preview_area)
 
         settings_box = QGroupBox("出力設定")
@@ -129,50 +118,9 @@ class MainWindow(QMainWindow):
         if self.current_pixmap is None:
             return
 
-        scaled_pixmap = self.current_pixmap.scaled(
-            self.preview_area.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-        display_pixmap = QPixmap(scaled_pixmap)
-
-        if self.detected_rects:
-            painter = QPainter(display_pixmap)
-            pen = QPen(QColor(255, 0, 0))
-            pen.setWidth(3)
-            painter.setPen(pen)
-
-            original_w = self.current_pixmap.width()
-            original_h = self.current_pixmap.height()
-            displayed_w = scaled_pixmap.width()
-            displayed_h = scaled_pixmap.height()
-
-            scale_x = displayed_w / original_w
-            scale_y = displayed_h / original_h
-
-            for index, (x, y, w, h) in enumerate(self.detected_rects):
-                if index == self.selected_rect:
-                    pen = QPen(QColor(255, 255, 0))  # 選択中は黄色
-                else:
-                    pen = QPen(QColor(255, 0, 0))    # 通常は赤
-
-                pen.setWidth(3)
-                painter.setPen(pen)
-
-                painter.drawRect(
-                    QRect(
-                        int(x * scale_x),
-                        int(y * scale_y),
-                        int(w * scale_x),
-                        int(h * scale_y),
-                    )
-                )
-
-            painter.end()
-
-        self.preview_area.setPixmap(display_pixmap)
-
+        self.preview_area.set_image(self.current_pixmap)
+        self.preview_area.set_rects(self.detected_rects)
+        
     def detect_photos(self):
         if not self.current_image_path:
             self.preview_area.setText(

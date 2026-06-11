@@ -1,0 +1,73 @@
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPainter, QPen, QColor, QPixmap
+from PySide6.QtWidgets import QWidget
+
+
+class PhotoCanvas(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.pixmap = None
+        self.rects = []
+        self.selected_rect = -1
+
+        self.setMinimumHeight(400)
+        self.setMouseTracking(True)
+
+    def set_image(self, pixmap):
+        self.pixmap = pixmap
+        self.rects = []
+        self.selected_rect = -1
+        self.update()
+
+    def set_rects(self, rects):
+        self.rects = rects
+        self.selected_rect = -1
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(245, 245, 245))
+
+        if self.pixmap is None:
+            painter.setPen(QColor(80, 80, 80))
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                "画像をここへドラッグ＆ドロップ\n\nまたは『画像を開く』ボタンを使用",
+            )
+            return
+
+        scaled_pixmap = self.pixmap.scaled(
+            self.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        x_offset = (self.width() - scaled_pixmap.width()) / 2
+        y_offset = (self.height() - scaled_pixmap.height()) / 2
+
+        painter.drawPixmap(
+            int(x_offset),
+            int(y_offset),
+            scaled_pixmap,
+        )
+
+        scale_x = scaled_pixmap.width() / self.pixmap.width()
+        scale_y = scaled_pixmap.height() / self.pixmap.height()
+
+        for index, (x, y, w, h) in enumerate(self.rects):
+            if index == self.selected_rect:
+                pen = QPen(QColor(255, 200, 0))
+            else:
+                pen = QPen(QColor(255, 0, 0))
+
+            pen.setWidth(3)
+            painter.setPen(pen)
+
+            painter.drawRect(
+                int(x_offset + x * scale_x),
+                int(y_offset + y * scale_y),
+                int(w * scale_x),
+                int(h * scale_y),
+            )
