@@ -170,79 +170,30 @@ class MainWindow(QMainWindow):
 
         image = Image.open(self.current_image_path)
 
+        dpi = self.dpi_spin.value()
+        margin_mm = self.margin_spin.value()
+        margin_px = int((margin_mm / 25.4) * dpi)
+
         for index, (x, y, w, h) in enumerate(self.preview_area.rects, start=1):
+            left = max(0, int(x - margin_px))
+            top = max(0, int(y - margin_px))
+            right = min(image.width, int(x + w + margin_px))
+            bottom = min(image.height, int(y + h + margin_px))
+
             crop = image.crop(
                 (
-                    int(x),
-                    int(y),
-                    int(x + w),
-                    int(y + h),
+                    left,
+                    top,
+                    right,
+                    bottom,
                 )
             )
 
             output_path = output_dir / f"photo_{index:03}.jpg"
-            crop.save(output_path, "JPEG", quality=95, dpi=(350, 350))
+            crop.save(output_path, "JPEG", quality=95, dpi=(dpi, dpi))
 
         print(f"{len(self.preview_area.rects)}枚の写真を保存しました")
         print(f"保存先: {output_dir}")
-
-    def mousePressEvent(self, event):
-        if self.current_pixmap is None:
-            return
-
-        if not self.detected_rects:
-            return
-
-        pos = event.position()
-
-        scaled_pixmap = self.current_pixmap.scaled(
-            self.preview_area.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-        label_w = self.preview_area.width()
-        label_h = self.preview_area.height()
-        displayed_w = scaled_pixmap.width()
-        displayed_h = scaled_pixmap.height()
-
-        offset_x = (label_w - displayed_w) / 2
-        offset_y = (label_h - displayed_h) / 2
-
-        image_x = pos.x() - offset_x
-        image_y = pos.y() - offset_y
-
-        if image_x < 0 or image_y < 0:
-            return
-
-        if image_x > displayed_w or image_y > displayed_h:
-            return
-
-        scale_x = self.current_pixmap.width() / displayed_w
-        scale_y = self.current_pixmap.height() / displayed_h
-
-        original_x = image_x * scale_x
-        original_y = image_y * scale_y
-
-        for index, (x, y, w, h) in enumerate(self.detected_rects):
-            if (
-                original_x >= x
-                and original_x <= x + w
-                and original_y >= y
-                and original_y <= y + h
-            ):
-                self.selected_rect = index
-                self.dragging = True
-                self.last_mouse_x = original_x
-                self.last_mouse_y = original_y
-
-                print(f"選択: {index}")
-
-                self.show_image()
-                return
-
-        self.selected_rect = -1
-        self.show_image()
 
     def mouseMoveEvent(self, event):
         if not self.dragging:
