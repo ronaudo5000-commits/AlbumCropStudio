@@ -2,7 +2,7 @@ from pathlib import Path
 from PIL import Image
 
 from PySide6.QtCore import Qt, QRect
-from PySide6.QtGui import QPixmap, QPainter, QPen, QColor
+from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QImage
 from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
@@ -116,16 +116,37 @@ class MainWindow(QMainWindow):
             self.preview_area.setText("対応していないファイル形式です。")
             return
 
-        pixmap = QPixmap(str(path))
-
-        if pixmap.isNull():
-            self.preview_area.setText("画像を読み込めませんでした。")
+        try:
+            image = Image.open(path).convert("RGB")
+        except Exception as e:
+            print(f"画像を読み込めませんでした: {e}")
             return
+
+        w, h = image.size
+        data = image.tobytes("raw", "RGB")
+
+        qimage = QImage(
+            data,
+            w,
+            h,
+            w * 3,
+            QImage.Format.Format_RGB888,
+        )
+
+        pixmap = QPixmap.fromImage(qimage)
 
         self.current_image_path = str(path)
         self.current_pixmap = pixmap
         self.detected_rects = []
-        self.show_image()
+
+        self.preview_area.set_image(pixmap)
+        self.preview_area.set_rects([])
+
+        self.status_label.setText("検出数: 0")
+
+        if hasattr(self, "add_rect_button"):
+            self.add_rect_button.setChecked(False)
+            self.preview_area.set_add_mode(False)
 
     def show_image(self):
         if self.current_pixmap is None:
