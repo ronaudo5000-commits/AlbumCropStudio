@@ -18,6 +18,8 @@ class PhotoCanvas(QWidget):
         self.setMinimumHeight(400)
         self.setMouseTracking(True)
 
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
     def set_image(self, pixmap):
         self.pixmap = pixmap
         self.rects = []
@@ -152,3 +154,10 @@ class PhotoCanvas(QWidget):
 
     def mouseReleaseEvent(self, event):
         self.dragging = False       
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Delete:
+            if self.selected_rect >= 0:
+                del self.rects[self.selected_rect]
+                self.selected_rect = -1
+                self.update()
