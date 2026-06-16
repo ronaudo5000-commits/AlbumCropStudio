@@ -182,6 +182,7 @@ class PhotoCanvas(QWidget):
                 x + w - handle_area <= image_x <= x + w + handle_area
                 and y + h - handle_area <= image_y <= y + h + handle_area
             ):
+                self.save_undo_state()
                 self.resizing = True
                 self.dragging = False
                 self.adding_rect = False
@@ -195,6 +196,8 @@ class PhotoCanvas(QWidget):
             self.adding_rect = True
             self.add_start_x = image_x
             self.add_start_y = image_y
+
+            self.save_undo_state()
 
             self.rects.append(
                 (
@@ -212,6 +215,7 @@ class PhotoCanvas(QWidget):
         for index, (x, y, w, h) in enumerate(self.rects):
             if x <= image_x <= x + w and y <= image_y <= y + h:
                 self.selected_rect = index
+                self.save_undo_state()
                 self.dragging = True
                 self.last_image_x = image_x
                 self.last_image_y = image_y
