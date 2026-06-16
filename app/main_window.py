@@ -1,7 +1,7 @@
 from pathlib import Path
 from PIL import Image
 
-from PySide6.QtCore import Qt, QRect
+from PySide6.QtCore import Qt, QRect, QSettings
 from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QImage
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -28,6 +28,8 @@ class MainWindow(QMainWindow):
         self.resize(1000, 700)
         self.setAcceptDrops(True)
 
+        self.settings = QSettings("AlbumCropStudio", "AlbumCropStudio")
+
         self.current_image_path = None
         self.current_pixmap = None
         self.detected_rects = []
@@ -52,12 +54,24 @@ class MainWindow(QMainWindow):
         dpi_label = QLabel("DPI")
         self.dpi_spin = QSpinBox()
         self.dpi_spin.setRange(72, 1200)
-        self.dpi_spin.setValue(350)
+        self.dpi_spin.setValue(
+            int(self.settings.value("dpi", 350))
+        )
 
         margin_label = QLabel("余白(mm)")
         self.margin_spin = QSpinBox()
         self.margin_spin.setRange(0, 20)
-        self.margin_spin.setValue(0)
+        self.margin_spin.setValue(
+            int(self.settings.value("margin_mm", 0))
+        )
+
+        self.dpi_spin.valueChanged.connect(
+            self.save_settings
+        )
+
+        self.margin_spin.valueChanged.connect(
+            self.save_settings
+        )
 
         settings_layout.addWidget(dpi_label)
         settings_layout.addWidget(self.dpi_spin)
@@ -175,6 +189,17 @@ class MainWindow(QMainWindow):
     def toggle_add_mode(self):
         self.preview_area.set_add_mode(
             self.add_rect_button.isChecked()
+        )
+
+    def save_settings(self):
+        self.settings.setValue(
+            "dpi",
+            self.dpi_spin.value()
+        )
+
+        self.settings.setValue(
+            "margin_mm",
+            self.margin_spin.value()
         )
 
     def save_crops(self):

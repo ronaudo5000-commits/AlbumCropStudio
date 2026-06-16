@@ -77,9 +77,45 @@ def detect_photos(image_path):
 
         candidates.append((x, y, w, h))
 
-    candidates = sorted(
-        candidates,
-        key=lambda r: (r[1], r[0]),
+    candidates = sort_rects_reading_order(
+        candidates
     )
 
     return candidates
+
+def sort_rects_reading_order(rects):
+    if not rects:
+        return []
+
+    rows = []
+
+    row_threshold = 80
+
+    rects = sorted(
+        rects,
+        key=lambda r: r[1]
+    )
+
+    for rect in rects:
+        x, y, w, h = rect
+
+        placed = False
+
+        for row in rows:
+            row_y = row[0][1]
+
+            if abs(y - row_y) < row_threshold:
+                row.append(rect)
+                placed = True
+                break
+
+        if not placed:
+            rows.append([rect])
+
+    result = []
+
+    for row in rows:
+        row.sort(key=lambda r: r[0])
+        result.extend(row)
+
+    return result
