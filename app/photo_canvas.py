@@ -10,6 +10,8 @@ class PhotoCanvas(QWidget):
         self.pixmap = None
         self.rects = []
         self.selected_rect = -1
+        self.undo_stack = []
+        
 
         self.dragging = False
         self.last_image_x = 0
@@ -36,6 +38,25 @@ class PhotoCanvas(QWidget):
     def set_rects(self, rects):
         self.rects = rects
         self.selected_rect = -1
+        self.update()
+
+    def save_undo_state(self):
+        self.undo_stack.append(
+            [tuple(rect) for rect in self.rects]
+        )
+
+        if len(self.undo_stack) > 30:
+            self.undo_stack.pop(0)
+
+    def undo(self):
+        if not self.undo_stack:
+            return
+
+        self.rects = self.undo_stack.pop()
+        self.selected_rect = -1
+        self.dragging = False
+        self.adding_rect = False
+        self.resizing = False
         self.update()
 
     def set_add_mode(self, enabled):
@@ -292,6 +313,15 @@ class PhotoCanvas(QWidget):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete:
             if self.selected_rect >= 0:
+                self.save_undo_state()
                 del self.rects[self.selected_rect]
                 self.selected_rect = -1
                 self.update()
+            return
+
+        if (
+            event.key() == Qt.Key.Key_Z
+            and event.modifiers() == Qt.KeyboardModifier.ControlModifier
+        ):
+            self.undo()
+            return
