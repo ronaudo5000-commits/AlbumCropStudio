@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter, QPen, QColor, QPixmap
+from PySide6.QtGui import QPainter, QPen, QColor, QPixmap, QFont
 from PySide6.QtWidgets import QWidget
 
 
@@ -101,6 +101,27 @@ class PhotoCanvas(QWidget):
                 int(y_offset + y * scale_y),
                 int(w * scale_x),
                 int(h * scale_y),
+            )
+
+            painter.setFont(QFont("Arial", 14))
+
+            painter.fillRect(
+                int(x_offset + x * scale_x),
+                int(y_offset + y * scale_y),
+                28,
+                24,
+                QColor(255, 200, 0),
+            )
+
+            painter.setPen(QColor(0, 0, 0))
+
+            painter.drawText(
+                int(x_offset + x * scale_x),
+                int(y_offset + y * scale_y),
+                28,
+                24,
+                Qt.AlignmentFlag.AlignCenter,
+                str(index + 1),
             )
 
             if index == self.selected_rect:
