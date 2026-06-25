@@ -4,6 +4,7 @@ from PIL import Image
 from PySide6.QtCore import Qt, QRect, QSettings
 from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QImage
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QLabel,
     QMainWindow,
@@ -65,13 +66,13 @@ class MainWindow(QMainWindow):
             int(self.settings.value("margin_mm", 0))
         )
 
-        self.dpi_spin.valueChanged.connect(
-            self.save_settings
-        )
+        # self.dpi_spin.valueChanged.connect(
+         #    self.save_settings
+         # )
 
-        self.margin_spin.valueChanged.connect(
-            self.save_settings
-        )
+         # self.margin_spin.valueChanged.connect(
+         #    self.save_settings
+         # )
 
         settings_layout.addWidget(dpi_label)
         settings_layout.addWidget(self.dpi_spin)
@@ -172,14 +173,22 @@ class MainWindow(QMainWindow):
     def detect_photos(self):
         if not self.current_image_path:
             self.preview_area.setText(
-                "先に画像を読み込んでください。"
-            )
+            "先に画像を読み込んでください。"
+        )
             return
+
+        # 検出開始
+        self.detect_button.setEnabled(False)
+        self.status_label.setText("🔍 写真を検出中...")
+        self.status_label.repaint()
+        QApplication.processEvents()
 
         self.detected_rects = detect_photos(
             self.current_image_path
         )
 
+        # 検出終了
+        self.detect_button.setEnabled(True)
         self.status_label.setText(
             f"検出数: {len(self.detected_rects)}"
         )
