@@ -60,6 +60,21 @@ def detect_photos(image_path):
         iterations=1,
     )
 
+    contours_edge, _ = cv2.findContours(
+        edges,
+        cv2.RETR_LIST,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+
+    contours_flood = []
+
+    # edges = cv2.morphologyEx(
+    #     edges,
+    #     cv2.MORPH_CLOSE,
+    #     kernel_close,
+    #     iterations=1,
+    # )
+
     mask_inv = cv2.adaptiveThreshold(
         gray,
         255,
@@ -161,7 +176,7 @@ def detect_photos(image_path):
         mask,
         cv2.RETR_EXTERNAL,
         cv2.CHAIN_APPROX_SIMPLE,
-    ) 
+    )
 
     contours_edge, _ = cv2.findContours(
         edges,
@@ -169,10 +184,13 @@ def detect_photos(image_path):
         cv2.CHAIN_APPROX_SIMPLE,
     )
 
-    contours = contours_edge
+    contours_flood = []
 
-    if len(contours_edge) < 10:
-        contours = contours_edge + contours_mask
+    contours = (
+        list(contours_edge)
+        + list(contours_mask)
+        + contours_flood
+    )
 
     candidates = []
 
@@ -198,13 +216,17 @@ def detect_photos(image_path):
         if ratio < 0.4 or ratio > 2.5:
             continue
 
+        # 人物だけの細い縦長検出を除外
+        if ratio < 0.75 and h > w * 1.4:
+            continue
+
         if area < image_area * 0.008:
             continue
 
         contour_area = cv2.contourArea(contour)
         fill_ratio = contour_area / area
 
-        if fill_ratio < 0.35:
+        if fill_ratio < 0.45:
             continue
 
         perimeter = cv2.arcLength(contour, True)
@@ -217,14 +239,7 @@ def detect_photos(image_path):
         if len(approx) < 4 or len(approx) > 8:
             continue
 
-        padding = 12
-
-        new_x = max(0, x - padding)
-        new_y = max(0, y - padding)
-        new_w = min(width - new_x, w + padding * 2)
-        new_h = min(height - new_y, h + padding * 2)
-
-        x, y, w, h = new_x, new_y, new_w, new_h
+        x, y, w, h = grow_rect(image, x, y, w, h)
 
         if area > image_area * 0.35:
             continue
@@ -233,6 +248,16 @@ def detect_photos(image_path):
             continue
 
         if h < height * 0.06:
+            continue
+
+        roi_edges = edges[y:y + h, x:x + w]
+
+        if roi_edges.size == 0:
+            continue
+
+        edge_ratio = np.count_nonzero(roi_edges) / roi_edges.size
+
+        if edge_ratio < 0.015:
             continue
 
         candidates.append((x, y, w, h))
@@ -249,12 +274,32 @@ def detect_photos(image_path):
         inside = False
 
         for fx, fy, fw, fh in filtered:
+
             if (
                 x >= fx
                 and y >= fy
                 and x + w <= fx + fw
                 and y + h <= fy + fh
-        ):
+            ):
+                inside = True
+                break
+
+            overlap_x1 = max(x, fx)
+            overlap_y1 = max(y, fy)
+            overlap_x2 = min(x + w, fx + fw)
+            overlap_y2 = min(y + h, fy + fh)
+
+            overlap_w = max(0, overlap_x2 - overlap_x1)
+            overlap_h = max(0, overlap_y2 - overlap_y1)
+
+            inter = overlap_w * overlap_h
+
+            if inter == 0:
+                continue
+
+            inside_ratio = inter / min(w * h, fw * fh)
+
+            if inside_ratio > 0.9:
                 inside = True
                 break
 
@@ -263,10 +308,35 @@ def detect_photos(image_path):
 
     candidates = filtered
 
+    candidates = split_large_rects(candidates)
     candidates = remove_duplicate_rects(candidates)
     candidates = sort_rects_reading_order(candidates)
 
     return candidates
+
+def grow_rect(image, x, y, w, h):
+    img_h, img_w = image.shape[:2]
+
+    grow_left = 30
+    padding = 12
+
+    new_x = max(0, x - grow_left)
+    new_y = max(0, y - padding)
+    new_w = min(img_w - new_x, w + (x - new_x) + padding)
+    new_h = min(img_h - new_y, h + padding * 2)
+
+    return new_x, new_y, new_w, new_h
+
+def split_large_rects(rects):
+    result = []
+
+    for rect in rects:
+        x, y, w, h = rect
+
+        # まずは何も分割しない
+        result.append(rect)
+
+    return result
 
 def remove_inner_rects(rects):
     result = []
