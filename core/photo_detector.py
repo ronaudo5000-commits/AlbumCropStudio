@@ -376,8 +376,8 @@ def remove_lower_overlap_rects(rects):
             overlap_area = overlap_w * overlap_h
             rect_area = w * h
             
-            # 横に細長い矩形は除外
-            if h < w * 0.45:
+            # 大きい矩形の下側に重なっている横長矩形だけ除外
+            if h < w * 0.45 and overlap_area > 0:
                 remove = True
                 break
 
