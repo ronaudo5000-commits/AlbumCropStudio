@@ -260,6 +260,16 @@ def detect_photos(image_path):
         if edge_ratio < 0.015:
             continue
 
+        if not is_photo_like_candidate(image, edges, x, y, w, h):
+            continue
+
+        if not is_photo_like_candidate(image, edges, x, y, w, h):
+            continue
+
+        debug_long_lines(image, x, y, w, h)
+
+        candidates.append((x, y, w, h))
+
         candidates.append((x, y, w, h))
 
     filtered = []
@@ -309,6 +319,7 @@ def detect_photos(image_path):
     candidates = filtered
 
     candidates = split_large_rects(candidates)
+    candidates = remove_lower_overlap_rects(candidates)
     candidates = remove_duplicate_rects(candidates)
     candidates = sort_rects_reading_order(candidates)
 
@@ -337,6 +348,94 @@ def split_large_rects(rects):
         result.append(rect)
 
     return result
+
+def remove_lower_overlap_rects(rects):
+    result = []
+
+    for rect in sorted(
+        rects,
+        key=lambda r: r[2] * r[3],
+        reverse=True,
+    ):
+        x, y, w, h = rect
+
+        remove = False
+
+        for bx, by, bw, bh in result:
+            # 大きい矩形の下半分
+            lower_y = by + int(bh * 0.55)
+
+            overlap_x1 = max(x, bx)
+            overlap_y1 = max(y, lower_y)
+            overlap_x2 = min(x + w, bx + bw)
+            overlap_y2 = min(y + h, by + bh)
+
+            overlap_w = max(0, overlap_x2 - overlap_x1)
+            overlap_h = max(0, overlap_y2 - overlap_y1)
+
+            overlap_area = overlap_w * overlap_h
+            rect_area = w * h
+            
+            # 横に細長い矩形は除外
+            if h < w * 0.45:
+                remove = True
+                break
+
+            if rect_area > 0 and overlap_area / rect_area > 0.25:
+                remove = True
+                break
+
+        if not remove:
+            result.append(rect)
+
+    return result
+
+def is_photo_like_candidate(image, edges, x, y, w, h):
+
+    roi = edges[y:y+h, x:x+w]
+
+    if roi.size == 0:
+        return False
+
+    edge_ratio = cv2.countNonZero(roi) / roi.size
+
+    print(
+        f"x={x}, y={y}, w={w}, h={h}, edge_ratio={edge_ratio:.3f}"
+    )
+
+    return True
+
+def debug_long_lines(image, x, y, w, h):
+    roi = image[y:y+h, x:x+w]
+
+    if roi.size == 0:
+        return
+
+    gray = cv2.cvtColor(
+        roi,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    edges_roi = cv2.Canny(
+        gray,
+        50,
+        150
+    )
+
+    lines = cv2.HoughLinesP(
+        edges_roi,
+        1,
+        np.pi / 180,
+        threshold=80,
+        minLineLength=int(min(w, h) * 0.5),
+        maxLineGap=20,
+    )
+
+    count = 0 if lines is None else len(lines)
+
+    print(
+        f"LINES x={x}, y={y}, w={w}, h={h}, lines={count}"
+    )
 
 def remove_inner_rects(rects):
     result = []
