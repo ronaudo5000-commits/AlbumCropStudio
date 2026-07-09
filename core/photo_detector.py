@@ -47,6 +47,65 @@ def create_mask(gray):
 
     return mask
 
+def contour_to_candidate(contour, image, edges, image_area, width, height):
+    x, y, w, h = cv2.boundingRect(contour)
+    area = w * h
+
+    if area < 50000:
+        return None
+
+    img_h, img_w = image.shape[:2]
+    if w > img_w * 0.9 and h > img_h * 0.5:
+        return None
+
+    ratio = w / h
+
+    if ratio < 0.4 or ratio > 2.5:
+        return None
+
+    if ratio < 0.75 and h > w * 1.4:
+        return None
+
+    if area < image_area * 0.008:
+        return None
+
+    contour_area = cv2.contourArea(contour)
+    fill_ratio = contour_area / area
+
+    if fill_ratio < 0.30:
+        return None
+
+    perimeter = cv2.arcLength(contour, True)
+    approx = cv2.approxPolyDP(
+        contour,
+        0.03 * perimeter,
+        True,
+    )
+
+    if len(approx) < 4 or len(approx) > 12:
+        return None
+
+    x, y, w, h = grow_rect(image, x, y, w, h)
+
+    if area > image_area * 0.35:
+        return None
+
+    if w < width * 0.06:
+        return None
+
+    if h < height * 0.06:
+        return None
+
+    roi_edges = edges[y:y + h, x:x + w]
+
+    if roi_edges.size == 0:
+        return None
+
+    if not is_photo_like_candidate(image, edges, x, y, w, h):
+        return None
+
+    return (x, y, w, h)
+
 def find_photo_contours(mask):
     contours, _ = cv2.findContours(
         mask,
@@ -55,6 +114,20 @@ def find_photo_contours(mask):
     )
 
     return contours
+
+def find_all_contours(mask, edges):
+    contours_edge, _ = cv2.findContours(
+        edges,
+        cv2.RETR_LIST,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+
+    contours_mask = find_photo_contours(mask)
+
+    return (
+        list(contours_edge)
+        + list(contours_mask)
+    )
 
 def detect_photos(image_path):
     image = cv2.imread(image_path)
@@ -89,92 +162,24 @@ def detect_photos(image_path):
     
     mask = create_mask(gray)
 
-    cv2.imwrite("debug_mask_after.png", mask)
-
-    contours = find_photo_contours(mask)
-
-    contours_edge, _ = cv2.findContours(
-        edges,
-        cv2.RETR_LIST,
-        cv2.CHAIN_APPROX_SIMPLE,
-    )
-
-    contours_mask = find_photo_contours(mask)
-
-    contours = (
-        list(contours_edge)
-        + list(contours_mask)
-    )
+    contours = find_all_contours(mask, edges)
 
     candidates = []
 
     for contour in contours:
-        x, y, w, h = cv2.boundingRect(contour)
-        area = w * h
-
-        # 小さすぎるゴミを除外
-        if area < 50000:
-            continue
-
-        # アルバム全体を除外
-        img_h, img_w = image.shape[:2]
-        if w > img_w * 0.9 and h > img_h * 0.5:
-            continue
-
-        # print(
-        #     f"PHOTO? x={x}, y={y}, w={w}, h={h}, area={area}"
-        # )
-
-        ratio = w / h
-
-        if ratio < 0.4 or ratio > 2.5:
-            continue
-
-        # 人物だけの細い縦長検出を除外
-        if ratio < 0.75 and h > w * 1.4:
-            continue
-
-        if area < image_area * 0.008:
-            continue
-
-        contour_area = cv2.contourArea(contour)
-        fill_ratio = contour_area / area
-
-        if fill_ratio < 0.30:
-            continue
-
-        perimeter = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(
+        candidate = contour_to_candidate(
             contour,
-            0.03 * perimeter,
-            True,
-            )
+            image,
+            edges,
+            image_area,
+            width,
+            height,
+        )
 
-        if len(approx) < 4 or len(approx) > 12:
+        if candidate is None:
             continue
 
-        x, y, w, h = grow_rect(image, x, y, w, h)
-
-        if area > image_area * 0.35:
-            continue
-
-        if w < width * 0.06:
-            continue
-
-        if h < height * 0.06:
-            continue
-
-        roi_edges = edges[y:y + h, x:x + w]
-
-        if roi_edges.size == 0:
-            continue
-
-        if not is_photo_like_candidate(image, edges, x, y, w, h):
-            continue
-
-        # debug_long_lines(image, x, y, w, h)
-
-        candidates.append((x, y, w, h))
+        candidates.append(candidate)
 
     filtered = []
 
