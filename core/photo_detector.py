@@ -1,52 +1,13 @@
 import cv2
 import numpy as np
 
-def detect_photos(image_path):
-    image = cv2.imread(image_path)
-
-    if image is None:
-        return []
-
-    height, width = image.shape[:2]
-    image_area = width * height
-
-    gray = cv2.cvtColor(
+def create_gray(image):
+    return cv2.cvtColor(
         image,
         cv2.COLOR_BGR2GRAY,
     )
 
-    gray = cv2.GaussianBlur(
-        gray,
-        (5, 5),
-        0,
-    )
-
-    gray = cv2.equalizeHist(gray)
-
-    edges = cv2.Canny(
-        gray,
-        80,
-        220,
-    )
-
-    kernel_edges = cv2.getStructuringElement(
-        cv2.MORPH_RECT,
-        (9, 9),
-    )
-
-    edges = cv2.dilate(
-        edges,
-        kernel_edges,
-        iterations=1,
-    )
-
-    cv2.imwrite(
-        "debug_edges.png",
-        edges,
-    )
-
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
+def create_edges(gray):
     edges = cv2.Canny(gray, 20, 80)
 
     kernel_edges = cv2.getStructuringElement(
@@ -60,95 +21,9 @@ def detect_photos(image_path):
         iterations=1,
     )
 
-    contours_edge, _ = cv2.findContours(
-        edges,
-        cv2.RETR_LIST,
-        cv2.CHAIN_APPROX_SIMPLE,
-    )
+    return edges
 
-    contours_flood = []
-
-    # edges = cv2.morphologyEx(
-    #     edges,
-    #     cv2.MORPH_CLOSE,
-    #     kernel_close,
-    #     iterations=1,
-    # )
-
-    mask_inv = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        51,
-        10,
-    )
-
-    mask_normal = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        51,
-        10,
-    )
-
-    cv2.imwrite("debug_mask_inv.png", mask_inv)
-    cv2.imwrite("debug_mask_normal.png", mask_normal)
-
-    mask = mask_normal
-
-    kernel_close = cv2.getStructuringElement(
-        cv2.MORPH_RECT,
-        (7, 7),
-    )
-
-    kernel_open = cv2.getStructuringElement(
-        cv2.MORPH_RECT,
-        (9, 9),
-    )
-
-    mask = cv2.morphologyEx(
-        mask,
-        cv2.MORPH_CLOSE,
-        kernel_close,
-        iterations=1,
-    )
-
-    mask = cv2.morphologyEx(
-        mask,
-        cv2.MORPH_OPEN,
-        kernel_open,
-        iterations=1,
-    )
-
-    cv2.imwrite("debug_mask_after.png", mask)
-
-    # median_brightness = int(cv2.medianBlur(gray, 51).mean())
-
-    # if median_brightness < 100:
-    #     _, mask = cv2.threshold(
-    #         gray,
-    #         60,
-    #         255,
-    #         cv2.THRESH_BINARY
-    #     )
-    # else:
-    
-    mask = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        51,
-        10,
-    )
-
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT,
-        (15, 15),
-    )
-
+def create_mask(gray):
     mask = cv2.adaptiveThreshold(
         gray,
         255,
@@ -170,13 +45,53 @@ def detect_photos(image_path):
         iterations=2,
     )
 
-    cv2.imwrite("debug_mask_after.png", mask)
+    return mask
 
-    contours_mask, _ = cv2.findContours(
+def find_photo_contours(mask):
+    contours, _ = cv2.findContours(
         mask,
         cv2.RETR_EXTERNAL,
         cv2.CHAIN_APPROX_SIMPLE,
     )
+
+    return contours
+
+def detect_photos(image_path):
+    image = cv2.imread(image_path)
+
+    if image is None:
+        return []
+
+    height, width = image.shape[:2]
+    image_area = width * height
+
+    gray = create_gray(image)
+
+    edges = create_edges(gray)
+
+    # edges = cv2.morphologyEx(
+    #     edges,
+    #     cv2.MORPH_CLOSE,
+    #     kernel_close,
+    #     iterations=1,
+    # )
+
+    # median_brightness = int(cv2.medianBlur(gray, 51).mean())
+
+    # if median_brightness < 100:
+    #     _, mask = cv2.threshold(
+    #         gray,
+    #         60,
+    #         255,
+    #         cv2.THRESH_BINARY
+    #     )
+    # else:
+    
+    mask = create_mask(gray)
+
+    cv2.imwrite("debug_mask_after.png", mask)
+
+    contours = find_photo_contours(mask)
 
     contours_edge, _ = cv2.findContours(
         edges,
@@ -184,12 +99,11 @@ def detect_photos(image_path):
         cv2.CHAIN_APPROX_SIMPLE,
     )
 
-    contours_flood = []
+    contours_mask = find_photo_contours(mask)
 
     contours = (
         list(contours_edge)
         + list(contours_mask)
-        + contours_flood
     )
 
     candidates = []
@@ -226,7 +140,7 @@ def detect_photos(image_path):
         contour_area = cv2.contourArea(contour)
         fill_ratio = contour_area / area
 
-        if fill_ratio < 0.45:
+        if fill_ratio < 0.30:
             continue
 
         perimeter = cv2.arcLength(contour, True)
@@ -234,9 +148,9 @@ def detect_photos(image_path):
             contour,
             0.03 * perimeter,
             True,
-        )
+            )
 
-        if len(approx) < 4 or len(approx) > 8:
+        if len(approx) < 4 or len(approx) > 12:
             continue
 
         x, y, w, h = grow_rect(image, x, y, w, h)
@@ -255,20 +169,10 @@ def detect_photos(image_path):
         if roi_edges.size == 0:
             continue
 
-        edge_ratio = np.count_nonzero(roi_edges) / roi_edges.size
-
-        if edge_ratio < 0.015:
-            continue
-
         if not is_photo_like_candidate(image, edges, x, y, w, h):
             continue
 
-        if not is_photo_like_candidate(image, edges, x, y, w, h):
-            continue
-
-        debug_long_lines(image, x, y, w, h)
-
-        candidates.append((x, y, w, h))
+        # debug_long_lines(image, x, y, w, h)
 
         candidates.append((x, y, w, h))
 
@@ -399,9 +303,8 @@ def is_photo_like_candidate(image, edges, x, y, w, h):
 
     edge_ratio = cv2.countNonZero(roi) / roi.size
 
-    print(
-        f"x={x}, y={y}, w={w}, h={h}, edge_ratio={edge_ratio:.3f}"
-    )
+    if edge_ratio < 0.02:
+        return False
 
     return True
 

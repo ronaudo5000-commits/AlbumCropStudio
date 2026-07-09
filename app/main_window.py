@@ -98,7 +98,7 @@ class MainWindow(QMainWindow):
         self.add_rect_button.setCheckable(True)
         self.add_rect_button.clicked.connect(self.toggle_add_mode)
 
-        self.save_button = QPushButton("保存")
+        self.save_button = QPushButton("切り抜き")
         self.save_button.setMinimumHeight(40)
         self.save_button.clicked.connect(self.save_crops)
 
@@ -212,6 +212,10 @@ class MainWindow(QMainWindow):
         )
 
     def save_crops(self):
+        self.save_button.setEnabled(False)
+        self.status_label.setText("✂️ 切り抜き中...")
+        QApplication.processEvents()
+
         if not self.current_image_path:
             print("画像が読み込まれていません")
             return
@@ -227,7 +231,8 @@ class MainWindow(QMainWindow):
         )
 
         if not output_dir_text:
-            print("保存がキャンセルされました")
+            self.status_label.setText("保存をキャンセルしました")
+            self.save_button.setEnabled(True)
             return
 
         output_dir = Path(output_dir_text)
@@ -258,6 +263,11 @@ class MainWindow(QMainWindow):
 
         print(f"{len(self.preview_area.rects)}枚の写真を保存しました")
         print(f"保存先: {output_dir}")
+        self.status_label.setText(
+            f"✅ {len(self.preview_area.rects)}枚切り抜き完了"
+        )
+
+        self.save_button.setEnabled(True)
 
     def mouseMoveEvent(self, event):
         if not self.dragging:
