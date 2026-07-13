@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 
+DEBUG = False          # デバッグログ
+DEBUG_SAVE_IMAGE = False  # デバッグ画像保存
+
 def create_gray(image):
     return cv2.cvtColor(
         image,
@@ -136,6 +139,19 @@ def build_candidates(
             continue
 
         candidates.append(candidate)
+
+        if DEBUG:
+            x, y, w, h = candidate
+            print(
+                f"candidate x={x}, y={y}, "
+                f"w={w}, h={h}"
+            )
+
+    if DEBUG:
+        print(
+            f"contours={len(contours)}, "
+            f"candidates={len(candidates)}"
+        )
 
     return candidates
 
@@ -280,11 +296,33 @@ def remove_inner_overlaps(candidates):
     return filtered
 
 def postprocess_candidates(candidates):
+    if DEBUG:
+        print(f"postprocess start={len(candidates)}")
+
     candidates = remove_inner_overlaps(candidates)
+
+    if DEBUG:
+        print(f"after remove_inner_overlaps={len(candidates)}")
+
     candidates = split_large_rects(candidates)
+
+    if DEBUG:
+        print(f"after split_large_rects={len(candidates)}")
+
     candidates = remove_lower_overlap_rects(candidates)
+
+    if DEBUG:
+        print(f"after remove_lower_overlap_rects={len(candidates)}")
+
     candidates = remove_duplicate_rects(candidates)
+
+    if DEBUG:
+        print(f"after remove_duplicate_rects={len(candidates)}")
+
     candidates = sort_rects_reading_order(candidates)
+
+    if DEBUG:
+        print(f"postprocess final={len(candidates)}")
 
     return candidates
 
