@@ -106,6 +106,33 @@ def contour_to_candidate(contour, image, edges, image_area, width, height):
 
     return (x, y, w, h)
 
+def build_candidates(
+    contours,
+    image,
+    edges,
+    image_area,
+    width,
+    height,
+):
+    candidates = []
+
+    for contour in contours:
+        candidate = contour_to_candidate(
+            contour,
+            image,
+            edges,
+            image_area,
+            width,
+            height,
+        )
+
+        if candidate is None:
+            continue
+
+        candidates.append(candidate)
+
+    return candidates
+
 def find_photo_contours(mask):
     contours, _ = cv2.findContours(
         mask,
@@ -164,23 +191,44 @@ def detect_photos(image_path):
 
     contours = find_all_contours(mask, edges)
 
-    candidates = []
+    candidates = build_candidates(
+        contours,
+        image,
+        edges,
+        image_area,
+        width,
+        height,
+    )
 
-    for contour in contours:
-        candidate = contour_to_candidate(
-            contour,
-            image,
-            edges,
-            image_area,
-            width,
-            height,
-        )
+    candidates = postprocess_candidates(candidates)
 
-        if candidate is None:
-            continue
+    return candidates
 
-        candidates.append(candidate)
+def grow_rect(image, x, y, w, h):
+    img_h, img_w = image.shape[:2]
 
+    grow_left = 30
+    padding = 12
+
+    new_x = max(0, x - grow_left)
+    new_y = max(0, y - padding)
+    new_w = min(img_w - new_x, w + (x - new_x) + padding)
+    new_h = min(img_h - new_y, h + padding * 2)
+
+    return new_x, new_y, new_w, new_h
+
+def split_large_rects(rects):
+    result = []
+
+    for rect in rects:
+        x, y, w, h = rect
+
+        # まずは何も分割しない
+        result.append(rect)
+
+    return result
+
+def remove_inner_overlaps(candidates):
     filtered = []
 
     for rect in sorted(
@@ -193,7 +241,6 @@ def detect_photos(image_path):
         inside = False
 
         for fx, fy, fw, fh in filtered:
-
             if (
                 x >= fx
                 and y >= fy
@@ -225,38 +272,16 @@ def detect_photos(image_path):
         if not inside:
             filtered.append(rect)
 
-    candidates = filtered
+    return filtered
 
+def postprocess_candidates(candidates):
+    candidates = remove_inner_overlaps(candidates)
     candidates = split_large_rects(candidates)
     candidates = remove_lower_overlap_rects(candidates)
     candidates = remove_duplicate_rects(candidates)
     candidates = sort_rects_reading_order(candidates)
 
     return candidates
-
-def grow_rect(image, x, y, w, h):
-    img_h, img_w = image.shape[:2]
-
-    grow_left = 30
-    padding = 12
-
-    new_x = max(0, x - grow_left)
-    new_y = max(0, y - padding)
-    new_w = min(img_w - new_x, w + (x - new_x) + padding)
-    new_h = min(img_h - new_y, h + padding * 2)
-
-    return new_x, new_y, new_w, new_h
-
-def split_large_rects(rects):
-    result = []
-
-    for rect in rects:
-        x, y, w, h = rect
-
-        # まずは何も分割しない
-        result.append(rect)
-
-    return result
 
 def remove_lower_overlap_rects(rects):
     result = []
