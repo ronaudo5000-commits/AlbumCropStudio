@@ -47,6 +47,12 @@ def create_mask(gray):
 
     return mask
 
+def get_image_info(image):
+    height, width = image.shape[:2]
+    image_area = width * height
+
+    return width, height, image_area
+
 def contour_to_candidate(contour, image, edges, image_area, width, height):
     x, y, w, h = cv2.boundingRect(contour)
     area = w * h
@@ -162,8 +168,7 @@ def detect_photos(image_path):
     if image is None:
         return []
 
-    height, width = image.shape[:2]
-    image_area = width * height
+    width, height, image_area = get_image_info(image)
 
     gray = create_gray(image)
 
