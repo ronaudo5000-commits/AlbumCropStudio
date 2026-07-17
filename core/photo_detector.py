@@ -1,8 +1,13 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
 
-DEBUG = False          # デバッグログ
-DEBUG_SAVE_IMAGE = False  # デバッグ画像保存
+DEBUG = False
+DEBUG_SAVE_IMAGE = True
+
+SMALL_CANDIDATE_MIN_RATIO = 0.004
+SMALL_CANDIDATE_MAX_RATIO = 0.008
 
 def create_gray(image):
     return cv2.cvtColor(
@@ -50,6 +55,82 @@ def create_mask(gray):
 
     return mask
 
+def create_small_photo_mask(gray):
+    mask = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        101,
+        20,
+    )
+
+    close_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (21, 21),
+    )
+
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_CLOSE,
+        close_kernel,
+        iterations=1,
+    )
+
+    open_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (5, 5),
+    )
+
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_OPEN,
+        open_kernel,
+        iterations=1,
+    )
+
+    return mask
+
+def create_small_photo_line_debug(image, edges):
+    debug_image = image.copy()
+
+    height, width = image.shape[:2]
+    min_side = min(width, height)
+
+    lines = cv2.HoughLinesP(
+        edges,
+        1,
+        np.pi / 180,
+        threshold=80,
+        minLineLength=int(min_side * 0.05),
+        maxLineGap=int(min_side * 0.01),
+    )
+
+    line_count = 0
+
+    if lines is not None:
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+
+            dx = abs(x2 - x1)
+            dy = abs(y2 - y1)
+
+            # 水平または垂直に近い線だけ表示
+            if dx >= dy * 4 or dy >= dx * 4:
+                cv2.line(
+                    debug_image,
+                    (x1, y1),
+                    (x2, y2),
+                    (0, 0, 255),
+                    3,
+                )
+                line_count += 1
+
+    if DEBUG:
+        print(f"small photo line count={line_count}")
+
+    return debug_image
+
 def get_image_info(image):
     height, width = image.shape[:2]
     image_area = width * height
@@ -75,7 +156,20 @@ def contour_to_candidate(contour, image, edges, image_area, width, height):
     if ratio < 0.75 and h > w * 1.4:
         return None
 
-    if area < image_area * 0.008:
+    area_ratio = area / image_area
+
+    if area_ratio < SMALL_CANDIDATE_MIN_RATIO:
+        return None
+
+    if area_ratio < SMALL_CANDIDATE_MAX_RATIO:
+        if DEBUG:
+            print(
+                f"SMALL candidate "
+                f"x={x}, y={y}, w={w}, h={h}, "
+                f"area_ratio={area_ratio:.5f}, "
+                f"shape_ratio={ratio:.2f}"
+            )
+
         return None
 
     contour_area = cv2.contourArea(contour)
@@ -209,8 +303,55 @@ def detect_photos(image_path):
     # else:
     
     mask = create_mask(gray)
+    small_photo_mask = create_small_photo_mask(gray)
+
+    test_mask = None
+
+    if DEBUG_SAVE_IMAGE:
+        small_photo_mask = create_small_photo_mask(gray)
+
+    if DEBUG_SAVE_IMAGE:
+        output_dir = (
+            Path(__file__).resolve().parent.parent
+            / "tests"
+            / "output"
+        )
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        image_name = Path(image_path).stem
+
+        small_photo_lines = create_small_photo_line_debug(
+            image,
+            edges,
+        )
+
+        cv2.imwrite(
+            str(
+                output_dir
+                / f"{image_name}_small_photo_lines.png"
+            ),
+            small_photo_lines,
+        )
+
+        cv2.imwrite(
+            str(output_dir / f"{image_name}_edges.png"),
+            edges,
+        )
+        cv2.imwrite(
+            str(output_dir / f"{image_name}_mask.png"),
+            mask,
+        )
+        cv2.imwrite(
+            str(output_dir / f"{image_name}_mask_test.png"),
+            small_photo_mask,
+        )
 
     contours = find_all_contours(mask, edges)
+
+    cv2.imwrite(
+        str(output_dir / f"{image_name}_small_photo_mask.png"),
+        small_photo_mask,
+    )
 
     candidates = build_candidates(
         contours,
