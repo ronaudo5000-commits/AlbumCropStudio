@@ -116,19 +116,6 @@ def save_debug_image(image, output_path):
             f"デバッグ画像を保存できませんでした: {output_path}"
         )
 
-def find_likely_photos(image, contours):
-    likely_photo_debug = image.copy()
-
-    photo_size_count = 0
-    likely_photo_count = 0
-
-    return (
-        photo_size_count,
-        likely_photo_count,
-        likely_photo_debug,
-        
-    )
-
 def detect_small_photos(image_path):
     image_path = Path(image_path)
 
@@ -343,15 +330,6 @@ def detect_small_photos(image_path):
     print("Parent contours:", parent_count)
     print("Child contours:", child_count)
     print("Large child contours:", large_child_count)
-
-    (
-        photo_size_count,
-        likely_photo_count,
-        likely_photo_debug,
-    ) = find_likely_photos(
-        image,
-        contours,
-    )
 
     print("Photo-size contours:", photo_size_count)
     print("Likely photos:", likely_photo_count)
