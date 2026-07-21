@@ -131,6 +131,19 @@ class MainWindow(QMainWindow):
         self.add_rect_button.setCheckable(True)
         self.add_rect_button.clicked.connect(self.toggle_add_mode)
 
+        self.manual_count_label = QLabel("写真枚数")
+
+        self.manual_count_spin = QSpinBox()
+        self.manual_count_spin.setRange(1, 100)
+        self.manual_count_spin.setValue(4)
+        self.manual_count_spin.setMinimumHeight(40)
+
+        self.generate_rects_button = QPushButton("枠を生成")
+        self.generate_rects_button.setMinimumHeight(40)
+        self.generate_rects_button.clicked.connect(
+            self.generate_manual_rects
+        )
+
         self.save_button = QPushButton("切り抜き")
         self.save_button.setMinimumHeight(40)
         self.save_button.clicked.connect(self.save_crops)
@@ -141,6 +154,9 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.next_button)
         button_layout.addWidget(self.detect_button)
         button_layout.addWidget(self.add_rect_button)
+        button_layout.addWidget(self.manual_count_label)
+        button_layout.addWidget(self.manual_count_spin)
+        button_layout.addWidget(self.generate_rects_button)
         button_layout.addWidget(self.save_button)
 
         main_layout.addLayout(button_layout)
@@ -381,6 +397,66 @@ class MainWindow(QMainWindow):
         )
 
         self.show_image()
+
+    def generate_manual_rects(self):
+        if self.current_pixmap is None:
+            self.status_label.setText(
+                "先に画像を読み込んでください。"
+            )
+            return
+
+        count = self.manual_count_spin.value()
+
+        image_w = self.current_pixmap.width()
+        image_h = self.current_pixmap.height()
+
+        if count <= 4:
+            columns = 2
+        elif count <= 6:
+            columns = 3
+        else:
+            columns = 4
+
+        rows = (count + columns - 1) // columns
+
+        margin_x = int(image_w * 0.05)
+        margin_y = int(image_h * 0.05)
+
+        usable_w = image_w - (margin_x * 2)
+        usable_h = image_h - (margin_y * 2)
+
+        cell_w = usable_w / columns
+        cell_h = usable_h / rows
+
+        rects = []
+
+        for index in range(count):
+            row = index // columns
+            column = index % columns
+
+            x = margin_x + int(column * cell_w)
+            y = margin_y + int(row * cell_h)
+
+            w = int(cell_w * 0.8)
+            h = int(cell_h * 0.8)
+
+            rects.append(
+                (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+            )
+
+        self.detected_rects = rects
+        self.preview_area.set_rects(rects)
+
+        self.status_label.setText(
+            f"手動生成枠: {len(rects)}"
+        )
+
+        self.save_current_page_rects()
 
     def toggle_add_mode(self):
         self.preview_area.set_add_mode(
