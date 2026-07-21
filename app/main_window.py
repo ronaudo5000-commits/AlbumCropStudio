@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QListWidget,
     QListWidgetItem,
+    QAbstractItemView,
 )
 
 from core.photo_detector import detect_photos
@@ -134,6 +135,22 @@ class MainWindow(QMainWindow):
         content_layout = QHBoxLayout()
 
         self.page_list = PageListWidget()
+        self.page_list.setStyleSheet("""
+            QListWidget::item {
+                padding: 4px;
+                margin: 2px;
+                border: 2px solid transparent;
+            }
+
+            QListWidget::item:selected {
+                background-color: #cfe8ff;
+                border: 3px solid #2f80ed;
+                color: #111111;
+            }
+        """)
+        self.page_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self.page_list.delete_callback = self.delete_current_page
         self.page_list.setMinimumWidth(180)
         self.page_list.setMaximumWidth(260)
@@ -377,54 +394,64 @@ class MainWindow(QMainWindow):
         self.update_page_label()
 
     def delete_current_page(self):
-        if not self.image_paths:
+        selected_items = self.page_list.selectedItems()
+
+        if not selected_items:
             return
 
-        if self.current_page_index < 0:
-            return
+        selected_rows = sorted(
+            [
+                self.page_list.row(item)
+                for item in selected_items
+            ],
+            reverse=True,
+        )
 
-        # 現在ページの枠を保存
         self.save_current_page_rects()
 
-        delete_index = self.current_page_index
+        deleted_group = []
 
-        deleted_path = self.image_paths[delete_index]
+        for delete_index in selected_rows:
+            deleted_path = self.image_paths[delete_index]
 
-        deleted_rects = list(
-            self.page_rects.get(
-                delete_index,
-                self.preview_area.rects,
+            deleted_rects = list(
+                self.page_rects.get(
+                    delete_index,
+                    [],
+                )
             )
-        )
+
+            deleted_group.append(
+                {
+                    "index": delete_index,
+                    "path": deleted_path,
+                    "rects": deleted_rects,
+                }
+            )
+
+            self.image_paths.pop(delete_index)
+            self.page_list.takeItem(delete_index)
+
+            if delete_index in self.page_rects:
+                del self.page_rects[delete_index]
+
+            new_page_rects = {}
+
+            for old_index, rects in self.page_rects.items():
+                if old_index > delete_index:
+                    new_page_rects[old_index - 1] = rects
+                else:
+                    new_page_rects[old_index] = rects
+
+            self.page_rects = new_page_rects
 
         self.deleted_pages_stack.append(
             {
-                "index": delete_index,
-                "path": deleted_path,
-                "rects": deleted_rects,
+                "type": "group",
+                "pages": deleted_group,
             }
         )
 
-        # 一覧から削除
-        self.image_paths.pop(delete_index)
-        self.page_list.takeItem(delete_index)
-
-        # このページの枠情報も削除
-        if delete_index in self.page_rects:
-            del self.page_rects[delete_index]
-
-        # 後ろのページ番号を詰め直す
-        new_page_rects = {}
-
-        for old_index, rects in self.page_rects.items():
-            if old_index > delete_index:
-                new_page_rects[old_index - 1] = rects
-            else:
-                new_page_rects[old_index] = rects
-
-        self.page_rects = new_page_rects
-
-        # 全ページ削除された場合
         if not self.image_paths:
             self.current_page_index = -1
             self.current_image_path = None
@@ -438,15 +465,14 @@ class MainWindow(QMainWindow):
             self.delete_page_button.setEnabled(False)
             return
 
-        # 削除後の表示ページを決める
-        if delete_index >= len(self.image_paths):
-            self.current_page_index = len(self.image_paths) - 1
-        else:
-            self.current_page_index = delete_index
+        self.current_page_index = min(
+            min(selected_rows),
+            len(self.image_paths) - 1,
+        )
 
         self.load_image(
             self.image_paths[self.current_page_index]
-    )
+        )
 
         saved_rects = self.page_rects.get(
             self.current_page_index,
@@ -464,6 +490,8 @@ class MainWindow(QMainWindow):
             f"検出数: {len(saved_rects)}"
         )
 
+        self.delete_page_button.setEnabled(True)
+
         self.update_page_label()
 
     def restore_deleted_page(self):
@@ -472,65 +500,136 @@ class MainWindow(QMainWindow):
 
         deleted = self.deleted_pages_stack.pop()
 
-        restore_index = deleted["index"]
-        restore_path = deleted["path"]
-        restore_rects = deleted["rects"]
-
-        if restore_index > len(self.image_paths):
-            restore_index = len(self.image_paths)
-
-        self.image_paths.insert(
-            restore_index,
-            restore_path,
-        )
-
-        new_page_rects = {}
-
-        for old_index, rects in self.page_rects.items():
-            if old_index >= restore_index:
-                new_page_rects[old_index + 1] = rects
-            else:
-                new_page_rects[old_index] = rects
-
-        new_page_rects[restore_index] = list(
-            restore_rects
-        )
-
-        self.page_rects = new_page_rects
-
-        item_name = Path(restore_path).name
-
-        thumbnail = QPixmap(restore_path)
-
-        if not thumbnail.isNull():
-            thumbnail = thumbnail.scaled(
-                120,
-                90,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+        # 複数ページ削除のUndo
+        if deleted.get("type") == "group":
+            pages = sorted(
+                deleted["pages"],
+                key=lambda page: page["index"],
             )
 
-        item = QListWidgetItem(
-            QIcon(thumbnail),
-            item_name,
-        )
+            for page in pages:
+                restore_index = page["index"]
+                restore_path = page["path"]
+                restore_rects = page["rects"]
 
-        self.page_list.insertItem(
-            restore_index,
-         item,
-        )
+                if restore_index > len(self.image_paths):
+                    restore_index = len(self.image_paths)
 
-        self.current_page_index = restore_index
+                self.image_paths.insert(
+                    restore_index,
+                    restore_path,
+                )
 
+                new_page_rects = {}
+
+                for old_index, rects in self.page_rects.items():
+                    if old_index >= restore_index:
+                        new_page_rects[old_index + 1] = rects
+                    else:
+                        new_page_rects[old_index] = rects
+
+                new_page_rects[restore_index] = list(
+                    restore_rects
+                )
+
+                self.page_rects = new_page_rects
+
+                item_name = Path(restore_path).name
+
+                thumbnail = QPixmap(restore_path)
+
+                if not thumbnail.isNull():
+                    thumbnail = thumbnail.scaled(
+                        120,
+                        90,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+
+                item = QListWidgetItem(
+                    QIcon(thumbnail),
+                    item_name,
+                )
+
+                self.page_list.insertItem(
+                    restore_index,
+                    item,
+                )
+
+            first_index = pages[0]["index"]
+
+            self.current_page_index = min(
+                first_index,
+                len(self.image_paths) - 1,
+            )
+
+        # 1ページ削除のUndo
+        else:
+            restore_index = deleted["index"]
+            restore_path = deleted["path"]
+            restore_rects = deleted["rects"]
+
+            if restore_index > len(self.image_paths):
+                restore_index = len(self.image_paths)
+
+            self.image_paths.insert(
+                restore_index,
+                restore_path,
+            )
+
+            new_page_rects = {}
+
+            for old_index, rects in self.page_rects.items():
+                if old_index >= restore_index:
+                    new_page_rects[old_index + 1] = rects
+                else:
+                    new_page_rects[old_index] = rects
+
+            new_page_rects[restore_index] = list(
+                restore_rects
+            )
+
+            self.page_rects = new_page_rects
+
+            item_name = Path(restore_path).name
+
+            thumbnail = QPixmap(restore_path)
+
+            if not thumbnail.isNull():
+                thumbnail = thumbnail.scaled(
+                    120,
+                    90,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+
+            item = QListWidgetItem(
+                QIcon(thumbnail),
+                item_name,
+            )
+
+            self.page_list.insertItem(
+                restore_index,
+                item,
+            )
+
+            self.current_page_index = restore_index
+
+        # 復元後の現在ページを表示
         self.load_image(
             self.image_paths[self.current_page_index]
         )
 
+        saved_rects = self.page_rects.get(
+            self.current_page_index,
+            [],
+        )
+
         self.preview_area.set_rects(
-            list(restore_rects)
+            list(saved_rects)
         )
         self.detected_rects = list(
-            restore_rects
+            saved_rects
         )
 
         self.page_list.setCurrentRow(
@@ -540,7 +639,7 @@ class MainWindow(QMainWindow):
         self.delete_page_button.setEnabled(True)
 
         self.status_label.setText(
-            f"検出数: {len(restore_rects)}"
+            f"検出数: {len(saved_rects)}"
         )
 
         self.update_page_label()
