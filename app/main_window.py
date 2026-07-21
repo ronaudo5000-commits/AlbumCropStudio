@@ -23,6 +23,84 @@ from core.photo_detector import detect_photos
 from app.photo_canvas import PhotoCanvas
 
 
+class PageListWidget(QListWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.delete_button_size = 24
+        self.delete_callback = None
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        current_row = self.currentRow()
+
+        if current_row < 0:
+            return
+
+        item = self.item(current_row)
+
+        if item is None:
+            return
+
+        item_rect = self.visualItemRect(item)
+
+        painter = QPainter(self.viewport())
+
+        size = self.delete_button_size
+
+        delete_x = item_rect.right() - size - 6
+        delete_y = item_rect.top() + 6
+
+        painter.fillRect(
+            delete_x,
+            delete_y,
+            size,
+            size,
+            QColor(220, 60, 60),
+        )
+
+        painter.setPen(
+            QColor(255, 255, 255)
+        )
+
+        painter.drawText(
+            delete_x,
+            delete_y,
+            size,
+            size,
+            Qt.AlignmentFlag.AlignCenter,
+            "×",
+        )
+
+    def mousePressEvent(self, event):
+        current_row = self.currentRow()
+
+        if current_row >= 0:
+            item = self.item(current_row)
+
+            if item is not None:
+                item_rect = self.visualItemRect(item)
+
+                size = self.delete_button_size
+
+                delete_x = item_rect.right() - size - 6
+                delete_y = item_rect.top() + 6
+
+                pos = event.position()
+
+                if (
+                    delete_x <= pos.x() <= delete_x + size
+                    and delete_y <= pos.y() <= delete_y + size
+                ):
+                    if self.delete_callback is not None:
+                        self.delete_callback()
+
+                    return
+
+        super().mousePressEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -55,7 +133,8 @@ class MainWindow(QMainWindow):
 
         content_layout = QHBoxLayout()
 
-        self.page_list = QListWidget()
+        self.page_list = PageListWidget()
+        self.page_list.delete_callback = self.delete_current_page
         self.page_list.setMinimumWidth(180)
         self.page_list.setMaximumWidth(260)
         self.page_list.setIconSize(
