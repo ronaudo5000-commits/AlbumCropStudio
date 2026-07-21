@@ -131,6 +131,12 @@ class MainWindow(QMainWindow):
         self.add_rect_button.setCheckable(True)
         self.add_rect_button.clicked.connect(self.toggle_add_mode)
 
+        self.copy_rect_button = QPushButton("枠をコピー")
+        self.copy_rect_button.setMinimumHeight(40)
+        self.copy_rect_button.clicked.connect(
+        self.copy_selected_rect
+        )
+
         self.manual_count_label = QLabel("写真枚数")
 
         self.manual_count_spin = QSpinBox()
@@ -154,6 +160,7 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.next_button)
         button_layout.addWidget(self.detect_button)
         button_layout.addWidget(self.add_rect_button)
+        button_layout.addWidget(self.copy_rect_button)
         button_layout.addWidget(self.manual_count_label)
         button_layout.addWidget(self.manual_count_spin)
         button_layout.addWidget(self.generate_rects_button)
@@ -175,14 +182,20 @@ class MainWindow(QMainWindow):
 
         if not file_paths:
             return
+        
+        if self.image_paths:
+            self.save_current_page_rects()
 
-        self.image_paths = file_paths
-        self.current_page_index = 0
-        self.page_rects = {}
+        was_empty = len(self.image_paths) == 0
 
-        self.page_list.clear()
+        for file_path in file_paths:
+            if file_path not in self.image_paths:
+                self.image_paths.append(file_path)
 
-        for file_path in self.image_paths:
+        if was_empty:
+            self.current_page_index = 0
+
+        for file_path in file_paths:
             item_name = Path(file_path).name
 
             thumbnail = QPixmap(file_path)
@@ -202,11 +215,12 @@ class MainWindow(QMainWindow):
 
             self.page_list.addItem(item)
 
-        self.page_list.setCurrentRow(0)
+        if was_empty:
+            self.page_list.setCurrentRow(0)
 
-        self.load_image(
-            self.image_paths[self.current_page_index]
-        )
+            self.load_image(
+                self.image_paths[self.current_page_index]
+            )
 
         self.update_page_label()
 
@@ -457,6 +471,41 @@ class MainWindow(QMainWindow):
         )
 
         self.save_current_page_rects()
+
+    def copy_selected_rect(self):
+        selected_index = self.preview_area.selected_rect
+
+        if selected_index < 0:
+            self.status_label.setText(
+                "コピーする枠を選択してください。"
+            )
+            return
+
+        if selected_index >= len(self.preview_area.rects):
+            return
+
+        x, y, w, h = self.preview_area.rects[selected_index]
+
+        offset = 30
+
+        copied_rect = (
+            x + offset,
+            y + offset,
+            w,
+            h,
+        )
+
+        new_rects = list(self.preview_area.rects)
+        new_rects.append(copied_rect)
+
+        self.preview_area.set_rects(new_rects)
+        self.detected_rects = list(new_rects)
+
+        self.save_current_page_rects()
+
+        self.status_label.setText(
+            f"枠数: {len(new_rects)}"
+        )
 
     def toggle_add_mode(self):
         self.preview_area.set_add_mode(

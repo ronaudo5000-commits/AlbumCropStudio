@@ -172,6 +172,59 @@ class PhotoCanvas(QWidget):
                         QColor(255, 200, 0),
                     )
 
+                delete_button_size = 28
+
+                delete_x = int(
+                    x_offset + (x + w) * scale_x
+                ) - delete_button_size
+
+                delete_y = int(
+                    y_offset + y * scale_y
+                ) - delete_button_size - 4
+
+                painter.fillRect(
+                    delete_x,
+                    delete_y,
+                    delete_button_size,
+                    delete_button_size,
+                    QColor(220, 60, 60),
+                )
+
+                painter.setPen(QColor(255, 255, 255))
+
+                painter.drawText(
+                    delete_x,
+                    delete_y,
+                    delete_button_size,
+                    delete_button_size,
+                    Qt.AlignmentFlag.AlignCenter,
+                    "×",
+                )
+
+                copy_button_size = 28
+
+                copy_x = delete_x - copy_button_size - 4
+                copy_y = delete_y
+
+                painter.fillRect(
+                    copy_x,
+                    copy_y,
+                    copy_button_size,
+                    copy_button_size,
+                    QColor(70, 120, 220),
+                )
+
+                painter.setPen(QColor(255, 255, 255))
+
+                painter.drawText(
+                    copy_x,
+                    copy_y,
+                    copy_button_size,
+                    copy_button_size,
+                    Qt.AlignmentFlag.AlignCenter,
+                    "⧉",
+                )
+
     def mousePressEvent(self, event):
         if self.pixmap is None:
             return
@@ -187,55 +240,145 @@ class PhotoCanvas(QWidget):
         image_x = (pos.x() - x_offset) / scale_x
         image_y = (pos.y() - y_offset) / scale_y
 
+        # 選択中の枠に表示している
+        # コピー／削除ボタンをクリックしたか確認
+        if self.selected_rect >= 0:
+            x, y, w, h = self.rects[self.selected_rect]
+
+            button_size = 28
+
+            delete_x = int(
+                x_offset + (x + w) * scale_x
+            ) - button_size
+
+            delete_y = int(
+                y_offset + y * scale_y
+            ) - button_size - 4
+
+            copy_x = delete_x - button_size - 4
+            copy_y = delete_y
+
+            # コピーボタン
+            if (
+                copy_x <= pos.x() <= copy_x + button_size
+                and copy_y <= pos.y() <= copy_y + button_size
+            ):
+                self.save_undo_state()
+
+                offset = 30
+
+                copied_rect = (
+                    x + offset,
+                    y + offset,
+                    w,
+                    h,
+                )
+
+                self.rects.append(copied_rect)
+
+                # コピーした新しい枠を選択状態にする
+                self.selected_rect = len(self.rects) - 1
+
+                self.dragging = False
+                self.adding_rect = False
+                self.resizing = False
+
+                self.update()
+                return
+
+            # 削除ボタン
+            if (
+                delete_x <= pos.x() <= delete_x + button_size
+                and delete_y <= pos.y() <= delete_y + button_size
+            ):
+                self.save_undo_state()
+
+                del self.rects[self.selected_rect]
+
+                self.selected_rect = -1
+                self.dragging = False
+                self.adding_rect = False
+                self.resizing = False
+
+                self.update()
+                return
+
+        # 画像の表示範囲外をクリックした場合は何もしない
+        if (
+            image_x < 0
+            or image_y < 0
+            or image_x > self.pixmap.width()
+            or image_y > self.pixmap.height()
+        ):
+            return
+
+        # 選択中の枠のリサイズハンドルを最優先で判定
         if self.selected_rect >= 0:
             x, y, w, h = self.rects[self.selected_rect]
 
             handle_area = self.resize_handle_size / scale_x
 
-            for handle_name, (hx, hy) in self.resize_handles(x, y, w, h).items():
+            for handle_name, (hx, hy) in self.resize_handles(
+                x, y, w, h
+            ).items():
                 if (
                     hx - handle_area <= image_x <= hx + handle_area
                     and hy - handle_area <= image_y <= hy + handle_area
                 ):
                     self.save_undo_state()
+
                     self.resizing = True
                     self.resize_handle = handle_name
                     self.dragging = False
                     self.adding_rect = False
+
                     self.last_image_x = image_x
                     self.last_image_y = image_y
                     return
 
-        self.selected_rect = -1
+        # 既存の枠の中をクリックしたか確認
+        # 後から作った枠を優先する
+        for index in range(len(self.rects) - 1, -1, -1):
+            x, y, w, h = self.rects[index]
 
-        if self.add_mode:
-            self.adding_rect = True
-            self.add_start_x = image_x
-            self.add_start_y = image_y
-
-            self.save_undo_state()
-
-            self.rects.append(
-                (
-                    int(image_x),
-                    int(image_y),
-                    1,
-                    1,
-                )
-            )
-
-            self.selected_rect = len(self.rects) - 1
-            self.update()
-            return
-
-        for index, (x, y, w, h) in enumerate(self.rects):
-            if x <= image_x <= x + w and y <= image_y <= y + h:
+            if (
+                x <= image_x <= x + w
+                and y <= image_y <= y + h
+            ):
                 self.selected_rect = index
+
                 self.save_undo_state()
+
                 self.dragging = True
+                self.adding_rect = False
+                self.resizing = False
+
                 self.last_image_x = image_x
                 self.last_image_y = image_y
-                break
+
+                self.update()
+                return
+
+        # 既存枠の外なら、新しい枠を作成
+        self.save_undo_state()
+
+        self.adding_rect = True
+        self.dragging = False
+        self.resizing = False
+
+        self.add_start_x = image_x
+        self.add_start_y = image_y
+
+        self.rects.append(
+            (
+                int(image_x),
+                int(image_y),
+                1,
+                1,
+            )
+        )
+
+        self.selected_rect = len(self.rects) - 1
 
         self.update()
 
