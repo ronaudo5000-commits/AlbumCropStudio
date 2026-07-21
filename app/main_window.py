@@ -270,7 +270,11 @@ class MainWindow(QMainWindow):
 
         self.status_label.setText(
             f"検出数: {len(saved_rects)}"
-        )  
+        ) 
+
+        self.page_list.setCurrentRow(
+            self.current_page_index
+        ) 
 
         self.update_page_label()
 
@@ -299,6 +303,10 @@ class MainWindow(QMainWindow):
 
         self.status_label.setText(
             f"検出数: {len(saved_rects)}"
+        )
+
+        self.page_list.setCurrentRow(
+            self.current_page_index
         )
 
         self.update_page_label()
