@@ -1,8 +1,8 @@
 from pathlib import Path
 from PIL import Image
 
-from PySide6.QtCore import Qt, QRect, QSettings
-from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QImage
+from PySide6.QtCore import Qt, QRect, QSettings, QSize
+from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QWidget,
     QGroupBox,
+    QListWidget,
+    QListWidgetItem,
 )
 
 from core.photo_detector import detect_photos
@@ -35,6 +37,10 @@ class MainWindow(QMainWindow):
         self.current_pixmap = None
         self.detected_rects = []
 
+        self.image_paths = []
+        self.current_page_index = -1
+        self.page_rects = {}
+
         self.selected_rect = -1
 
         self.dragging = False
@@ -46,8 +52,24 @@ class MainWindow(QMainWindow):
 
         main_layout = QVBoxLayout(central)
 
+        content_layout = QHBoxLayout()
+
+        self.page_list = QListWidget()
+        self.page_list.setMinimumWidth(180)
+        self.page_list.setMaximumWidth(260)
+        self.page_list.setIconSize(
+            QSize(120, 90)
+        )
+        self.page_list.currentRowChanged.connect(
+            self.change_page_from_list
+        )
+
         self.preview_area = PhotoCanvas()
-        main_layout.addWidget(self.preview_area)
+
+        content_layout.addWidget(self.page_list)
+        content_layout.addWidget(self.preview_area, 1)
+
+        main_layout.addLayout(content_layout)
 
         settings_box = QGroupBox("出力設定")
         settings_layout = QHBoxLayout()
@@ -89,6 +111,17 @@ class MainWindow(QMainWindow):
         self.open_button.setMinimumHeight(40)
         self.open_button.clicked.connect(self.open_image)
 
+        self.prev_button = QPushButton("◀ 前へ")
+        self.prev_button.setMinimumHeight(40)
+        self.prev_button.clicked.connect(self.show_previous_page)
+
+        self.page_label = QLabel("0 / 0")
+        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.next_button = QPushButton("次へ ▶")
+        self.next_button.setMinimumHeight(40)
+        self.next_button.clicked.connect(self.show_next_page)
+
         self.detect_button = QPushButton("写真を検出")
         self.detect_button.setMinimumHeight(40)
         self.detect_button.clicked.connect(self.detect_photos)
@@ -103,6 +136,9 @@ class MainWindow(QMainWindow):
         self.save_button.clicked.connect(self.save_crops)
 
         button_layout.addWidget(self.open_button)
+        button_layout.addWidget(self.prev_button)
+        button_layout.addWidget(self.page_label)
+        button_layout.addWidget(self.next_button)
         button_layout.addWidget(self.detect_button)
         button_layout.addWidget(self.add_rect_button)
         button_layout.addWidget(self.save_button)
@@ -114,15 +150,158 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.status_label)
 
     def open_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_paths, _ = QFileDialog.getOpenFileNames(
             self,
             "画像を開く",
             "",
             "Image Files (*.jpg *.jpeg *.png *.tif *.tiff)",
         )
 
-        if file_path:
-            self.load_image(file_path)
+        if not file_paths:
+            return
+
+        self.image_paths = file_paths
+        self.current_page_index = 0
+        self.page_rects = {}
+
+        self.page_list.clear()
+
+        for file_path in self.image_paths:
+            item_name = Path(file_path).name
+
+            thumbnail = QPixmap(file_path)
+
+            if not thumbnail.isNull():
+                thumbnail = thumbnail.scaled(
+                    120,
+                    90,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+
+            item = QListWidgetItem(
+                QIcon(thumbnail),
+                item_name,
+            )
+
+            self.page_list.addItem(item)
+
+        self.page_list.setCurrentRow(0)
+
+        self.load_image(
+            self.image_paths[self.current_page_index]
+        )
+
+        self.update_page_label()
+
+    def update_page_label(self):
+        total = len(self.image_paths)
+
+        if total == 0 or self.current_page_index < 0:
+            self.page_label.setText("0 / 0")
+            return
+
+        self.page_label.setText(
+            f"{self.current_page_index + 1} / {total}"
+        )
+
+    def save_current_page_rects(self):
+        if self.current_page_index < 0:
+            return
+
+        self.page_rects[self.current_page_index] = list(
+            self.preview_area.rects
+        )
+
+    def change_page_from_list(self, row):
+        if row < 0:
+            return
+
+        if row >= len(self.image_paths):
+            return
+
+        if row == self.current_page_index:
+            return
+
+        self.save_current_page_rects()
+
+        self.current_page_index = row
+
+        self.load_image(
+            self.image_paths[self.current_page_index]
+        )
+
+        saved_rects = self.page_rects.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.set_rects(saved_rects)
+        self.detected_rects = list(saved_rects)
+
+        self.status_label.setText(
+            f"検出数: {len(saved_rects)}"
+        )
+
+        self.update_page_label()
+
+    def show_previous_page(self):
+        if not self.image_paths:
+            return
+
+        if self.current_page_index <= 0:
+            return
+
+        self.save_current_page_rects()
+
+        self.current_page_index -= 1
+
+        self.load_image(
+            self.image_paths[self.current_page_index]
+        )
+
+        saved_rects = self.page_rects.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.set_rects(saved_rects)
+        self.detected_rects = list(saved_rects)
+
+        self.status_label.setText(
+            f"検出数: {len(saved_rects)}"
+        )  
+
+        self.update_page_label()
+
+    def show_next_page(self):
+        if not self.image_paths:
+            return
+
+        if self.current_page_index >= len(self.image_paths) - 1:
+            return
+
+        self.save_current_page_rects()
+
+        self.current_page_index += 1
+
+        self.load_image(
+            self.image_paths[self.current_page_index]
+        )
+
+        saved_rects = self.page_rects.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.set_rects(saved_rects)
+        self.detected_rects = list(saved_rects)
+
+        self.status_label.setText(
+            f"検出数: {len(saved_rects)}"
+        )
+
+        self.update_page_label()
 
     def load_image(self, file_path):
         path = Path(file_path)
