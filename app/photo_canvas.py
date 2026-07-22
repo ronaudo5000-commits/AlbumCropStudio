@@ -1,4 +1,6 @@
-from PySide6.QtCore import Qt, Signal
+import math
+
+from PySide6.QtCore import Qt, Signal, QRectF
 from PySide6.QtGui import QPainter, QPen, QColor, QPixmap, QFont
 from PySide6.QtWidgets import QWidget
 
@@ -12,6 +14,7 @@ class PhotoCanvas(QWidget):
 
         self.pixmap = None
         self.rects = []
+        self.rect_angles = []
         self.selected_rect = -1
         self.undo_stack = []
         self.zoom_factor = 1.0
@@ -34,6 +37,9 @@ class PhotoCanvas(QWidget):
         self.resizing = False
         self.resize_handle_size = 10
 
+        self.rotating = False
+        self.rotate_start_angle = 0.0        
+
         self.setMinimumHeight(400)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -41,6 +47,7 @@ class PhotoCanvas(QWidget):
     def set_image(self, pixmap):
         self.pixmap = pixmap
         self.rects = []
+        self.rect_angles = []
         self.selected_rect = -1
 
         self.zoom_factor = 1.0
@@ -51,6 +58,22 @@ class PhotoCanvas(QWidget):
 
     def set_rects(self, rects):
         self.rects = rects
+
+        # 枠数に合わせて角度情報を用意する
+        if len(self.rect_angles) < len(self.rects):
+            missing_count = (
+                len(self.rects) - len(self.rect_angles)
+            )
+
+            self.rect_angles.extend(
+                [0.0] * missing_count
+            )
+
+        elif len(self.rect_angles) > len(self.rects):
+            self.rect_angles = self.rect_angles[
+                :len(self.rects)
+            ]
+
         self.selected_rect = -1
         self.update()
 
@@ -121,6 +144,35 @@ class PhotoCanvas(QWidget):
             "bottom_left": (x, y + h),
             "left": (x, y + h / 2),
         }
+    
+    def rotate_point(
+        self,
+        point_x,
+        point_y,
+        center_x,
+        center_y,
+        angle_degrees,
+    ):
+        angle_rad = math.radians(
+            angle_degrees
+        )
+
+        dx = point_x - center_x
+        dy = point_y - center_y
+
+        rotated_x = (
+            center_x
+            + dx * math.cos(angle_rad)
+            - dy * math.sin(angle_rad)
+        )
+
+        rotated_y = (
+            center_y
+            + dx * math.sin(angle_rad)
+            + dy * math.cos(angle_rad)
+        )
+
+        return rotated_x, rotated_y
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -156,12 +208,40 @@ class PhotoCanvas(QWidget):
             pen.setWidth(3)
             painter.setPen(pen)
 
-            painter.drawRect(
-                int(x_offset + x * scale_x),
-                int(y_offset + y * scale_y),
-                int(w * scale_x),
-                int(h * scale_y),
+            angle = 0.0
+
+            if index < len(self.rect_angles):
+                angle = self.rect_angles[index]
+
+            screen_x = x_offset + x * scale_x
+            screen_y = y_offset + y * scale_y
+            screen_w = w * scale_x
+            screen_h = h * scale_y
+
+            center_x = screen_x + screen_w / 2
+            center_y = screen_y + screen_h / 2
+
+            painter.save()
+
+            painter.translate(
+                center_x,
+                center_y,
             )
+
+            painter.rotate(
+                angle
+            )
+
+            painter.drawRect(
+                QRectF(
+                    -screen_w / 2,
+                    -screen_h / 2,
+                    screen_w,
+                    screen_h,
+                )
+            )
+
+            painter.restore()
 
             painter.setFont(QFont("Arial", 14))
 
@@ -187,9 +267,25 @@ class PhotoCanvas(QWidget):
             if index == self.selected_rect:
                 handle_size = self.resize_handle_size
 
+                center_x = x + w / 2
+                center_y = y + h / 2
+
                 for hx, hy in self.resize_handles(x, y, w, h).values():
-                    handle_x = int(x_offset + hx * scale_x) - handle_size // 2
-                    handle_y = int(y_offset + hy * scale_y) - handle_size // 2
+                    rotated_hx, rotated_hy = self.rotate_point(
+                        hx,
+                        hy,
+                        center_x,
+                        center_y,
+                        angle,
+                    )
+
+                    handle_x = int(
+                        x_offset + rotated_hx * scale_x
+                    ) - handle_size // 2
+
+                    handle_y = int(
+                        y_offset + rotated_hy * scale_y
+                    ) - handle_size // 2
 
                     painter.fillRect(
                         handle_x,
@@ -252,6 +348,92 @@ class PhotoCanvas(QWidget):
                     "⧉",
                 )
 
+                rotate_handle_size = 18
+
+                angle_rad = math.radians(angle)
+
+                screen_center_x = (
+                    x_offset + (x + w / 2) * scale_x
+                )
+
+                screen_center_y = (
+                    y_offset + (y + h / 2) * scale_y
+                )
+
+                top_offset = (
+                    h * scale_y / 2 + 45
+                )
+
+                rotate_center_x = (
+                    screen_center_x
+                    + math.sin(angle_rad) * top_offset
+                )
+
+                rotate_center_y = (
+                    screen_center_y
+                    - math.cos(angle_rad) * top_offset
+                )
+
+                rotate_x = int(
+                    rotate_center_x
+                    - rotate_handle_size / 2
+                )
+
+                rotate_y = int(
+                    rotate_center_y
+                    - rotate_handle_size / 2
+                )
+
+                top_center_x = (
+                    screen_center_x
+                    + math.sin(angle_rad)
+                    * (h * scale_y / 2)
+                )
+
+                top_center_y = (
+                    screen_center_y
+                    - math.cos(angle_rad)
+                    * (h * scale_y / 2)
+                )
+
+                painter.drawLine(
+                    int(top_center_x),
+                    int(top_center_y),
+                    int(rotate_center_x),
+                    int(rotate_center_y),
+                )
+
+                painter.setBrush(
+                    QColor(255, 200, 0)
+                )
+
+                painter.drawEllipse(
+                    rotate_x,
+                    rotate_y,
+                    rotate_handle_size,
+                    rotate_handle_size,
+                )
+
+                painter.setBrush(
+                    Qt.BrushStyle.NoBrush
+                )
+
+                if index < len(self.rect_angles):
+                    angle = self.rect_angles[index]
+
+                    painter.setPen(
+                        QColor(255, 200, 0)
+                    )
+
+                    painter.drawText(
+                        rotate_x + 24,
+                        rotate_y,
+                        80,
+                        24,
+                        Qt.AlignmentFlag.AlignVCenter,
+                        f"{angle:.1f}°",
+                    )
+
     def mousePressEvent(self, event):
 
         # 中ボタンでパン開始
@@ -276,7 +458,7 @@ class PhotoCanvas(QWidget):
         image_y = (pos.y() - y_offset) / scale_y
 
         # 選択中の枠に表示している
-        # コピー／削除ボタンをクリックしたか確認
+        # コピー／削除／回転ハンドルをクリックしたか確認
         if self.selected_rect >= 0:
             x, y, w, h = self.rects[self.selected_rect]
 
@@ -293,7 +475,7 @@ class PhotoCanvas(QWidget):
             copy_x = delete_x - button_size - 4
             copy_y = delete_y
 
-            # コピーボタン
+            # コピーボタンを最優先
             if (
                 copy_x <= pos.x() <= copy_x + button_size
                 and copy_y <= pos.y() <= copy_y + button_size
@@ -311,18 +493,18 @@ class PhotoCanvas(QWidget):
 
                 self.rects.append(copied_rect)
 
-                # コピーした新しい枠を選択状態にする
                 self.selected_rect = len(self.rects) - 1
 
                 self.dragging = False
                 self.adding_rect = False
                 self.resizing = False
+                self.rotating = False
 
                 self.rects_changed.emit()
                 self.update()
                 return
 
-            # 削除ボタン
+            # 削除ボタンを次に優先
             if (
                 delete_x <= pos.x() <= delete_x + button_size
                 and delete_y <= pos.y() <= delete_y + button_size
@@ -331,13 +513,81 @@ class PhotoCanvas(QWidget):
 
                 del self.rects[self.selected_rect]
 
+                if self.selected_rect < len(self.rect_angles):
+                    del self.rect_angles[self.selected_rect]
+
                 self.selected_rect = -1
                 self.dragging = False
                 self.adding_rect = False
                 self.resizing = False
+                self.rotating = False
 
                 self.rects_changed.emit()
                 self.update()
+                return
+
+            # 最後に回転ハンドル判定
+            rotate_handle_size = 18
+            rotate_hit_margin = 14
+
+            angle = 0.0
+
+            if self.selected_rect < len(self.rect_angles):
+                angle = self.rect_angles[
+                    self.selected_rect
+                ]
+
+            angle_rad = math.radians(angle)
+
+            screen_center_x = (
+                x_offset + (x + w / 2) * scale_x
+            )
+
+            screen_center_y = (
+                y_offset + (y + h / 2) * scale_y
+            )
+
+            top_offset = (
+                h * scale_y / 2 + 45
+            )
+
+            rotate_center_x = (
+                screen_center_x
+                + math.sin(angle_rad) * top_offset
+            )
+
+            rotate_center_y = (
+                screen_center_y
+                - math.cos(angle_rad) * top_offset
+            )
+
+            rotate_x = int(
+                rotate_center_x
+                - rotate_handle_size / 2
+            )
+
+            rotate_y = int(
+                rotate_center_y
+                - rotate_handle_size / 2
+            )
+
+            if (
+                rotate_x - rotate_hit_margin
+                <= pos.x()
+                <= rotate_x + rotate_handle_size + rotate_hit_margin
+                and
+                rotate_y - rotate_hit_margin
+                <= pos.y()
+                <= rotate_y + rotate_handle_size + rotate_hit_margin
+            ):
+                self.save_undo_state()
+
+                self.rotating = True
+                self.dragging = False
+                self.adding_rect = False
+                self.resizing = False
+
+                event.accept()
                 return
 
         # 画像の表示範囲外をクリックした場合は何もしない
@@ -353,14 +603,46 @@ class PhotoCanvas(QWidget):
         if self.selected_rect >= 0:
             x, y, w, h = self.rects[self.selected_rect]
 
-            handle_area = self.resize_handle_size / scale_x
+            angle = 0.0
+
+            if self.selected_rect < len(self.rect_angles):
+                angle = self.rect_angles[
+                    self.selected_rect
+                ]
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+
+            # 見た目より少し広めにクリックできるようにする
+            handle_hit_size = 14
 
             for handle_name, (hx, hy) in self.resize_handles(
                 x, y, w, h
             ).items():
+                rotated_hx, rotated_hy = self.rotate_point(
+                    hx,
+                    hy,
+                    center_x,
+                    center_y,
+                    angle,
+                )
+
+                handle_screen_x = (
+                    x_offset + rotated_hx * scale_x
+                )
+
+                handle_screen_y = (
+                    y_offset + rotated_hy * scale_y
+                )
+
                 if (
-                    hx - handle_area <= image_x <= hx + handle_area
-                    and hy - handle_area <= image_y <= hy + handle_area
+                    handle_screen_x - handle_hit_size
+                    <= pos.x()
+                    <= handle_screen_x + handle_hit_size
+                    and
+                    handle_screen_y - handle_hit_size
+                    <= pos.y()
+                    <= handle_screen_y + handle_hit_size
                 ):
                     self.save_undo_state()
 
@@ -368,9 +650,11 @@ class PhotoCanvas(QWidget):
                     self.resize_handle = handle_name
                     self.dragging = False
                     self.adding_rect = False
+                    self.rotating = False
 
                     self.last_image_x = image_x
                     self.last_image_y = image_y
+
                     return
 
         # 既存の枠の中をクリックしたか確認
@@ -378,10 +662,22 @@ class PhotoCanvas(QWidget):
         for index in range(len(self.rects) - 1, -1, -1):
             x, y, w, h = self.rects[index]
 
-            if (
+            # 枠本体の中をクリックしたか
+            inside_rect = (
                 x <= image_x <= x + w
                 and y <= image_y <= y + h
-            ):
+            )
+
+            # 左上の番号ラベル部分をクリックしたか
+            label_width = 28 / scale_x
+            label_height = 24 / scale_y
+
+            inside_label = (
+                x <= image_x <= x + label_width
+                and y <= image_y <= y + label_height
+            )
+
+            if inside_rect or inside_label:
                 self.selected_rect = index
 
                 self.save_undo_state()
@@ -389,6 +685,7 @@ class PhotoCanvas(QWidget):
                 self.dragging = True
                 self.adding_rect = False
                 self.resizing = False
+                self.rotating = False
 
                 self.last_image_x = image_x
                 self.last_image_y = image_y
@@ -436,6 +733,55 @@ class PhotoCanvas(QWidget):
 
             self.update()
             return
+        
+        # 回転ハンドルをドラッグ中
+        if self.rotating and self.selected_rect >= 0:
+            info = self.image_display_info()
+
+            if info is None:
+                return
+
+            _, x_offset, y_offset, scale_x, scale_y = info
+
+            pos = event.position()
+
+            image_x = (
+                pos.x() - x_offset
+            ) / scale_x
+
+            image_y = (
+                pos.y() - y_offset
+            ) / scale_y
+
+            x, y, w, h = self.rects[
+                self.selected_rect
+            ]
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+
+            dx = image_x - center_x
+            dy = image_y - center_y
+
+            angle = math.degrees(
+                math.atan2(dy, dx)
+            ) + 90.0
+
+            # -180～180度に収める
+            angle = (
+                (angle + 180.0) % 360.0
+            ) - 180.0
+
+            while len(self.rect_angles) < len(self.rects):
+                self.rect_angles.append(0.0)
+
+            self.rect_angles[
+                self.selected_rect
+            ] = angle
+
+            self.update()
+            return
+        
         if self.resizing:
             info = self.image_display_info()
             if info is None:
@@ -454,16 +800,52 @@ class PhotoCanvas(QWidget):
             right = x + w
             bottom = y + h
 
-            if self.resize_handle in ("top_left", "left", "bottom_left"):
+            if self.resize_handle in (
+                "top_left",
+                "left",
+                "bottom_left",
+            ):
                 left = image_x
 
-            if self.resize_handle in ("top_left", "top", "top_right"):
+            if self.resize_handle in (
+                "top_left",
+                "top",
+                "top_right",
+            ):
                 top = image_y
 
-            if self.resize_handle in ("top_right", "right", "bottom_right"):
+            if self.resize_handle == "right":
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                center_x = x + w / 2
+                center_y = y + h / 2
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    center_x,
+                    center_y,
+                    -angle,
+                )
+
+                right = local_mouse_x
+
+            elif self.resize_handle in (
+                "top_right",
+                "bottom_right",
+            ):
                 right = image_x
 
-            if self.resize_handle in ("bottom_left", "bottom", "bottom_right"):
+            if self.resize_handle in (
+                "bottom_left",
+                "bottom",
+                "bottom_right",
+            ):
                 bottom = image_y
 
             if right - left < 5:
@@ -527,6 +909,27 @@ class PhotoCanvas(QWidget):
         dx = image_x - self.last_image_x
         dy = image_y - self.last_image_y
 
+        angle = 0.0
+
+        if self.selected_rect < len(self.rect_angles):
+            angle = self.rect_angles[
+                self.selected_rect
+            ]
+
+        angle_rad = math.radians(
+            -angle
+        )
+
+        local_dx = (
+            dx * math.cos(angle_rad)
+            - dy * math.sin(angle_rad)
+        )
+
+        local_dy = (
+            dx * math.sin(angle_rad)
+            + dy * math.cos(angle_rad)
+        )
+
         x, y, w, h = self.rects[self.selected_rect]
 
         self.rects[self.selected_rect] = (
@@ -549,16 +952,54 @@ class PhotoCanvas(QWidget):
             event.accept()
             return
 
+        was_adding_rect = self.adding_rect
+
         was_editing_rect = (
             self.dragging
             or self.adding_rect
             or self.resizing
+            or self.rotating
         )
 
         self.dragging = False
         self.adding_rect = False
         self.resizing = False
+        self.rotating = False
         self.resize_handle = None
+
+        # 新規作成した枠が小さすぎる場合は削除
+        if (
+            was_adding_rect
+            and self.selected_rect >= 0
+            and self.selected_rect < len(self.rects)
+        ):
+            x, y, w, h = self.rects[
+                self.selected_rect
+            ]
+
+            minimum_size = 20
+
+            if (
+                w < minimum_size
+                or h < minimum_size
+            ):
+                del self.rects[
+                    self.selected_rect
+                ]
+
+                if (
+                    self.selected_rect
+                    < len(self.rect_angles)
+                ):
+                    del self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                self.selected_rect = -1
+
+                self.rects_changed.emit()
+                self.update()
+                return
 
         if was_editing_rect:
             self.rects_changed.emit()
