@@ -931,7 +931,7 @@ class MainWindow(QMainWindow):
         cell_w = usable_w / columns
         cell_h = usable_h / rows
 
-        rects = []
+        rects = list(self.preview_area.rects)
 
         for index in range(count):
             row = index // columns
@@ -956,7 +956,7 @@ class MainWindow(QMainWindow):
         self.preview_area.set_rects(rects)
 
         self.status_label.setText(
-            f"手動生成枠: {len(rects)}"
+            f"枠数: {len(rects)}"
         )
 
         self.save_current_page_rects()
