@@ -1,9 +1,12 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QPen, QColor, QPixmap, QFont
 from PySide6.QtWidgets import QWidget
 
 
 class PhotoCanvas(QWidget):
+    zoom_changed = Signal(float)
+    rects_changed = Signal()
+
     def __init__(self):
         super().__init__()
 
@@ -11,7 +14,13 @@ class PhotoCanvas(QWidget):
         self.rects = []
         self.selected_rect = -1
         self.undo_stack = []
+        self.zoom_factor = 1.0
         
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+
+        self.panning = False
+        self.last_pan_pos = None
 
         self.dragging = False
         self.last_image_x = 0
@@ -33,6 +42,11 @@ class PhotoCanvas(QWidget):
         self.pixmap = pixmap
         self.rects = []
         self.selected_rect = -1
+
+        self.zoom_factor = 1.0
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+
         self.update()
 
     def set_rects(self, rects):
@@ -57,6 +71,9 @@ class PhotoCanvas(QWidget):
         self.dragging = False
         self.adding_rect = False
         self.resizing = False
+
+        self.rects_changed.emit()
+
         self.update()
 
     def set_add_mode(self, enabled):
@@ -69,14 +86,24 @@ class PhotoCanvas(QWidget):
         if self.pixmap is None:
             return None
 
+        base_size = self.size()
+
         scaled_pixmap = self.pixmap.scaled(
-            self.size(),
+            int(base_size.width() * self.zoom_factor),
+            int(base_size.height() * self.zoom_factor),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
 
-        x_offset = (self.width() - scaled_pixmap.width()) / 2
-        y_offset = (self.height() - scaled_pixmap.height()) / 2
+        x_offset = (
+            (self.width() - scaled_pixmap.width()) / 2
+            + self.pan_x
+        )
+
+        y_offset = (
+            (self.height() - scaled_pixmap.height()) / 2
+            + self.pan_y
+        )
 
         scale_x = scaled_pixmap.width() / self.pixmap.width()
         scale_y = scaled_pixmap.height() / self.pixmap.height()
@@ -226,6 +253,14 @@ class PhotoCanvas(QWidget):
                 )
 
     def mousePressEvent(self, event):
+
+        # 中ボタンでパン開始
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.panning = True
+            self.last_pan_pos = event.position()
+            event.accept()
+            return
+
         if self.pixmap is None:
             return
 
@@ -283,6 +318,7 @@ class PhotoCanvas(QWidget):
                 self.adding_rect = False
                 self.resizing = False
 
+                self.rects_changed.emit()
                 self.update()
                 return
 
@@ -300,6 +336,7 @@ class PhotoCanvas(QWidget):
                 self.adding_rect = False
                 self.resizing = False
 
+                self.rects_changed.emit()
                 self.update()
                 return
 
@@ -383,6 +420,22 @@ class PhotoCanvas(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
+        if self.panning:
+            if self.last_pan_pos is None:
+                return
+
+            current_pos = event.position()
+
+            dx = current_pos.x() - self.last_pan_pos.x()
+            dy = current_pos.y() - self.last_pan_pos.y()
+
+            self.pan_x += dx
+            self.pan_y += dy
+
+            self.last_pan_pos = current_pos
+
+            self.update()
+            return
         if self.resizing:
             info = self.image_display_info()
             if info is None:
@@ -489,10 +542,26 @@ class PhotoCanvas(QWidget):
         self.update()
 
     def mouseReleaseEvent(self, event):
+        # 中ボタンでパン終了
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.panning = False
+            self.last_pan_pos = None
+            event.accept()
+            return
+
+        was_editing_rect = (
+            self.dragging
+            or self.adding_rect
+            or self.resizing
+        )
+
         self.dragging = False
         self.adding_rect = False
         self.resizing = False
-        self.resize_handle = None 
+        self.resize_handle = None
+
+        if was_editing_rect:
+            self.rects_changed.emit()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete:
@@ -509,3 +578,75 @@ class PhotoCanvas(QWidget):
         ):
             self.undo()
             return
+
+    def zoom_in(self):
+        self.zoom_factor *= 1.1
+        self.zoom_factor = min(
+            self.zoom_factor,
+            5.0,
+        )
+
+        self.zoom_changed.emit(
+            self.zoom_factor
+        )
+
+        self.update()
+
+
+    def zoom_out(self):
+        self.zoom_factor /= 1.1
+        self.zoom_factor = max(
+            self.zoom_factor,
+            0.2,
+        )
+
+        self.zoom_changed.emit(
+            self.zoom_factor
+        )
+
+        self.update()
+
+
+    def reset_zoom(self):
+        self.zoom_factor = 1.0
+
+        self.zoom_changed.emit(
+            self.zoom_factor
+        )
+
+        self.update()
+
+
+
+    def wheelEvent(self, event):
+        if self.pixmap is None:
+            return
+
+        modifiers = event.modifiers()
+
+        # ホイール単体でも Ctrl + ホイールでもズーム
+        if (
+            modifiers == Qt.KeyboardModifier.NoModifier
+            or modifiers & Qt.KeyboardModifier.ControlModifier
+        ):
+            delta = event.angleDelta().y()
+
+            if delta > 0:
+                self.zoom_factor *= 1.1
+            else:
+                self.zoom_factor /= 1.1
+
+            self.zoom_factor = max(
+                0.2,
+                min(self.zoom_factor, 5.0)
+            )
+
+            self.zoom_changed.emit(
+                self.zoom_factor
+            )
+
+            self.update()
+            event.accept()
+            return
+
+        super().wheelEvent(event)

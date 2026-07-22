@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QAbstractItemView,
+    QScrollArea,
 )
 
 from core.photo_detector import detect_photos
@@ -178,8 +179,109 @@ class MainWindow(QMainWindow):
 
         self.preview_area = PhotoCanvas()
 
+        self.preview_area.zoom_changed.connect(
+            self.on_zoom_changed
+        )
+
+        self.preview_area.rects_changed.connect(
+            self.update_crop_preview
+        )
+
+        self.zoom_out_button = QPushButton("−")
+        self.zoom_out_button.setFixedWidth(40)
+
+        self.zoom_label = QLabel("100%")
+        self.zoom_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        self.zoom_label.setFixedWidth(60)
+
+        self.zoom_in_button = QPushButton("+")
+        self.zoom_in_button.setFixedWidth(40)
+
+        self.fit_button = QPushButton("全体表示")
+        self.fit_button.setMinimumWidth(80)
+
+        self.zoom_out_button.clicked.connect(
+            self.preview_area.zoom_out
+        )
+        self.zoom_out_button.clicked.connect(
+            self.update_zoom_label
+        )
+
+        self.zoom_in_button.clicked.connect(
+            self.preview_area.zoom_in
+        )
+        self.zoom_in_button.clicked.connect(
+            self.update_zoom_label
+        )
+
+        self.fit_button.clicked.connect(
+            self.preview_area.reset_zoom
+        )
+        self.fit_button.clicked.connect(
+            self.update_zoom_label
+        )
+
+        zoom_layout = QHBoxLayout()
+
+        zoom_layout.addWidget(self.zoom_out_button)
+        zoom_layout.addWidget(self.zoom_label)
+        zoom_layout.addWidget(self.zoom_in_button)
+        zoom_layout.addWidget(self.fit_button)
+
+        zoom_layout.addStretch() 
+
+        # 切り抜き後プレビュー欄
+        self.crop_preview_box = QGroupBox("切り抜きプレビュー")
+        self.crop_preview_box.setMinimumWidth(180)
+        self.crop_preview_box.setMaximumWidth(260)
+
+        crop_preview_layout = QVBoxLayout()
+
+        self.crop_preview_scroll = QScrollArea()
+        self.crop_preview_scroll.setWidgetResizable(True)
+
+        self.crop_preview_container = QWidget()
+        self.crop_preview_list_layout = QVBoxLayout(
+            self.crop_preview_container
+        )
+
+        self.crop_preview_label = QLabel(
+            "切り抜き結果が\nここに表示されます"
+        )
+        self.crop_preview_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.crop_preview_list_layout.addWidget(
+            self.crop_preview_label
+        )
+
+        self.crop_preview_list_layout.addStretch()
+
+        self.crop_preview_scroll.setWidget(
+            self.crop_preview_container
+        )
+
+        crop_preview_layout.addWidget(
+            self.crop_preview_scroll
+        )
+
+        self.crop_preview_box.setLayout(
+            crop_preview_layout
+        )
+
+        preview_layout = QVBoxLayout()
+        preview_layout.addWidget(self.preview_area, 1)
+        preview_layout.addLayout(zoom_layout)
+
+        preview_container = QWidget()
+        preview_container.setLayout(preview_layout)
+
         content_layout.addWidget(page_list_container)
-        content_layout.addWidget(self.preview_area, 1)
+        content_layout.addWidget(preview_container, 1)
+        content_layout.addWidget(self.crop_preview_box)
 
         main_layout.addLayout(content_layout)
 
@@ -283,6 +385,24 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("検出数: 0")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_label)
+
+    def update_zoom_label(self):
+        zoom_percent = int(
+            round(self.preview_area.zoom_factor * 100)
+        )
+
+        self.zoom_label.setText(
+            f"{zoom_percent}%"
+        )
+
+    def on_zoom_changed(self, zoom_factor):
+        zoom_percent = int(
+            round(zoom_factor * 100)
+        )
+
+        self.zoom_label.setText(
+            f"{zoom_percent}%"
+        )
 
     def open_image(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
@@ -1030,3 +1150,77 @@ class MainWindow(QMainWindow):
             return
 
         super().keyPressEvent(event)
+
+    def update_crop_preview(self):
+        if self.current_pixmap is None:
+            return
+
+        # 既存のプレビュー表示を全部削除
+        while self.crop_preview_list_layout.count():
+            item = self.crop_preview_list_layout.takeAt(0)
+
+            widget = item.widget()
+
+            if widget is not None:
+                widget.deleteLater()
+
+        # 枠がない場合
+        if not self.preview_area.rects:
+            empty_label = QLabel(
+                "切り抜き結果が\nここに表示されます"
+            )
+            empty_label.setAlignment(
+                Qt.AlignmentFlag.AlignCenter
+            )
+
+            self.crop_preview_list_layout.addWidget(
+                empty_label
+            )
+
+            self.crop_preview_list_layout.addStretch()
+            return
+
+        # すべての枠を順番にプレビュー表示
+        for index, (x, y, w, h) in enumerate(
+            self.preview_area.rects,
+            start=1,
+        ):
+            crop_pixmap = self.current_pixmap.copy(
+                int(x),
+                int(y),
+                int(w),
+                int(h),
+            )
+
+            if crop_pixmap.isNull():
+                continue
+
+            title_label = QLabel(
+                f"写真 {index}"
+            )
+
+            preview_label = QLabel()
+            preview_label.setAlignment(
+                Qt.AlignmentFlag.AlignCenter
+            )
+
+            preview_pixmap = crop_pixmap.scaled(
+                220,
+                180,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+            preview_label.setPixmap(
+                preview_pixmap
+            )
+
+            self.crop_preview_list_layout.addWidget(
+                title_label
+            )
+
+            self.crop_preview_list_layout.addWidget(
+                preview_label
+            )
+
+        self.crop_preview_list_layout.addStretch()
