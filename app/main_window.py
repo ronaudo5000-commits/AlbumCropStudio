@@ -120,6 +120,7 @@ class MainWindow(QMainWindow):
         self.image_paths = []
         self.current_page_index = -1
         self.page_rects = {}
+        self.page_angles = {}
         self.deleted_pages_stack = []
 
         self.selected_rect = -1
@@ -479,6 +480,10 @@ class MainWindow(QMainWindow):
             self.preview_area.rects
         )
 
+        self.page_angles[self.current_page_index] = list(
+            self.preview_area.rect_angles
+        )
+
     def change_page_from_list(self, row):
         if row < 0:
             return
@@ -505,12 +510,29 @@ class MainWindow(QMainWindow):
         self.preview_area.set_rects(saved_rects)
         self.detected_rects = list(saved_rects)
 
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(self.preview_area.rect_angles) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(0.0)
+
+        self.preview_area.update()
+
         self.status_label.setText(
             f"検出数: {len(saved_rects)}"
         )
 
         self.delete_page_button.setEnabled(True)
 
+        self.update_crop_preview()
         self.update_page_label()
 
     def delete_current_page(self):
@@ -541,19 +563,30 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            deleted_angles = list(
+                self.page_angles.get(
+                    delete_index,
+                    [],
+                )
+            )
+
             deleted_group.append(
                 {
                     "index": delete_index,
                     "path": deleted_path,
                     "rects": deleted_rects,
+                    "angles": deleted_angles,
                 }
-            )
+)
 
             self.image_paths.pop(delete_index)
             self.page_list.takeItem(delete_index)
 
             if delete_index in self.page_rects:
                 del self.page_rects[delete_index]
+
+            if delete_index in self.page_angles:
+                del self.page_angles[delete_index]
 
             new_page_rects = {}
 
@@ -564,6 +597,16 @@ class MainWindow(QMainWindow):
                     new_page_rects[old_index] = rects
 
             self.page_rects = new_page_rects
+
+            new_page_angles = {}
+
+            for old_index, angles in self.page_angles.items():
+                if old_index > delete_index:
+                    new_page_angles[old_index - 1] = angles
+                else:
+                    new_page_angles[old_index] = angles
+
+            self.page_angles = new_page_angles
 
         self.deleted_pages_stack.append(
             {
@@ -582,6 +625,9 @@ class MainWindow(QMainWindow):
 
             self.page_label.setText("0 / 0")
             self.status_label.setText("検出数: 0")
+
+            self.clear_crop_preview()
+
             self.delete_page_button.setEnabled(False)
             return
 
@@ -602,6 +648,22 @@ class MainWindow(QMainWindow):
         self.preview_area.set_rects(saved_rects)
         self.detected_rects = list(saved_rects)
 
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(self.preview_area.rect_angles) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(0.0)
+
+        self.preview_area.update()
+
         self.page_list.setCurrentRow(
             self.current_page_index
         )
@@ -612,6 +674,7 @@ class MainWindow(QMainWindow):
 
         self.delete_page_button.setEnabled(True)
 
+        self.update_crop_preview()
         self.update_page_label()
 
     def restore_deleted_page(self):
@@ -762,6 +825,7 @@ class MainWindow(QMainWindow):
             f"検出数: {len(saved_rects)}"
         )
 
+        self.update_crop_preview()
         self.update_page_label()
 
     def show_previous_page(self):
@@ -787,9 +851,27 @@ class MainWindow(QMainWindow):
         self.preview_area.set_rects(saved_rects)
         self.detected_rects = list(saved_rects)
 
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(self.preview_area.rect_angles) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(0.0)
+
+        self.preview_area.update()        
+
         self.status_label.setText(
             f"検出数: {len(saved_rects)}"
         ) 
+
+        self.update_crop_preview()
 
         self.page_list.setCurrentRow(
             self.current_page_index
@@ -820,9 +902,27 @@ class MainWindow(QMainWindow):
         self.preview_area.set_rects(saved_rects)
         self.detected_rects = list(saved_rects)
 
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(self.preview_area.rect_angles) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(0.0)
+
+        self.preview_area.update()        
+
         self.status_label.setText(
             f"検出数: {len(saved_rects)}"
         )
+
+        self.update_crop_preview()
 
         self.page_list.setCurrentRow(
             self.current_page_index
@@ -1150,6 +1250,28 @@ class MainWindow(QMainWindow):
             return
 
         super().keyPressEvent(event)
+
+    def clear_crop_preview(self):
+        while self.crop_preview_list_layout.count():
+            item = self.crop_preview_list_layout.takeAt(0)
+
+            widget = item.widget()
+
+            if widget is not None:
+                widget.deleteLater()
+
+        empty_label = QLabel(
+            "切り抜き結果が\nここに表示されます"
+        )
+        empty_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.crop_preview_list_layout.addWidget(
+            empty_label
+        )
+
+        self.crop_preview_list_layout.addStretch()
 
     def update_crop_preview(self):
         if self.current_pixmap is None:

@@ -1762,6 +1762,48 @@ class PhotoCanvas(QWidget):
                 self.update()
             return
 
+        if self.selected_rect >= 0:
+
+            move_step = 1
+
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                move_step = 10
+
+            move_x = 0
+            move_y = 0
+
+            if event.key() == Qt.Key.Key_Left:
+                move_x = -move_step
+
+            elif event.key() == Qt.Key.Key_Right:
+                move_x = move_step
+
+            elif event.key() == Qt.Key.Key_Up:
+                move_y = -move_step
+
+            elif event.key() == Qt.Key.Key_Down:
+                move_y = move_step
+
+            if move_x != 0 or move_y != 0:
+                self.save_undo_state()
+
+                x, y, w, h = self.rects[
+                    self.selected_rect
+                ]
+
+                self.rects[self.selected_rect] = (
+                    x + move_x,
+                    y + move_y,
+                    w,
+                    h,
+                )
+
+                self.rects_changed.emit()
+                self.update()
+
+                event.accept()
+                return
+
         if (
             event.key() == Qt.Key.Key_Z
             and event.modifiers() == Qt.KeyboardModifier.ControlModifier
