@@ -36,6 +36,7 @@ class PhotoCanvas(QWidget):
 
         self.resizing = False
         self.resize_handle_size = 10
+        self.resize_start_rect = None
 
         self.rotating = False
         self.rotate_start_angle = 0.0        
@@ -245,21 +246,49 @@ class PhotoCanvas(QWidget):
 
             painter.setFont(QFont("Arial", 14))
 
+            label_width = 28
+            label_height = 24
+
+            rect_center_x = x + w / 2
+            rect_center_y = y + h / 2
+
+            rotated_label_x, rotated_label_y = self.rotate_point(
+                x,
+                y,
+                rect_center_x,
+                rect_center_y,
+                angle,
+            )
+
+            label_x = int(
+                x_offset + rotated_label_x * scale_x
+            )
+
+            label_y = int(
+                y_offset + rotated_label_y * scale_y
+            )
+
+            # ハンドルと重なりにくいよう少し外側へずらす
+            label_x -= label_width
+            label_y -= label_height
+
             painter.fillRect(
-                int(x_offset + x * scale_x),
-                int(y_offset + y * scale_y),
-                28,
-                24,
+                label_x,
+                label_y,
+                label_width,
+                label_height,
                 QColor(255, 200, 0),
             )
 
-            painter.setPen(QColor(0, 0, 0))
+            painter.setPen(
+                QColor(0, 0, 0)
+            )
 
             painter.drawText(
-                int(x_offset + x * scale_x),
-                int(y_offset + y * scale_y),
-                28,
-                24,
+                label_x,
+                label_y,
+                label_width,
+                label_height,
                 Qt.AlignmentFlag.AlignCenter,
                 str(index + 1),
             )
@@ -297,12 +326,23 @@ class PhotoCanvas(QWidget):
 
                 delete_button_size = 28
 
+                rect_center_x = x + w / 2
+                rect_center_y = y + h / 2
+
+                rotated_top_right_x, rotated_top_right_y = self.rotate_point(
+                    x + w,
+                    y,
+                    rect_center_x,
+                    rect_center_y,
+                    angle,
+                )
+
                 delete_x = int(
-                    x_offset + (x + w) * scale_x
-                ) - delete_button_size
+                    x_offset + rotated_top_right_x * scale_x
+                ) + 4
 
                 delete_y = int(
-                    y_offset + y * scale_y
+                    y_offset + rotated_top_right_y * scale_y
                 ) - delete_button_size - 4
 
                 painter.fillRect(
@@ -434,6 +474,100 @@ class PhotoCanvas(QWidget):
                         f"{angle:.1f}°",
                     )
 
+    def mouseDoubleClickEvent(self, event):
+        if self.pixmap is None:
+            return
+
+        if self.selected_rect < 0:
+            return
+
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        info = self.image_display_info()
+        if info is None:
+            return
+
+        _, x_offset, y_offset, scale_x, scale_y = info
+
+        pos = event.position()
+
+        x, y, w, h = self.rects[
+            self.selected_rect
+        ]
+
+        angle = 0.0
+
+        if self.selected_rect < len(self.rect_angles):
+            angle = self.rect_angles[
+                self.selected_rect
+            ]
+
+        # 現在の角度に追従した回転ハンドル位置を計算
+        angle_rad = math.radians(angle)
+
+        screen_center_x = (
+            x_offset + (x + w / 2) * scale_x
+        )
+
+        screen_center_y = (
+            y_offset + (y + h / 2) * scale_y
+        )
+
+        top_offset = (
+            h * scale_y / 2 + 45
+        )
+
+        rotate_center_x = (
+            screen_center_x
+            + math.sin(angle_rad) * top_offset
+        )
+
+        rotate_center_y = (
+            screen_center_y
+            - math.cos(angle_rad) * top_offset
+        )
+
+        rotate_handle_size = 18
+        rotate_hit_margin = 14
+
+        rotate_x = (
+            rotate_center_x
+            - rotate_handle_size / 2
+        )
+
+        rotate_y = (
+            rotate_center_y
+            - rotate_handle_size / 2
+        )
+
+        # 回転ハンドル周辺をダブルクリックした場合
+        if (
+            rotate_x - rotate_hit_margin
+            <= pos.x()
+            <= rotate_x + rotate_handle_size + rotate_hit_margin
+            and
+            rotate_y - rotate_hit_margin
+            <= pos.y()
+            <= rotate_y + rotate_handle_size + rotate_hit_margin
+        ):
+            self.save_undo_state()
+
+            while len(self.rect_angles) < len(self.rects):
+                self.rect_angles.append(0.0)
+
+            self.rect_angles[
+                self.selected_rect
+            ] = 0.0
+
+            self.rotating = False
+
+            self.rects_changed.emit()
+            self.update()
+
+            event.accept()
+            return
+
     def mousePressEvent(self, event):
 
         # 中ボタンでパン開始
@@ -464,12 +598,30 @@ class PhotoCanvas(QWidget):
 
             button_size = 28
 
+            angle = 0.0
+
+            if self.selected_rect < len(self.rect_angles):
+                angle = self.rect_angles[
+                    self.selected_rect
+                ]
+
+            rect_center_x = x + w / 2
+            rect_center_y = y + h / 2
+
+            rotated_top_right_x, rotated_top_right_y = self.rotate_point(
+                x + w,
+                y,
+                rect_center_x,
+                rect_center_y,
+                angle,
+            )
+
             delete_x = int(
-                x_offset + (x + w) * scale_x
-            ) - button_size
+                x_offset + rotated_top_right_x * scale_x
+            ) + 4
 
             delete_y = int(
-                y_offset + y * scale_y
+                y_offset + rotated_top_right_y * scale_y
             ) - button_size - 4
 
             copy_x = delete_x - button_size - 4
@@ -648,6 +800,11 @@ class PhotoCanvas(QWidget):
 
                     self.resizing = True
                     self.resize_handle = handle_name
+
+                    self.resize_start_rect = tuple(
+                        self.rects[self.selected_rect]
+                    )
+
                     self.dragging = False
                     self.adding_rect = False
                     self.rotating = False
@@ -795,24 +952,106 @@ class PhotoCanvas(QWidget):
 
             x, y, w, h = self.rects[self.selected_rect]
 
+            if self.resize_start_rect is not None:
+                start_x, start_y, start_w, start_h = (
+                    self.resize_start_rect
+                )
+            else:
+                start_x, start_y, start_w, start_h = (
+                    x, y, w, h
+                )
+
             left = x
             top = y
             right = x + w
             bottom = y + h
 
-            if self.resize_handle in (
-                "top_left",
-                "left",
-                "bottom_left",
-            ):
-                left = image_x
+            if self.resize_handle == "top":
+                angle = 0.0
 
-            if self.resize_handle in (
-                "top_left",
-                "top",
-                "top_right",
-            ):
-                top = image_y
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    start_center_x,
+                    start_center_y,
+                    -angle,
+                )
+
+                left = start_x
+                top = local_mouse_y
+                right = start_x + start_w
+                bottom = start_y + start_h
+
+            if self.resize_handle == "top_left":
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    start_center_x,
+                    start_center_y,
+                    -angle,
+                )
+
+                left = local_mouse_x
+                top = local_mouse_y
+                right = start_x + start_w
+                bottom = start_y + start_h
+
+            if self.resize_handle == "left":
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    start_center_x,
+                    start_center_y,
+                    -angle,
+                )
+
+                left = local_mouse_x
+                top = start_y
+                right = start_x + start_w
+                bottom = start_y + start_h       
 
             if self.resize_handle == "right":
                 angle = 0.0
@@ -822,37 +1061,546 @@ class PhotoCanvas(QWidget):
                         self.selected_rect
                     ]
 
-                center_x = x + w / 2
-                center_y = y + h / 2
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
 
                 local_mouse_x, local_mouse_y = self.rotate_point(
                     image_x,
                     image_y,
-                    center_x,
-                    center_y,
+                    start_center_x,
+                    start_center_y,
                     -angle,
                 )
 
+                left = start_x
+                top = start_y
                 right = local_mouse_x
+                bottom = start_y + start_h
 
-            elif self.resize_handle in (
-                "top_right",
-                "bottom_right",
-            ):
-                right = image_x
+            if self.resize_handle == "top_right":
+                angle = 0.0
 
-            if self.resize_handle in (
-                "bottom_left",
-                "bottom",
-                "bottom_right",
-            ):
-                bottom = image_y
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    start_center_x,
+                    start_center_y,
+                    -angle,
+                )
+
+                left = start_x
+                top = local_mouse_y
+                right = local_mouse_x
+                bottom = start_y + start_h
+
+            if self.resize_handle == "bottom_right":
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    start_center_x,
+                    start_center_y,
+                    -angle,
+                )
+
+                left = start_x
+                top = start_y
+                right = local_mouse_x
+                bottom = local_mouse_y
+
+            if self.resize_handle == "bottom_left":
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    start_center_x,
+                    start_center_y,
+                    -angle,
+                )
+
+                left = local_mouse_x
+                top = start_y
+                right = start_x + start_w
+                bottom = local_mouse_y
+
+            if self.resize_handle == "bottom":
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_mouse_x, local_mouse_y = self.rotate_point(
+                    image_x,
+                    image_y,
+                    start_center_x,
+                    start_center_y,
+                    -angle,
+                )
+
+                left = start_x
+                top = start_y
+                right = start_x + start_w
+                bottom = local_mouse_y
 
             if right - left < 5:
                 return
 
             if bottom - top < 5:
                 return
+            
+            # 回転枠の右中央ハンドルを動かした場合、
+            # ドラッグ開始時の左辺を固定して中心位置を補正する
+            if self.resize_handle == "right":
+                old_center_x = (
+                    start_x + start_w / 2
+                )
+
+                old_center_y = (
+                    start_y + start_h / 2
+                )
+
+                new_w = right - left
+
+                width_change = (
+                    new_w - start_w
+                )
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                angle_rad = math.radians(angle)
+
+                center_shift = width_change / 2
+
+                new_center_x = (
+                    old_center_x
+                    + math.cos(angle_rad) * center_shift
+                )
+
+                new_center_y = (
+                    old_center_y
+                    + math.sin(angle_rad) * center_shift
+                )
+
+                left = new_center_x - new_w / 2
+                right = new_center_x + new_w / 2
+
+                top = new_center_y - start_h / 2
+                bottom = new_center_y + start_h / 2
+
+            # 回転枠の左中央ハンドルを動かした場合、
+            # ドラッグ開始時の右辺を固定して中心位置を補正する
+            if self.resize_handle == "left":
+                old_center_x = (
+                    start_x + start_w / 2
+                )
+
+                old_center_y = (
+                    start_y + start_h / 2
+                )
+
+                new_w = right - left
+
+                width_change = (
+                    new_w - start_w
+                )
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                angle_rad = math.radians(angle)
+
+                center_shift = width_change / 2
+
+                new_center_x = (
+                    old_center_x
+                    - math.cos(angle_rad) * center_shift
+                )
+
+                new_center_y = (
+                    old_center_y
+                    - math.sin(angle_rad) * center_shift
+                )
+
+                left = new_center_x - new_w / 2
+                right = new_center_x + new_w / 2
+
+                top = new_center_y - start_h / 2
+                bottom = new_center_y + start_h / 2     
+
+            # 回転枠の上中央ハンドルを動かした場合、
+            # ドラッグ開始時の下辺を固定して中心位置を補正する
+            if self.resize_handle == "top":
+                old_center_x = (
+                    start_x + start_w / 2
+                )
+
+                old_center_y = (
+                    start_y + start_h / 2
+                )
+
+                new_h = bottom - top
+
+                height_change = (
+                    new_h - start_h
+                )
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                angle_rad = math.radians(angle)
+
+                center_shift = height_change / 2
+
+                new_center_x = (
+                    old_center_x
+                    + math.sin(angle_rad) * center_shift
+                )
+
+                new_center_y = (
+                    old_center_y
+                    - math.cos(angle_rad) * center_shift
+                )
+
+                left = new_center_x - start_w / 2
+                right = new_center_x + start_w / 2
+
+                top = new_center_y - new_h / 2
+                bottom = new_center_y + new_h / 2
+
+
+
+            # 回転枠の下中央ハンドルを動かした場合、
+            # ドラッグ開始時の上辺を固定して中心位置を補正する
+            if self.resize_handle == "bottom":
+                old_center_x = (
+                    start_x + start_w / 2
+                )
+
+                old_center_y = (
+                    start_y + start_h / 2
+                )
+
+                new_h = bottom - top
+
+                height_change = (
+                    new_h - start_h
+                )
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                angle_rad = math.radians(angle)
+
+                center_shift = height_change / 2
+
+                new_center_x = (
+                    old_center_x
+                    - math.sin(angle_rad) * center_shift
+                )
+
+                new_center_y = (
+                    old_center_y
+                    + math.cos(angle_rad) * center_shift
+                )
+
+                left = new_center_x - start_w / 2
+                right = new_center_x + start_w / 2
+
+                top = new_center_y - new_h / 2
+                bottom = new_center_y + new_h / 2
+
+            # 回転枠の左上ハンドルを動かした場合、
+            # ドラッグ開始時の右下を固定して中心位置を補正する
+            if self.resize_handle == "top_left":
+                new_w = right - left
+                new_h = bottom - top
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_shift_x = (
+                    (new_w - start_w) / 2
+                )
+
+                local_shift_y = (
+                    (new_h - start_h) / 2
+                )
+
+                angle_rad = math.radians(angle)
+
+                global_shift_x = (
+                    -local_shift_x * math.cos(angle_rad)
+                    + local_shift_y * math.sin(angle_rad)
+                )
+
+                global_shift_y = (
+                    -local_shift_x * math.sin(angle_rad)
+                    - local_shift_y * math.cos(angle_rad)
+                )
+
+                new_center_x = (
+                    start_center_x + global_shift_x
+                )
+
+                new_center_y = (
+                    start_center_y + global_shift_y
+                )
+
+                left = new_center_x - new_w / 2
+                right = new_center_x + new_w / 2
+
+                top = new_center_y - new_h / 2
+                bottom = new_center_y + new_h / 2                
+
+            # 回転枠の右上ハンドルを動かした場合、
+            # ドラッグ開始時の左下を固定して中心位置を補正する
+            if self.resize_handle == "top_right":
+                new_w = right - left
+                new_h = bottom - top
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_shift_x = (
+                    (new_w - start_w) / 2
+                )
+
+                local_shift_y = (
+                    (new_h - start_h) / 2
+                )
+
+                angle_rad = math.radians(angle)
+
+                global_shift_x = (
+                    local_shift_x * math.cos(angle_rad)
+                    + local_shift_y * math.sin(angle_rad)
+                )
+
+                global_shift_y = (
+                    local_shift_x * math.sin(angle_rad)
+                    - local_shift_y * math.cos(angle_rad)
+                )
+
+                new_center_x = (
+                    start_center_x + global_shift_x
+                )
+
+                new_center_y = (
+                    start_center_y + global_shift_y
+                )
+
+                left = new_center_x - new_w / 2
+                right = new_center_x + new_w / 2
+
+                top = new_center_y - new_h / 2
+                bottom = new_center_y + new_h / 2
+
+            # 回転枠の右下ハンドルを動かした場合、
+            # ドラッグ開始時の左上を固定して中心位置を補正する
+            if self.resize_handle == "bottom_right":
+                new_w = right - left
+                new_h = bottom - top
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_shift_x = (
+                    (new_w - start_w) / 2
+                )
+
+                local_shift_y = (
+                    (new_h - start_h) / 2
+                )
+
+                angle_rad = math.radians(angle)
+
+                global_shift_x = (
+                    local_shift_x * math.cos(angle_rad)
+                    - local_shift_y * math.sin(angle_rad)
+                )
+
+                global_shift_y = (
+                    local_shift_x * math.sin(angle_rad)
+                    + local_shift_y * math.cos(angle_rad)
+                )
+
+                new_center_x = (
+                    start_center_x + global_shift_x
+                )
+
+                new_center_y = (
+                    start_center_y + global_shift_y
+                )
+
+                left = new_center_x - new_w / 2
+                right = new_center_x + new_w / 2
+
+                top = new_center_y - new_h / 2
+                bottom = new_center_y + new_h / 2
+
+            # 回転枠の左下ハンドルを動かした場合、
+            # ドラッグ開始時の右上を固定して中心位置を補正する
+            if self.resize_handle == "bottom_left":
+                new_w = right - left
+                new_h = bottom - top
+
+                angle = 0.0
+
+                if self.selected_rect < len(self.rect_angles):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                start_center_x = (
+                    start_x + start_w / 2
+                )
+
+                start_center_y = (
+                    start_y + start_h / 2
+                )
+
+                local_shift_x = (
+                    (new_w - start_w) / 2
+                )
+
+                local_shift_y = (
+                    (new_h - start_h) / 2
+                )
+
+                angle_rad = math.radians(angle)
+
+                global_shift_x = (
+                    -local_shift_x * math.cos(angle_rad)
+                    - local_shift_y * math.sin(angle_rad)
+                )
+
+                global_shift_y = (
+                    -local_shift_x * math.sin(angle_rad)
+                    + local_shift_y * math.cos(angle_rad)
+                )
+
+                new_center_x = (
+                    start_center_x + global_shift_x
+                )
+
+                new_center_y = (
+                    start_center_y + global_shift_y
+                )
+
+                left = new_center_x - new_w / 2
+                right = new_center_x + new_w / 2
+
+                top = new_center_y - new_h / 2
+                bottom = new_center_y + new_h / 2
 
             self.rects[self.selected_rect] = (
                 int(left),
@@ -863,7 +1611,7 @@ class PhotoCanvas(QWidget):
 
             self.update()
             return
-
+        
         if self.adding_rect:
             info = self.image_display_info()
             if info is None:
@@ -966,6 +1714,7 @@ class PhotoCanvas(QWidget):
         self.resizing = False
         self.rotating = False
         self.resize_handle = None
+        self.resize_start_rect = None
 
         # 新規作成した枠が小さすぎる場合は削除
         if (
