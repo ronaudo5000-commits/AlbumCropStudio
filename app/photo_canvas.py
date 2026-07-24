@@ -1842,12 +1842,16 @@ class PhotoCanvas(QWidget):
     def reset_zoom(self):
         self.zoom_factor = 1.0
 
+        # パン位置も初期化して、
+        # 画像全体をキャンバス中央へ戻す
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+
         self.zoom_changed.emit(
             self.zoom_factor
         )
 
         self.update()
-
 
 
     def wheelEvent(self, event):

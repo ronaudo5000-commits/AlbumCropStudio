@@ -1,8 +1,17 @@
 from pathlib import Path
+from io import BytesIO
 from PIL import Image
 
-from PySide6.QtCore import Qt, QRect, QSettings, QSize
-from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QImage, QIcon
+from PySide6.QtCore import Qt, QRect, QSettings, QSize, QPointF
+from PySide6.QtGui import (
+    QPixmap,
+    QPainter,
+    QPen,
+    QColor,
+    QImage,
+    QIcon,
+    QTransform,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -415,32 +424,58 @@ class MainWindow(QMainWindow):
 
         if not file_paths:
             return
-        
+
         if self.image_paths:
             self.save_current_page_rects()
 
         was_empty = len(self.image_paths) == 0
 
+        new_file_paths = []
+
         for file_path in file_paths:
             if file_path not in self.image_paths:
                 self.image_paths.append(file_path)
+                new_file_paths.append(file_path)
 
-        if was_empty:
+        if was_empty and self.image_paths:
             self.current_page_index = 0
 
-        for file_path in file_paths:
+        # 新しく追加された画像だけサムネイルを作成
+        for file_path in new_file_paths:
             item_name = Path(file_path).name
 
-            thumbnail = QPixmap(file_path)
+            thumbnail = QPixmap()
 
-            if not thumbnail.isNull():
-                thumbnail = thumbnail.scaled(
-                    120,
-                    90,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
+            try:
+                with Image.open(file_path) as pil_image:
+                    pil_image = pil_image.convert("RGB")
+
+                    # Pillow側で先にサムネイルサイズへ縮小
+                    pil_image.thumbnail(
+                        (120, 90)
+                    )
+
+                    # メモリ上でPNGへ変換
+                    buffer = BytesIO()
+
+                    pil_image.save(
+                        buffer,
+                        format="PNG",
+                    )
+
+                    thumbnail.loadFromData(
+                        buffer.getvalue(),
+                        "PNG",
+                    )
+
+            except Exception as e:
+                print(
+                    f"サムネイルを作成できませんでした: "
+                    f"{file_path} / {e}"
                 )
 
+            # サムネイル生成の成否に関係なく
+            # ファイル項目自体は必ず追加する
             item = QListWidgetItem(
                 QIcon(thumbnail),
                 item_name,
@@ -448,7 +483,7 @@ class MainWindow(QMainWindow):
 
             self.page_list.addItem(item)
 
-        if was_empty:
+        if was_empty and self.image_paths:
             self.page_list.setCurrentRow(0)
 
             self.load_image(
@@ -694,6 +729,10 @@ class MainWindow(QMainWindow):
                 restore_index = page["index"]
                 restore_path = page["path"]
                 restore_rects = page["rects"]
+                restore_angles = page.get(
+                    "angles",
+                    [],
+                )
 
                 if restore_index > len(self.image_paths):
                     restore_index = len(self.image_paths)
@@ -715,19 +754,25 @@ class MainWindow(QMainWindow):
                     restore_rects
                 )
 
+                new_page_angles = {}
+
+                for old_index, angles in self.page_angles.items():
+                    if old_index >= restore_index:
+                        new_page_angles[old_index + 1] = angles
+                    else:
+                        new_page_angles[old_index] = angles
+
+                new_page_angles[restore_index] = list(
+                    restore_angles
+                )
+
+                self.page_angles = new_page_angles
+
                 self.page_rects = new_page_rects
 
                 item_name = Path(restore_path).name
 
                 thumbnail = QPixmap(restore_path)
-
-                if not thumbnail.isNull():
-                    thumbnail = thumbnail.scaled(
-                        120,
-                        90,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
 
                 item = QListWidgetItem(
                     QIcon(thumbnail),
@@ -814,6 +859,22 @@ class MainWindow(QMainWindow):
         self.detected_rects = list(
             saved_rects
         )
+
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(self.preview_area.rect_angles) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(0.0)
+
+        self.preview_area.update()
 
         self.page_list.setCurrentRow(
             self.current_page_index
@@ -1112,6 +1173,70 @@ class MainWindow(QMainWindow):
             self.margin_spin.value()
         )
 
+    def create_rotated_crop_image(
+        self,
+        image,
+        x,
+        y,
+        w,
+        h,
+        angle,
+    ):
+        # 回転していない場合は従来どおり切り抜く
+        if abs(angle) < 0.001:
+            left = int(x)
+            top = int(y)
+            right = int(x + w)
+            bottom = int(y + h)
+
+            return image.crop(
+                (
+                    left,
+                    top,
+                    right,
+                    bottom,
+                )
+            )
+
+        center_x = x + w / 2
+        center_y = y + h / 2
+
+        # 枠中心を基準に画像全体を逆回転
+        rotated = image.rotate(
+            angle,
+            resample=Image.Resampling.BICUBIC,
+            center=(
+                center_x,
+                center_y,
+            ),
+        )
+
+        # 回転補正後、元の枠サイズで切り抜く
+        left = int(
+            round(center_x - w / 2)
+        )
+
+        top = int(
+            round(center_y - h / 2)
+        )
+
+        right = int(
+            round(center_x + w / 2)
+        )
+
+        bottom = int(
+            round(center_y + h / 2)
+        )
+
+        return rotated.crop(
+            (
+                left,
+                top,
+                right,
+                bottom,
+            )
+        )
+
     def save_crops(self):
         self.save_button.setEnabled(False)
         self.status_label.setText("✂️ 切り抜き中...")
@@ -1144,23 +1269,47 @@ class MainWindow(QMainWindow):
         margin_mm = self.margin_spin.value()
         margin_px = int((margin_mm / 25.4) * dpi)
 
-        for index, (x, y, w, h) in enumerate(self.preview_area.rects, start=1):
-            left = max(0, int(x - margin_px))
-            top = max(0, int(y - margin_px))
-            right = min(image.width, int(x + w + margin_px))
-            bottom = min(image.height, int(y + h + margin_px))
+        for index, (x, y, w, h) in enumerate(
+            self.preview_area.rects,
+            start=1,
+        ):
+            angle = 0.0
 
-            crop = image.crop(
-                (
-                    left,
-                    top,
-                    right,
-                    bottom,
-                )
+            angle_index = index - 1
+
+            if angle_index < len(
+                self.preview_area.rect_angles
+            ):
+                angle = self.preview_area.rect_angles[
+                    angle_index
+                ]
+
+            # 余白を枠サイズに加える
+            crop_x = x - margin_px
+            crop_y = y - margin_px
+            crop_w = w + margin_px * 2
+            crop_h = h + margin_px * 2
+
+            crop = self.create_rotated_crop_image(
+                image,
+                crop_x,
+                crop_y,
+                crop_w,
+                crop_h,
+                angle,
             )
 
-            output_path = output_dir / f"photo_{index:03}.jpg"
-            crop.save(output_path, "JPEG", quality=95, dpi=(dpi, dpi))
+            output_path = (
+                output_dir
+                / f"photo_{index:03}.jpg"
+            )
+
+            crop.save(
+                output_path,
+                "JPEG",
+                quality=95,
+                dpi=(dpi, dpi),
+            )
 
         print(f"{len(self.preview_area.rects)}枚の写真を保存しました")
         print(f"保存先: {output_dir}")
@@ -1251,6 +1400,119 @@ class MainWindow(QMainWindow):
 
         super().keyPressEvent(event)
 
+    def create_rotated_crop_pixmap(
+        self,
+        x,
+        y,
+        w,
+        h,
+        angle,
+    ):
+        if self.current_pixmap is None:
+            return QPixmap()
+
+        # 回転していない枠は、
+        # 従来どおりそのまま切り抜く
+        if abs(angle) < 0.001:
+            return self.current_pixmap.copy(
+                int(x),
+                int(y),
+                int(w),
+                int(h),
+            )
+
+        # 切り抜き先のサイズ
+        crop_w = max(1, int(round(w)))
+        crop_h = max(1, int(round(h)))
+
+        result = QPixmap(
+            crop_w,
+            crop_h,
+        )
+
+        result.fill(
+            Qt.GlobalColor.transparent
+        )
+
+        painter = QPainter(result)
+
+        painter.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform,
+            True,
+        )
+
+        # 出力画像の中心を原点にする
+        painter.translate(
+            crop_w / 2,
+            crop_h / 2,
+        )
+
+        # 枠の回転を打ち消して水平化
+        painter.rotate(
+            -angle
+        )
+
+        # 元画像上の枠中心が
+        # 出力画像の中心に来るよう移動
+        center_x = x + w / 2
+        center_y = y + h / 2
+
+        painter.translate(
+            -center_x,
+            -center_y,
+        )
+
+        # 元画像を描画
+        painter.drawPixmap(
+            0,
+            0,
+            self.current_pixmap,
+        )
+
+        painter.end()
+
+        return result
+
+        if self.current_pixmap is None:
+            return QPixmap()
+
+        if abs(angle) < 0.001:
+            return self.current_pixmap.copy(
+                int(x),
+                int(y),
+                int(w),
+                int(h),
+            )
+
+        center_x = x + w / 2
+        center_y = y + h / 2
+
+        # 元画像全体を、対象枠の中心を基準に逆回転
+        transform = QTransform()
+
+        transform.translate(
+            center_x,
+            center_y,
+        )
+
+        transform.rotate(
+            -angle
+        )
+
+        transform.translate(
+            -center_x,
+            -center_y,
+        )
+
+        rotated_pixmap = self.current_pixmap.transformed(
+            transform,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        # transformed() では画像全体の外接矩形サイズが変わるため、
+        # ここではまず補助関数だけ用意する
+        return rotated_pixmap
+
     def clear_crop_preview(self):
         while self.crop_preview_list_layout.count():
             item = self.crop_preview_list_layout.takeAt(0)
@@ -1307,11 +1569,23 @@ class MainWindow(QMainWindow):
             self.preview_area.rects,
             start=1,
         ):
-            crop_pixmap = self.current_pixmap.copy(
-                int(x),
-                int(y),
-                int(w),
-                int(h),
+            angle = 0.0
+
+            angle_index = index - 1
+
+            if angle_index < len(
+                self.preview_area.rect_angles
+            ):
+                angle = self.preview_area.rect_angles[
+                    angle_index
+                ]
+
+            crop_pixmap = self.create_rotated_crop_pixmap(
+                x,
+                y,
+                w,
+                h,
+                angle,
             )
 
             if crop_pixmap.isNull():
