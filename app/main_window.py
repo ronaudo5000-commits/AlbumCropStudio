@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from io import BytesIO
 from PIL import Image
@@ -375,6 +376,22 @@ class MainWindow(QMainWindow):
             self.generate_manual_rects
         )
 
+        self.load_project_button = QPushButton(
+            "作業を開く"
+        )
+        self.load_project_button.setMinimumHeight(40)
+        self.load_project_button.clicked.connect(
+            self.load_project
+        )
+
+        self.save_project_button = QPushButton(
+            "作業を保存"
+        )
+        self.save_project_button.setMinimumHeight(40)
+        self.save_project_button.clicked.connect(
+            self.save_project
+        )
+
         self.save_button = QPushButton("切り抜き")
         self.save_button.setMinimumHeight(40)
         self.save_button.clicked.connect(self.save_crops)
@@ -389,6 +406,8 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.manual_count_label)
         button_layout.addWidget(self.manual_count_spin)
         button_layout.addWidget(self.generate_rects_button)
+        button_layout.addWidget(self.load_project_button)
+        button_layout.addWidget(self.save_project_button)
         button_layout.addWidget(self.save_button)
 
         main_layout.addLayout(button_layout)
@@ -519,6 +538,362 @@ class MainWindow(QMainWindow):
         self.page_angles[self.current_page_index] = list(
             self.preview_area.rect_angles
         )
+
+    def build_project_data(self):
+        self.save_current_page_rects()
+
+        pages = []
+
+        for page_index, image_path in enumerate(
+            self.image_paths
+        ):
+            rects = self.page_rects.get(
+                page_index,
+                [],
+            )
+
+            angles = self.page_angles.get(
+                page_index,
+                [],
+            )
+
+            pages.append(
+                {
+                    "image_path": image_path,
+                    "rects": [
+                        list(rect)
+                        for rect in rects
+                    ],
+                    "angles": list(angles),
+                }
+            )
+
+        project_data = {
+            "version": 1,
+            "current_page_index": self.current_page_index,
+            "pages": pages,
+            "settings": {
+                "dpi": self.dpi_spin.value(),
+                "margin_mm": self.margin_spin.value(),
+            },
+        }
+
+        return project_data
+    
+    def save_project(self):
+        project_data = self.build_project_data()
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "作業を保存",
+            "",
+            "AlbumCrop Studio Project (*.acsp.json)",
+        )
+
+        if not file_path:
+            return
+
+        if not file_path.lower().endswith(
+            ".acsp.json"
+        ):
+            file_path += ".acsp.json"
+
+        try:
+            with open(
+                file_path,
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                    project_data,
+                    file,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+            self.status_label.setText(
+                "✅ 作業を保存しました"
+            )
+
+        except Exception as e:
+            print(
+                f"プロジェクト保存エラー: {e}"
+            )
+
+            self.status_label.setText(
+                "❌ 作業の保存に失敗しました"
+            )
+
+    def load_project(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "作業を開く",
+            "",
+            "AlbumCrop Studio Project (*.acsp.json)",
+        )
+
+        if not file_path:
+            return
+
+        try:
+            with open(
+                file_path,
+                "r",
+                encoding="utf-8",
+            ) as file:
+                project_data = json.load(file)
+
+        except Exception as e:
+            print(
+                f"プロジェクト読み込みエラー: {e}"
+            )
+
+            self.status_label.setText(
+                "❌ 作業の読み込みに失敗しました"
+            )
+            return
+
+        pages = project_data.get(
+            "pages",
+            [],
+        )
+
+        if not pages:
+            self.status_label.setText(
+                "❌ プロジェクトに画像がありません"
+            )
+            return
+        
+        # 元画像がすべて存在するか確認
+        missing_files = []
+
+        for page_data in pages:
+            image_path = page_data.get(
+                "image_path",
+                "",
+            )
+
+            if (
+                not image_path
+                or not Path(image_path).exists()
+            ):
+                missing_files.append(
+                    image_path
+                )
+
+        if missing_files:
+            missing_names = "\n".join(
+                Path(path).name
+                if path
+                else "(ファイルパスなし)"
+                for path in missing_files[:10]
+            )
+
+            if len(missing_files) > 10:
+                missing_names += (
+                    f"\nほか "
+                    f"{len(missing_files) - 10} 件"
+                )
+
+            QMessageBox.warning(
+                self,
+                "元画像が見つかりません",
+                (
+                    "プロジェクトで使用している"
+                    "元画像が見つかりません。\n\n"
+                    f"{missing_names}\n\n"
+                    "元画像を元の場所に戻してから、"
+                    "もう一度プロジェクトを開いてください。"
+                ),
+            )
+
+            self.status_label.setText(
+                "❌ 元画像が見つかりません"
+            )
+            return
+
+        # 現在の状態をいったん初期化
+        self.image_paths = []
+        self.page_rects = {}
+        self.page_angles = {}
+        self.deleted_pages_stack = []
+
+        self.page_list.clear()
+
+        # 保存されたページ情報を復元
+        for page_index, page_data in enumerate(
+            pages
+        ):
+            image_path = page_data.get(
+                "image_path",
+                "",
+            )
+
+            rects = page_data.get(
+                "rects",
+                [],
+            )
+
+            angles = page_data.get(
+                "angles",
+                [],
+            )
+
+            self.image_paths.append(
+                image_path
+            )
+
+            self.page_rects[
+                page_index
+            ] = [
+                tuple(rect)
+                for rect in rects
+            ]
+
+            self.page_angles[
+                page_index
+            ] = list(
+                angles
+            )
+
+            # サムネイルを作成
+            item_name = Path(
+                image_path
+            ).name
+
+            thumbnail = QPixmap()
+
+            try:
+                with Image.open(
+                    image_path
+                ) as pil_image:
+                    pil_image = pil_image.convert(
+                        "RGB"
+                    )
+
+                    pil_image.thumbnail(
+                        (120, 90)
+                    )
+
+                    buffer = BytesIO()
+
+                    pil_image.save(
+                        buffer,
+                        format="PNG",
+                    )
+
+                    thumbnail.loadFromData(
+                        buffer.getvalue(),
+                        "PNG",
+                    )
+
+            except Exception as e:
+                print(
+                    f"サムネイル作成エラー: "
+                    f"{image_path} / {e}"
+                )
+
+            item = QListWidgetItem(
+                QIcon(thumbnail),
+                item_name,
+            )
+
+            self.page_list.addItem(
+                item
+            )
+
+        # 設定を復元
+        settings = project_data.get(
+            "settings",
+            {},
+        )
+
+        self.dpi_spin.setValue(
+            int(
+                settings.get(
+                    "dpi",
+                    350,
+                )
+            )
+        )
+
+        self.margin_spin.setValue(
+            int(
+                settings.get(
+                    "margin_mm",
+                    0,
+                )
+            )
+        )
+
+        # 保存時のページ位置を復元
+        self.current_page_index = int(
+            project_data.get(
+                "current_page_index",
+                0,
+            )
+        )
+
+        if (
+            self.current_page_index < 0
+            or self.current_page_index
+            >= len(self.image_paths)
+        ):
+            self.current_page_index = 0
+
+        # 現在ページを表示
+        self.load_image(
+            self.image_paths[
+                self.current_page_index
+            ]
+        )
+
+        saved_rects = self.page_rects.get(
+            self.current_page_index,
+            [],
+        )
+
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.set_rects(
+            list(saved_rects)
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(
+            self.preview_area.rect_angles
+        ) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(
+                0.0
+            )
+
+        self.detected_rects = list(
+            saved_rects
+        )
+
+        self.page_list.setCurrentRow(
+            self.current_page_index
+        )
+
+        self.delete_page_button.setEnabled(
+            True
+        )
+
+        self.status_label.setText(
+            "✅ 作業を読み込みました"
+        )
+
+        self.update_crop_preview()
+        self.update_page_label()
+        self.preview_area.update()
 
     def change_page_from_list(self, row):
         if row < 0:
