@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QAbstractItemView,
     QScrollArea,
+    QMessageBox,
 )
 
 from core.photo_detector import detect_photos
@@ -1239,82 +1240,257 @@ class MainWindow(QMainWindow):
 
     def save_crops(self):
         self.save_button.setEnabled(False)
-        self.status_label.setText("✂️ 切り抜き中...")
+        self.status_label.setText(
+            "✂️ 切り抜き中..."
+        )
         QApplication.processEvents()
 
-        if not self.current_image_path:
+        # 現在編集中のページ状態を保存
+        self.save_current_page_rects()
+
+        if not self.image_paths:
             print("画像が読み込まれていません")
-            return
 
-        if not self.preview_area.rects:
-            print("保存する枠がありません")
-            return
+            self.status_label.setText(
+                "画像が読み込まれていません"
+            )
 
-        output_dir_text = QFileDialog.getExistingDirectory(
-            self,
-            "保存先フォルダを選択",
-            str(Path(self.current_image_path).parent),
-        )
-
-        if not output_dir_text:
-            self.status_label.setText("保存をキャンセルしました")
             self.save_button.setEnabled(True)
             return
 
-        output_dir = Path(output_dir_text)
+        # 全ページの枠数を確認
+        total_crops = sum(
+            len(
+                self.page_rects.get(
+                    page_index,
+                    [],
+                )
+            )
+            for page_index in range(
+                len(self.image_paths)
+            )
+        )
 
-        image = Image.open(self.current_image_path)
+        if total_crops == 0:
+            print("保存する枠がありません")
+
+            self.status_label.setText(
+                "保存する枠がありません"
+            )
+
+            self.save_button.setEnabled(True)
+            return
+
+        output_dir_text = (
+            QFileDialog.getExistingDirectory(
+                self,
+                "保存先フォルダを選択",
+                str(
+                    Path(
+                        self.current_image_path
+                    ).parent
+                ),
+            )
+        )
+
+        if not output_dir_text:
+            self.status_label.setText(
+                "保存をキャンセルしました"
+            )
+
+            self.save_button.setEnabled(True)
+            return
+
+        output_dir = Path(
+            output_dir_text
+        )
+
+        # -------------------------
+        # 同名ファイルの事前確認
+        # -------------------------
+
+        existing_files = []
+
+        for page_index in range(
+            len(self.image_paths)
+        ):
+            page_rects = self.page_rects.get(
+                page_index,
+                [],
+            )
+
+            for crop_index in range(
+                1,
+                len(page_rects) + 1,
+            ):
+                output_path = (
+                    output_dir
+                    / (
+                        f"page_{page_index + 1:03}_"
+                        f"photo_{crop_index:03}.jpg"
+                    )
+                )
+
+                if output_path.exists():
+                    existing_files.append(
+                        output_path
+                    )
+
+        if existing_files:
+            reply = QMessageBox.warning(
+                self,
+                "上書き確認",
+                (
+                    f"保存先に同名ファイルが"
+                    f"{len(existing_files)}件あります。\n\n"
+                    "既存のファイルを"
+                    "上書きしますか？"
+                ),
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+
+            if (
+                reply
+                != QMessageBox.StandardButton.Yes
+            ):
+                self.status_label.setText(
+                    "保存をキャンセルしました"
+                )
+
+                self.save_button.setEnabled(True)
+                return
 
         dpi = self.dpi_spin.value()
-        margin_mm = self.margin_spin.value()
-        margin_px = int((margin_mm / 25.4) * dpi)
 
-        for index, (x, y, w, h) in enumerate(
-            self.preview_area.rects,
-            start=1,
+        margin_mm = (
+            self.margin_spin.value()
+        )
+
+        margin_px = int(
+            (margin_mm / 25.4) * dpi
+        )
+
+        saved_count = 0
+
+        # -------------------------
+        # 全ページを順番に処理
+        # -------------------------
+
+        for page_index, image_path in enumerate(
+            self.image_paths
         ):
-            angle = 0.0
-
-            angle_index = index - 1
-
-            if angle_index < len(
-                self.preview_area.rect_angles
-            ):
-                angle = self.preview_area.rect_angles[
-                    angle_index
-                ]
-
-            # 余白を枠サイズに加える
-            crop_x = x - margin_px
-            crop_y = y - margin_px
-            crop_w = w + margin_px * 2
-            crop_h = h + margin_px * 2
-
-            crop = self.create_rotated_crop_image(
-                image,
-                crop_x,
-                crop_y,
-                crop_w,
-                crop_h,
-                angle,
+            page_rects = self.page_rects.get(
+                page_index,
+                [],
             )
 
-            output_path = (
-                output_dir
-                / f"photo_{index:03}.jpg"
+            page_angles = self.page_angles.get(
+                page_index,
+                [],
             )
 
-            crop.save(
-                output_path,
-                "JPEG",
-                quality=95,
-                dpi=(dpi, dpi),
-            )
+            # 枠がないページは飛ばす
+            if not page_rects:
+                continue
 
-        print(f"{len(self.preview_area.rects)}枚の写真を保存しました")
-        print(f"保存先: {output_dir}")
+            try:
+                with Image.open(
+                    image_path
+                ) as source_image:
+                    image = source_image.convert(
+                        "RGB"
+                    )
+
+                    for crop_index, (
+                        x,
+                        y,
+                        w,
+                        h,
+                    ) in enumerate(
+                        page_rects,
+                        start=1,
+                    ):
+                        angle = 0.0
+
+                        angle_index = (
+                            crop_index - 1
+                        )
+
+                        if (
+                            angle_index
+                            < len(page_angles)
+                        ):
+                            angle = page_angles[
+                                angle_index
+                            ]
+
+                        crop_x = (
+                            x - margin_px
+                        )
+
+                        crop_y = (
+                            y - margin_px
+                        )
+
+                        crop_w = (
+                            w
+                            + margin_px * 2
+                        )
+
+                        crop_h = (
+                            h
+                            + margin_px * 2
+                        )
+
+                        crop = (
+                            self.create_rotated_crop_image(
+                                image,
+                                crop_x,
+                                crop_y,
+                                crop_w,
+                                crop_h,
+                                angle,
+                            )
+                        )
+
+                        output_path = (
+                            output_dir
+                            / (
+                                f"page_{page_index + 1:03}_"
+                                f"photo_{crop_index:03}.jpg"
+                            )
+                        )
+
+                        crop.save(
+                            output_path,
+                            "JPEG",
+                            quality=95,
+                            dpi=(dpi, dpi),
+                        )
+
+                        saved_count += 1
+
+            except Exception as e:
+                print(
+                    f"ページ {page_index + 1} "
+                    f"の書き出しに失敗しました: "
+                    f"{e}"
+                )
+
+        print(
+            f"{saved_count}枚の写真を"
+            "保存しました"
+        )
+
+        print(
+            f"保存先: {output_dir}"
+        )
+
         self.status_label.setText(
-            f"✅ {len(self.preview_area.rects)}枚切り抜き完了"
+            f"✅ {saved_count}枚"
+            "切り抜き完了"
         )
 
         self.save_button.setEnabled(True)
