@@ -128,6 +128,9 @@ class MainWindow(QMainWindow):
         self.current_pixmap = None
         self.detected_rects = []
 
+        self.current_project_path = None
+        self.project_modified = False
+
         self.image_paths = []
         self.current_page_index = -1
         self.page_rects = {}
@@ -197,6 +200,10 @@ class MainWindow(QMainWindow):
 
         self.preview_area.rects_changed.connect(
             self.update_crop_preview
+        )
+
+        self.preview_area.rects_changed.connect(
+            self.mark_project_modified
         )
 
         self.zoom_out_button = QPushButton("−")
@@ -314,6 +321,14 @@ class MainWindow(QMainWindow):
             int(self.settings.value("margin_mm", 0))
         )
 
+        self.margin_spin.valueChanged.connect(
+            self.mark_project_modified
+        )
+
+        self.dpi_spin.valueChanged.connect(
+            self.mark_project_modified
+        )
+
         # self.dpi_spin.valueChanged.connect(
          #    self.save_settings
          # )
@@ -387,9 +402,20 @@ class MainWindow(QMainWindow):
         self.save_project_button = QPushButton(
             "作業を保存"
         )
+
+        self.save_project_as_button = QPushButton(
+            "名前を付けて保存"
+        )
+
+        self.save_project_as_button.setMinimumHeight(40)
+
+        self.save_project_as_button.clicked.connect(
+            self.save_project
+        )
+
         self.save_project_button.setMinimumHeight(40)
         self.save_project_button.clicked.connect(
-            self.save_project
+            self.save_project_overwrite
         )
 
         self.save_button = QPushButton("切り抜き")
@@ -408,6 +434,7 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.generate_rects_button)
         button_layout.addWidget(self.load_project_button)
         button_layout.addWidget(self.save_project_button)
+        button_layout.addWidget(self.save_project_as_button)
         button_layout.addWidget(self.save_button)
 
         main_layout.addLayout(button_layout)
@@ -415,6 +442,9 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("検出数: 0")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_label)
+
+    def mark_project_modified(self, *args):
+        self.project_modified = True
 
     def update_zoom_label(self):
         zoom_percent = int(
@@ -514,6 +544,8 @@ class MainWindow(QMainWindow):
             len(self.image_paths) > 0
         )
 
+        self.project_modified = True
+
         self.update_page_label()
 
     def update_page_label(self):
@@ -598,6 +630,28 @@ class MainWindow(QMainWindow):
         ):
             file_path += ".acsp.json"
 
+        project_path = Path(file_path)
+
+        if project_path.exists():
+            reply = QMessageBox.warning(
+                self,
+                "上書き確認",
+                (
+                    "同じ名前のプロジェクトファイルが"
+                    "すでに存在します。\n\n"
+                    "上書きしますか？"
+                ),
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                self.status_label.setText(
+                    "保存をキャンセルしました"
+                )
+                return
+
         try:
             with open(
                 file_path,
@@ -611,6 +665,9 @@ class MainWindow(QMainWindow):
                     indent=2,
                 )
 
+            self.current_project_path = file_path
+            self.project_modified = False
+
             self.status_label.setText(
                 "✅ 作業を保存しました"
             )
@@ -623,6 +680,43 @@ class MainWindow(QMainWindow):
             self.status_label.setText(
                 "❌ 作業の保存に失敗しました"
             )
+
+    def save_project_overwrite(self):
+        # まだ保存先が決まっていない場合は
+        # 従来の「作業を保存」を使う
+        if not self.current_project_path:
+            self.save_project()
+            return
+
+        project_data = self.build_project_data()
+
+        try:
+            with open(
+                self.current_project_path,
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                    project_data,
+                    file,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+            self.project_modified = False
+
+            self.status_label.setText(
+                "✅ 作業を上書き保存しました"
+            )
+
+        except Exception as e:
+            print(
+                f"プロジェクト上書き保存エラー: {e}"
+            )
+
+            self.status_label.setText(
+                "❌ 作業の上書き保存に失敗しました"
+        )
 
     def load_project(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -887,6 +981,9 @@ class MainWindow(QMainWindow):
             True
         )
 
+        self.current_project_path = file_path
+        self.project_modified = False
+
         self.status_label.setText(
             "✅ 作業を読み込みました"
         )
@@ -1040,6 +1137,7 @@ class MainWindow(QMainWindow):
             self.clear_crop_preview()
 
             self.delete_page_button.setEnabled(False)
+            self.project_modified = True
             return
 
         self.current_page_index = min(
@@ -1084,6 +1182,8 @@ class MainWindow(QMainWindow):
         )
 
         self.delete_page_button.setEnabled(True)
+
+        self.project_modified = True
 
         self.update_crop_preview()
         self.update_page_label()
