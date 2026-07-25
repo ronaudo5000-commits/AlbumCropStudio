@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QListWidget,
     QListWidgetItem,
+    QListView,
     QAbstractItemView,
     QScrollArea,
     QMessageBox,
@@ -168,10 +169,37 @@ class MainWindow(QMainWindow):
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.page_list.delete_callback = self.delete_current_page
-        self.page_list.setMinimumWidth(180)
-        self.page_list.setMaximumWidth(260)
+        self.page_list.setMinimumWidth(145)
+        self.page_list.setMaximumWidth(165)
+
+        self.page_list.setViewMode(
+            QListView.ViewMode.IconMode
+        )
+
+        self.page_list.setFlow(
+            QListView.Flow.TopToBottom
+        )
+
+        self.page_list.setWrapping(False)
+
+        self.page_list.setResizeMode(
+            QListView.ResizeMode.Adjust
+        )
+
+        self.page_list.setMovement(
+            QListView.Movement.Static
+        )
+
         self.page_list.setIconSize(
-            QSize(120, 90)
+            QSize(110, 82)
+        )
+
+        self.page_list.setGridSize(
+            QSize(135, 120)
+        )
+
+        self.page_list.setTextElideMode(
+            Qt.TextElideMode.ElideMiddle
         )
         self.page_list.currentRowChanged.connect(
             self.change_page_from_list
@@ -357,7 +385,9 @@ class MainWindow(QMainWindow):
         self.prev_button.clicked.connect(self.show_previous_page)
 
         self.page_label = QLabel("0 / 0")
-        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.page_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
 
         self.next_button = QPushButton("次へ ▶")
         self.next_button.setMinimumHeight(40)
@@ -365,17 +395,8 @@ class MainWindow(QMainWindow):
 
         self.detect_button = QPushButton("写真を検出")
         self.detect_button.setMinimumHeight(40)
-        self.detect_button.clicked.connect(self.detect_photos)
-
-        self.add_rect_button = QPushButton("枠追加")
-        self.add_rect_button.setMinimumHeight(40)
-        self.add_rect_button.setCheckable(True)
-        self.add_rect_button.clicked.connect(self.toggle_add_mode)
-
-        self.copy_rect_button = QPushButton("枠をコピー")
-        self.copy_rect_button.setMinimumHeight(40)
-        self.copy_rect_button.clicked.connect(
-        self.copy_selected_rect
+        self.detect_button.clicked.connect(
+            self.detect_photos
         )
 
         self.manual_count_label = QLabel("写真枚数")
@@ -402,42 +423,55 @@ class MainWindow(QMainWindow):
         self.save_project_button = QPushButton(
             "作業を保存"
         )
-
-        self.save_project_as_button = QPushButton(
-            "名前を付けて保存"
-        )
-
-        self.save_project_as_button.setMinimumHeight(40)
-
-        self.save_project_as_button.clicked.connect(
-            self.save_project
-        )
-
         self.save_project_button.setMinimumHeight(40)
         self.save_project_button.clicked.connect(
             self.save_project_overwrite
         )
 
+        self.save_project_as_button = QPushButton(
+            "名前を付けて保存"
+        )
+        self.save_project_as_button.setMinimumHeight(40)
+        self.save_project_as_button.clicked.connect(
+            self.save_project
+        )
+
         self.save_button = QPushButton("切り抜き")
         self.save_button.setMinimumHeight(40)
-        self.save_button.clicked.connect(self.save_crops)
+        self.save_button.clicked.connect(
+            self.save_crops
+        )
 
-        button_layout.addWidget(self.open_button)
-        button_layout.addWidget(self.prev_button)
-        button_layout.addWidget(self.page_label)
-        button_layout.addWidget(self.next_button)
-        button_layout.addWidget(self.detect_button)
-        button_layout.addWidget(self.add_rect_button)
-        button_layout.addWidget(self.copy_rect_button)
-        button_layout.addWidget(self.manual_count_label)
-        button_layout.addWidget(self.manual_count_spin)
-        button_layout.addWidget(self.generate_rects_button)
-        button_layout.addWidget(self.load_project_button)
-        button_layout.addWidget(self.save_project_button)
-        button_layout.addWidget(self.save_project_as_button)
-        button_layout.addWidget(self.save_button)
+        # 上段：画像操作とページ移動
+        primary_layout = QHBoxLayout()
+        primary_layout.setSpacing(8)
 
-        main_layout.addLayout(button_layout)
+        primary_layout.addWidget(self.open_button, 2)
+        primary_layout.addWidget(self.detect_button, 2)
+        primary_layout.addWidget(self.prev_button, 1)
+
+        self.page_label.setMinimumWidth(70)
+        primary_layout.addWidget(self.page_label)
+
+        primary_layout.addWidget(self.next_button, 1)
+
+        # 下段：枠生成、プロジェクト操作、出力
+        secondary_layout = QHBoxLayout()
+        secondary_layout.setSpacing(8)
+
+        secondary_layout.addWidget(self.manual_count_label)
+
+        self.manual_count_spin.setFixedWidth(90)
+        secondary_layout.addWidget(self.manual_count_spin)
+
+        secondary_layout.addWidget(self.generate_rects_button, 1)
+        secondary_layout.addWidget(self.load_project_button, 1)
+        secondary_layout.addWidget(self.save_project_button, 1)
+        secondary_layout.addWidget(self.save_project_as_button, 1)
+        secondary_layout.addWidget(self.save_button, 2)
+
+        main_layout.addLayout(primary_layout)
+        main_layout.addLayout(secondary_layout)
 
         self.status_label = QLabel("検出数: 0")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -472,6 +506,10 @@ class MainWindow(QMainWindow):
             "Image Files (*.jpg *.jpeg *.png *.tif *.tiff)",
         )
 
+        self.add_images(file_paths)
+
+
+    def add_images(self, file_paths):
         if not file_paths:
             return
 
@@ -547,6 +585,27 @@ class MainWindow(QMainWindow):
         self.project_modified = True
 
         self.update_page_label()
+
+    def dropEvent(self, event):
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+
+        file_paths = []
+
+        for url in event.mimeData().urls():
+            file_path = url.toLocalFile()
+
+            if file_path:
+                file_paths.append(file_path)
+
+        if not file_paths:
+            event.ignore()
+            return
+
+        self.add_images(file_paths)
+
+        event.acceptProposedAction()
 
     def update_page_label(self):
         total = len(self.image_paths)
@@ -719,6 +778,10 @@ class MainWindow(QMainWindow):
         )
 
     def load_project(self):
+
+        if not self.confirm_discard_changes():
+            return
+        
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "作業を開く",
@@ -2017,6 +2080,38 @@ class MainWindow(QMainWindow):
     def mouseReleaseEvent(self, event):
         self.dragging = False
 
+    def confirm_discard_changes(self):
+        if not self.project_modified:
+            return True
+
+        reply = QMessageBox.question(
+            self,
+            "未保存の変更",
+            (
+                "保存されていない変更があります。\n\n"
+                "作業を保存しますか？"
+            ),
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+
+        if reply == QMessageBox.StandardButton.Save:
+            self.save_project_overwrite()
+            return not self.project_modified
+
+        if reply == QMessageBox.StandardButton.Discard:
+            return True
+
+        return False
+
+    def closeEvent(self, event):
+        if self.confirm_discard_changes():
+            event.accept()
+        else:
+            event.ignore()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
@@ -2033,12 +2128,6 @@ class MainWindow(QMainWindow):
                 return
 
         event.ignore()
-
-    def dropEvent(self, event):
-        if event.mimeData().hasUrls():
-            file_path = event.mimeData().urls()[0].toLocalFile()
-            self.load_image(file_path)
-            event.acceptProposedAction()
 
     def keyPressEvent(self, event):
         if (
