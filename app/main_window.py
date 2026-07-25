@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QScrollArea,
     QMessageBox,
+    QProgressBar,
 )
 
 from core.photo_detector import detect_photos
@@ -474,6 +475,12 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(secondary_layout)
 
         self.status_label = QLabel("検出数: 0")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(False)
+
+        main_layout.addWidget(self.progress_bar)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_label)
 
