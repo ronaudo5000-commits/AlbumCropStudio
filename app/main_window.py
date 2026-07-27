@@ -3,7 +3,16 @@ from pathlib import Path
 from io import BytesIO
 from PIL import Image
 
-from PySide6.QtCore import Qt, QRect, QSettings, QSize, QPointF
+from PySide6.QtCore import (
+    Qt,
+    QRect,
+    QSettings,
+    QSize,
+    QPointF,
+    QObject,
+    QThread,
+    Signal,
+)
 from PySide6.QtGui import (
     QPixmap,
     QPainter,
@@ -37,6 +46,16 @@ from core.photo_detector import detect_photos
 
 from app.photo_canvas import PhotoCanvas
 
+class CropExportWorker(QObject):
+    progress = Signal(int)
+    finished = Signal()
+    failed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+
+    def run(self):
+        self.finished.emit()
 
 class PageListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -119,6 +138,11 @@ class PageListWidget(QListWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.export_thread = None
+        self.export_worker = None
+
+        self.export_running = False
 
         self.setWindowTitle("AlbumCrop Studio")
         self.resize(1000, 700)
@@ -483,6 +507,15 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.progress_bar)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_label)
+
+    def export_images(
+        self,
+        output_dir,
+        dpi,
+        margin_px,
+        total_crops,
+    ):
+        pass
 
     def mark_project_modified(self, *args):
         self.project_modified = True
