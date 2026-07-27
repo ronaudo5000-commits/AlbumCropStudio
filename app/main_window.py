@@ -1592,8 +1592,13 @@ class MainWindow(QMainWindow):
 
         # 検出開始
         self.detect_button.setEnabled(False)
+
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+
         self.status_label.setText("🔍 写真を検出中...")
         self.status_label.repaint()
+
         QApplication.processEvents()
 
         self.detected_rects = detect_photos(
@@ -1601,7 +1606,14 @@ class MainWindow(QMainWindow):
         )
 
         # 検出終了
+        self.progress_bar.setValue(100)
+
+        QApplication.processEvents()
+
+        self.progress_bar.setVisible(False)
+
         self.detect_button.setEnabled(True)
+
         self.status_label.setText(
             f"検出数: {len(self.detected_rects)}"
         )
@@ -1919,6 +1931,12 @@ class MainWindow(QMainWindow):
 
         saved_count = 0
 
+        # 進捗バーを表示
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+
+        QApplication.processEvents()
+
         # -------------------------
         # 全ページを順番に処理
         # -------------------------
@@ -2017,6 +2035,16 @@ class MainWindow(QMainWindow):
 
                         saved_count += 1
 
+                        progress_value = int(
+                            (saved_count / total_crops) * 100
+                        )
+
+                        self.progress_bar.setValue(
+                            progress_value
+                        )
+
+                        QApplication.processEvents()
+
             except Exception as e:
                 print(
                     f"ページ {page_index + 1} "
@@ -2032,6 +2060,12 @@ class MainWindow(QMainWindow):
         print(
             f"保存先: {output_dir}"
         )
+
+        self.progress_bar.setValue(100)
+
+        QApplication.processEvents()
+
+        self.progress_bar.setVisible(False)
 
         self.status_label.setText(
             f"✅ {saved_count}枚"

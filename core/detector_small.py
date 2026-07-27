@@ -5,6 +5,48 @@ import numpy as np
 
 DEBUG_SAVE_IMAGE = False
 
+MARGIN_X = 55
+MARGIN_Y = 50
+
+REFINE_SEARCH = 15
+REFINE_STRIP = 3
+
+def find_vertical_edge(gray, start_x, y, h, search_range):
+    image_height, image_width = gray.shape
+
+    y1 = max(0, y)
+    y2 = min(image_height, y + h)
+
+    best_x = start_x
+    best_score = -1.0
+
+    for candidate_x in range(
+        max(REFINE_STRIP, start_x - search_range),
+        min(image_width - REFINE_STRIP, start_x + search_range + 1),
+    ):
+        left_strip = gray[
+            y1:y2,
+            candidate_x - REFINE_STRIP:candidate_x,
+        ]
+
+        right_strip = gray[
+            y1:y2,
+            candidate_x:candidate_x + REFINE_STRIP,
+        ]
+
+        if left_strip.size == 0 or right_strip.size == 0:
+            continue
+
+        score = abs(
+            float(left_strip.mean())
+            - float(right_strip.mean())
+        )
+
+        if score > best_score:
+            best_score = score
+            best_x = candidate_x
+
+    return best_x, best_score
 
 def load_image(image_path):
     image = cv2.imread(str(image_path))
@@ -115,6 +157,24 @@ def save_debug_image(image, output_path):
         raise ValueError(
             f"デバッグ画像を保存できませんでした: {output_path}"
         )
+
+def expand_left(mask, x, y, w, h):
+    left = x
+
+    while left > 0:
+        sample_top = y + h // 4
+        sample_bottom = y + (h * 3) // 4
+
+        column = mask[sample_top:sample_bottom, left]
+
+        white_ratio = np.count_nonzero(column == 255) / len(column)
+
+        if white_ratio < 0.90:
+            break
+
+        left -= 1
+
+    return left
 
 def detect_small_photos(image_path):
     image_path = Path(image_path)
@@ -287,6 +347,7 @@ def detect_small_photos(image_path):
     photo_size_count = 0
     likely_photo_count = 0
     likely_photo_debug = image.copy()
+    photo_rects = []
 
     for contour_index, contour in enumerate(contours):
         x, y, w, h = cv2.boundingRect(contour)
@@ -311,6 +372,8 @@ def detect_small_photos(image_path):
         )
 
         if w >= 800 and h >= 600:
+            photo_rects.append((x, y, w, h))
+
             likely_photo_count += 1
 
             print(
@@ -333,6 +396,57 @@ def detect_small_photos(image_path):
 
     print("Photo-size contours:", photo_size_count)
     print("Likely photos:", likely_photo_count)
+    print(photo_rects)
+
+    expanded_debug = image.copy()
+    expanded_photo_rects = []
+
+    image_height, image_width = image.shape[:2]
+
+    for x, y, w, h in photo_rects:
+        expanded_x = max(0, x - MARGIN_X)
+        expanded_y = max(0, y - MARGIN_Y)
+
+        expanded_right = min(
+            image_width,
+            x + w + MARGIN_X,
+        )
+
+        expanded_bottom = min(
+            image_height,
+            y + h + MARGIN_Y,
+        )
+
+        expanded_w = expanded_right - expanded_x
+        expanded_h = expanded_bottom - expanded_y
+
+        expanded_photo_rects.append(
+            (
+                expanded_x,
+                expanded_y,
+                expanded_w,
+                expanded_h,
+            )
+        )
+
+        cv2.rectangle(
+            expanded_debug,
+            (expanded_x, expanded_y),
+            (expanded_right, expanded_bottom),
+            (0, 255, 0),
+            8,
+        )
+
+    print("Expanded photo rects:")
+    print(expanded_photo_rects)
+
+    for index, (x, y, w, h) in enumerate(expanded_photo_rects, start=1):
+        cropped = image[y:y+h, x:x+w]
+
+        print(
+            f"Crop {index}: "
+            f"{cropped.shape[1]} x {cropped.shape[0]}"
+        )
 
 
 #   for index, contour in enumerate(contours, start=1):
@@ -395,6 +509,12 @@ def detect_small_photos(image_path):
     if DEBUG_SAVE_IMAGE:
         project_root = Path(__file__).resolve().parent.parent
         output_dir = project_root / "tests" / "output"
+
+        crop_dir = output_dir / "crops"
+        crop_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         print("DEBUG_SAVE_IMAGE block entered")
         print(f"output_dir = {output_dir}")
@@ -473,6 +593,19 @@ def detect_small_photos(image_path):
             likely_photo_debug,
             output_dir / f"{image_path.stem}_small_likely_photos.png",
         )
+
+        save_debug_image(
+            expanded_debug,
+                output_dir / f"{image_path.stem}_small_expanded_photos.png",
+        )
+
+        for index, (x, y, w, h) in enumerate(expanded_photo_rects, start=1):
+            cropped = image[y:y+h, x:x+w]
+
+            save_debug_image(
+                cropped,
+                crop_dir / f"photo_{index:02d}.jpg",
+            )
 
         save_debug_image(
             quad_debug,
