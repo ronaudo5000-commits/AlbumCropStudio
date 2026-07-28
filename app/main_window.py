@@ -515,7 +515,119 @@ class MainWindow(QMainWindow):
         margin_px,
         total_crops,
     ):
-        pass
+        saved_count = 0
+
+        for page_index, image_path in enumerate(
+            self.image_paths
+        ):
+            page_rects = self.page_rects.get(
+                page_index,
+                [],
+            )
+
+            page_angles = self.page_angles.get(
+                page_index,
+                [],
+            )
+
+            # 枠がないページは飛ばす
+            if not page_rects:
+                continue
+
+            try:
+                with Image.open(
+                    image_path
+                ) as source_image:
+                    image = source_image.convert(
+                        "RGB"
+                    )
+
+                    for crop_index, (
+                        x,
+                        y,
+                        w,
+                        h,
+                    ) in enumerate(
+                        page_rects,
+                        start=1,
+                    ):
+                        angle = 0.0
+
+                        angle_index = (
+                            crop_index - 1
+                        )
+
+                        if (
+                            angle_index
+                            < len(page_angles)
+                        ):
+                            angle = page_angles[
+                                angle_index
+                            ]
+
+                        crop_x = (
+                            x - margin_px
+                        )
+
+                        crop_y = (
+                            y - margin_px
+                        )
+
+                        crop_w = (
+                            w
+                            + margin_px * 2
+                        )
+
+                        crop_h = (
+                            h
+                            + margin_px * 2
+                        )
+
+                        crop = (
+                            self.create_rotated_crop_image(
+                                image,
+                                crop_x,
+                                crop_y,
+                                crop_w,
+                                crop_h,
+                                angle,
+                            )
+                        )
+
+                        output_path = (
+                            output_dir
+                            / (
+                                f"page_{page_index + 1:03}_"
+                                f"photo_{crop_index:03}.jpg"
+                            )
+                        )
+
+                        crop.save(
+                            output_path,
+                            "JPEG",
+                            quality=95,
+                            dpi=(dpi, dpi),
+                        )
+
+                        self.progress_bar.setValue(
+                            int(
+                                (saved_count / total_crops)
+                                * 100
+                            )
+                        )
+
+                        QApplication.processEvents()
+
+                        saved_count += 1
+
+            except Exception as e:
+                print(
+                    f"ページ {page_index + 1} "
+                    f"の書き出しに失敗しました: "
+                    f"{e}"
+                )
+
+        return saved_count
 
     def mark_project_modified(self, *args):
         self.project_modified = True
@@ -1962,128 +2074,18 @@ class MainWindow(QMainWindow):
             (margin_mm / 25.4) * dpi
         )
 
-        saved_count = 0
-
         # 進捗バーを表示
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
 
         QApplication.processEvents()
 
-        # -------------------------
-        # 全ページを順番に処理
-        # -------------------------
-
-        for page_index, image_path in enumerate(
-            self.image_paths
-        ):
-            page_rects = self.page_rects.get(
-                page_index,
-                [],
-            )
-
-            page_angles = self.page_angles.get(
-                page_index,
-                [],
-            )
-
-            # 枠がないページは飛ばす
-            if not page_rects:
-                continue
-
-            try:
-                with Image.open(
-                    image_path
-                ) as source_image:
-                    image = source_image.convert(
-                        "RGB"
-                    )
-
-                    for crop_index, (
-                        x,
-                        y,
-                        w,
-                        h,
-                    ) in enumerate(
-                        page_rects,
-                        start=1,
-                    ):
-                        angle = 0.0
-
-                        angle_index = (
-                            crop_index - 1
-                        )
-
-                        if (
-                            angle_index
-                            < len(page_angles)
-                        ):
-                            angle = page_angles[
-                                angle_index
-                            ]
-
-                        crop_x = (
-                            x - margin_px
-                        )
-
-                        crop_y = (
-                            y - margin_px
-                        )
-
-                        crop_w = (
-                            w
-                            + margin_px * 2
-                        )
-
-                        crop_h = (
-                            h
-                            + margin_px * 2
-                        )
-
-                        crop = (
-                            self.create_rotated_crop_image(
-                                image,
-                                crop_x,
-                                crop_y,
-                                crop_w,
-                                crop_h,
-                                angle,
-                            )
-                        )
-
-                        output_path = (
-                            output_dir
-                            / (
-                                f"page_{page_index + 1:03}_"
-                                f"photo_{crop_index:03}.jpg"
-                            )
-                        )
-
-                        crop.save(
-                            output_path,
-                            "JPEG",
-                            quality=95,
-                            dpi=(dpi, dpi),
-                        )
-
-                        saved_count += 1
-
-                        progress_value = int(
-                            (saved_count / total_crops) * 100
-                        )
-
-                        self.progress_bar.setValue(
-                            progress_value
-                        )
-
-                        QApplication.processEvents()
-
-            except Exception as e:
-                print(
-                    f"ページ {page_index + 1} "
-                    f"の書き出しに失敗しました: "
-                    f"{e}"
-                )
+        saved_count = self.export_images(
+            output_dir,
+            dpi,
+            margin_px,
+            total_crops,
+        )
 
         print(
             f"{saved_count}枚の写真を"
