@@ -206,7 +206,7 @@ class PhotoCanvas(QWidget):
             else:
                 pen = QPen(QColor(255, 0, 0))
 
-            pen.setWidth(3)
+            pen.setWidthF(2.0)
             painter.setPen(pen)
 
             angle = 0.0
