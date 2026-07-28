@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from io import BytesIO
 from PIL import Image
+import pymupdf
+import traceback
 
 from PySide6.QtCore import (
     Qt,
@@ -9,9 +11,7 @@ from PySide6.QtCore import (
     QSettings,
     QSize,
     QPointF,
-    QObject,
     QThread,
-    Signal,
 )
 from PySide6.QtGui import (
     QPixmap,
@@ -45,17 +45,7 @@ from PySide6.QtWidgets import (
 from core.photo_detector import detect_photos
 
 from app.photo_canvas import PhotoCanvas
-
-class CropExportWorker(QObject):
-    progress = Signal(int)
-    finished = Signal()
-    failed = Signal(str)
-
-    def __init__(self):
-        super().__init__()
-
-    def run(self):
-        self.finished.emit()
+from app.export_worker import CropExportWorker
 
 class PageListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -162,6 +152,17 @@ class MainWindow(QMainWindow):
         self.page_rects = {}
         self.page_angles = {}
         self.deleted_pages_stack = []
+
+        self.pdf_temp_dir = (
+            Path.home()
+            / ".albumcrop_studio"
+            / "pdf_pages"
+        )
+
+        self.pdf_temp_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         self.selected_rect = -1
 
@@ -508,126 +509,52 @@ class MainWindow(QMainWindow):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_label)
 
-    def export_images(
-        self,
-        output_dir,
-        dpi,
-        margin_px,
-        total_crops,
-    ):
-        saved_count = 0
+    def update_export_progress(self, value):
+        self.progress_bar.setValue(value)
+        QApplication.processEvents()
 
-        for page_index, image_path in enumerate(
-            self.image_paths
-        ):
-            page_rects = self.page_rects.get(
-                page_index,
-                [],
-            )
+    def export_finished(self, saved_count):
+        self.progress_bar.setValue(100)
 
-            page_angles = self.page_angles.get(
-                page_index,
-                [],
-            )
+        print(
+            f"{saved_count}枚の写真を保存しました"
+        )
 
-            # 枠がないページは飛ばす
-            if not page_rects:
-                continue
+        self.status_label.setText(
+            f"✅ {saved_count}枚切り抜き完了"
+        )
 
-            try:
-                with Image.open(
-                    image_path
-                ) as source_image:
-                    image = source_image.convert(
-                        "RGB"
-                    )
+        self.progress_bar.setVisible(False)
+        self.save_button.setEnabled(True)
+        self.export_running = False
 
-                    for crop_index, (
-                        x,
-                        y,
-                        w,
-                        h,
-                    ) in enumerate(
-                        page_rects,
-                        start=1,
-                    ):
-                        angle = 0.0
+    def export_failed(self, error_message):
+        print(
+            f"画像の書き出しに失敗しました: "
+            f"{error_message}"
+        )
 
-                        angle_index = (
-                            crop_index - 1
-                        )
+        self.status_label.setText(
+            "❌ 切り抜き保存に失敗しました"
+        )
 
-                        if (
-                            angle_index
-                            < len(page_angles)
-                        ):
-                            angle = page_angles[
-                                angle_index
-                            ]
+        self.progress_bar.setVisible(False)
+        self.save_button.setEnabled(True)
+        self.export_running = False
 
-                        crop_x = (
-                            x - margin_px
-                        )
+        QMessageBox.critical(
+            self,
+            "書き出しエラー",
+            (
+                "画像の書き出し中に"
+                "エラーが発生しました。\n\n"
+                f"{error_message}"
+            ),
+        )
 
-                        crop_y = (
-                            y - margin_px
-                        )
-
-                        crop_w = (
-                            w
-                            + margin_px * 2
-                        )
-
-                        crop_h = (
-                            h
-                            + margin_px * 2
-                        )
-
-                        crop = (
-                            self.create_rotated_crop_image(
-                                image,
-                                crop_x,
-                                crop_y,
-                                crop_w,
-                                crop_h,
-                                angle,
-                            )
-                        )
-
-                        output_path = (
-                            output_dir
-                            / (
-                                f"page_{page_index + 1:03}_"
-                                f"photo_{crop_index:03}.jpg"
-                            )
-                        )
-
-                        crop.save(
-                            output_path,
-                            "JPEG",
-                            quality=95,
-                            dpi=(dpi, dpi),
-                        )
-
-                        self.progress_bar.setValue(
-                            int(
-                                (saved_count / total_crops)
-                                * 100
-                            )
-                        )
-
-                        QApplication.processEvents()
-
-                        saved_count += 1
-
-            except Exception as e:
-                print(
-                    f"ページ {page_index + 1} "
-                    f"の書き出しに失敗しました: "
-                    f"{e}"
-                )
-
-        return saved_count
+    def export_thread_finished(self):
+        self.export_worker = None
+        self.export_thread = None
 
     def mark_project_modified(self, *args):
         self.project_modified = True
@@ -650,16 +577,133 @@ class MainWindow(QMainWindow):
             f"{zoom_percent}%"
         )
 
+    def clear_pdf_cache(self):
+        if not self.pdf_temp_dir.exists():
+            return
+
+        for file in self.pdf_temp_dir.glob("*.png"):
+            try:
+                file.unlink()
+            except Exception as e:
+                print(
+                    f"キャッシュ削除失敗: {e}"
+                )
+
+    def convert_pdf_to_images(
+        self,
+        pdf_path,
+    ):
+        converted_paths = []
+
+        try:
+            document = pymupdf.open(
+                pdf_path
+            )
+
+            pdf_name = Path(
+                pdf_path
+            ).stem
+
+            for page_index in range(
+                document.page_count
+            ):
+                page = document.load_page(
+                    page_index
+                )
+
+                pixmap = page.get_pixmap(
+                    dpi=300,
+                    colorspace=pymupdf.csRGB,
+                    alpha=False,
+                )
+
+                output_path = (
+                    self.pdf_temp_dir
+                    / (
+                        f"{pdf_name}_"
+                        f"page_{page_index + 1:04}.png"
+                    )
+                )
+
+                success = pixmap.save(str(output_path))
+
+                print(f"保存先: {output_path}")
+                print(f"保存成功: {success}")
+                print(f"存在確認: {output_path.exists()}")
+
+                converted_paths.append(
+                    str(output_path)
+                )
+
+            document.close()
+
+        except Exception as e:
+            print(
+                f"PDF変換エラー: {e}"
+            )
+
+            QMessageBox.critical(
+                self,
+                "PDF読み込みエラー",
+                (
+                    "PDFを画像へ変換できませんでした。\n\n"
+                    f"{e}"
+                ),
+            )
+
+            return []
+
+        return converted_paths
+
     def open_image(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "画像を開く",
+            "画像またはPDFを開く",
             "",
-            "Image Files (*.jpg *.jpeg *.png *.tif *.tiff)",
+            (
+                "対応ファイル "
+                "(*.jpg *.jpeg *.png *.tif *.tiff *.pdf);;"
+                "画像ファイル "
+                "(*.jpg *.jpeg *.png *.tif *.tiff);;"
+                "PDFファイル (*.pdf)"
+            ),
         )
 
-        self.add_images(file_paths)
+        if not file_paths:
+            return
 
+        image_file_paths = []
+
+        for file_path in file_paths:
+            suffix = Path(
+                file_path
+            ).suffix.lower()
+
+            if suffix == ".pdf":
+                self.status_label.setText(
+                    "📄 PDFを画像へ変換中..."
+                )
+
+                QApplication.processEvents()
+
+                converted_paths = (
+                    self.convert_pdf_to_images(
+                        file_path
+                    )
+                )
+
+                image_file_paths.extend(
+                    converted_paths
+                )
+
+            else:
+                image_file_paths.append(
+                    file_path
+                )
+
+        self.add_images(
+            image_file_paths
+        )
 
     def add_images(self, file_paths):
         if not file_paths:
@@ -743,19 +787,37 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
 
-        file_paths = []
+        image_file_paths = []
 
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
 
-            if file_path:
-                file_paths.append(file_path)
+            if not file_path:
+                continue
 
-        if not file_paths:
+            suffix = Path(file_path).suffix.lower()
+
+            if suffix == ".pdf":
+                self.status_label.setText(
+                    "📄 PDFを画像へ変換中..."
+                )
+
+                QApplication.processEvents()
+
+                converted_paths = self.convert_pdf_to_images(
+                    file_path
+                )
+
+                image_file_paths.extend(converted_paths)
+
+            else:
+                image_file_paths.append(file_path)
+
+        if not image_file_paths:
             event.ignore()
             return
 
-        self.add_images(file_paths)
+        self.add_images(image_file_paths)
 
         event.acceptProposedAction()
 
@@ -1685,6 +1747,9 @@ class MainWindow(QMainWindow):
     def load_image(self, file_path):
         path = Path(file_path)
 
+        print(f"load_image(): {path}")
+        print(f"exists: {path.exists()}")
+
         if path.suffix.lower() not in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
             self.preview_area.setText("対応していないファイル形式です。")
             return
@@ -1692,7 +1757,9 @@ class MainWindow(QMainWindow):
         try:
             image = Image.open(path).convert("RGB")
         except Exception as e:
-            print(f"画像を読み込めませんでした: {e}")
+            print("=" * 60)
+            traceback.print_exc()
+            print("=" * 60)
             return
 
         w, h = image.size
@@ -2080,34 +2147,71 @@ class MainWindow(QMainWindow):
 
         QApplication.processEvents()
 
-        saved_count = self.export_images(
+        self.export_thread = QThread()
+
+        self.export_worker = CropExportWorker(
+            self.image_paths,
+            self.page_rects,
+            self.page_angles,
             output_dir,
             dpi,
             margin_px,
             total_crops,
+            self,
         )
 
-        print(
-            f"{saved_count}枚の写真を"
-            "保存しました"
+        self.export_worker.moveToThread(
+            self.export_thread
         )
+
+        self.export_thread.started.connect(
+            self.export_worker.run
+        )
+
+        self.export_worker.progress.connect(
+            self.update_export_progress
+        )
+
+        self.export_worker.finished.connect(
+            self.export_finished
+        )
+
+        self.export_worker.failed.connect(
+            self.export_failed
+        )
+
+        self.export_worker.finished.connect(
+            self.export_thread.quit
+        )
+
+        self.export_worker.failed.connect(
+            self.export_thread.quit
+        )
+
+        self.export_worker.finished.connect(
+            self.export_worker.deleteLater
+        )
+
+        self.export_worker.failed.connect(
+            self.export_worker.deleteLater
+        )
+
+        self.export_thread.finished.connect(
+            self.export_thread_finished
+        )
+
+        self.export_thread.finished.connect(
+            self.export_thread.deleteLater
+        )
+
+        self.export_running = True
+        self.save_button.setEnabled(False)
 
         print(
             f"保存先: {output_dir}"
         )
 
-        self.progress_bar.setValue(100)
-
-        QApplication.processEvents()
-
-        self.progress_bar.setVisible(False)
-
-        self.status_label.setText(
-            f"✅ {saved_count}枚"
-            "切り抜き完了"
-        )
-
-        self.save_button.setEnabled(True)
+        self.export_thread.start()
 
     def mouseMoveEvent(self, event):
         if not self.dragging:
@@ -2199,7 +2303,14 @@ class MainWindow(QMainWindow):
             file_path = event.mimeData().urls()[0].toLocalFile()
             suffix = Path(file_path).suffix.lower()
 
-            if suffix in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
+            if suffix in [
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".tif",
+                ".tiff",
+                ".pdf",
+            ]:
                 event.acceptProposedAction()
                 return
 
