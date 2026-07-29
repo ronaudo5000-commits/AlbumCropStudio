@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QMessageBox,
     QProgressBar,
+    QComboBox,
 )
 
 from core.photo_detector import detect_photos
@@ -362,10 +363,37 @@ class MainWindow(QMainWindow):
         settings_layout = QHBoxLayout()
 
         dpi_label = QLabel("DPI")
+
         self.dpi_spin = QSpinBox()
-        self.dpi_spin.setRange(72, 1200)
+        self.dpi_spin.setRange(200, 1200)
         self.dpi_spin.setValue(
-            int(self.settings.value("dpi", 350))
+            int(
+                self.settings.value(
+                    "dpi",
+                    600,
+                )
+            )
+        )
+
+        self.dpi_preset_combo = QComboBox()
+
+        self.dpi_preset_combo.addItems([
+            "プリセット",
+            "200",
+            "300",
+            "350",
+            "400",
+            "600",
+            "800",
+            "1000",
+            "1200",
+        ])
+
+        self.dpi_preset_combo.setFixedWidth(90)
+        self.dpi_preset_combo.setCurrentIndex(0)
+
+        self.dpi_preset_combo.currentTextChanged.connect(
+            self.apply_dpi_preset
         )
 
         margin_label = QLabel("余白(mm)")
@@ -383,9 +411,21 @@ class MainWindow(QMainWindow):
             self.mark_project_modified
         )
 
-        # self.dpi_spin.valueChanged.connect(
-         #    self.save_settings
-         # )
+        self.dpi_spin.valueChanged.connect(
+            self.save_settings
+        )
+
+        self.margin_spin.valueChanged.connect(
+            self.save_settings
+        )
+
+        self.dpi_spin.valueChanged.connect(
+            self.update_dpi_preset
+        )
+
+        # self.dpi_spin.currentTextChanged.connect(
+        #     self.save_settings
+        # )
 
          # self.margin_spin.valueChanged.connect(
          #    self.save_settings
@@ -393,6 +433,7 @@ class MainWindow(QMainWindow):
 
         settings_layout.addWidget(dpi_label)
         settings_layout.addWidget(self.dpi_spin)
+        settings_layout.addWidget(self.dpi_preset_combo)
         settings_layout.addSpacing(20)
         settings_layout.addWidget(margin_label)
         settings_layout.addWidget(self.margin_spin)
@@ -558,6 +599,22 @@ class MainWindow(QMainWindow):
 
     def mark_project_modified(self, *args):
         self.project_modified = True
+
+    def apply_dpi_preset(self, text):
+        if text == "プリセット":
+            return
+
+        self.dpi_spin.setValue(int(text))
+
+    def update_dpi_preset(self, value):
+        text = str(value)
+
+        index = self.dpi_preset_combo.findText(text)
+
+        if index >= 0:
+            self.dpi_preset_combo.setCurrentIndex(index)
+        else:
+            self.dpi_preset_combo.setCurrentIndex(0)
 
     def update_zoom_label(self):
         zoom_percent = int(
