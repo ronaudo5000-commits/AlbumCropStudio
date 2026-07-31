@@ -50,6 +50,10 @@ from PySide6.QtWidgets import (
 from core.photo_detector import detect_photos
 
 from app.photo_canvas import PhotoCanvas
+
+from app.about_dialog import AboutDialog
+from app.settings_dialog import SettingsDialog
+
 from app.export_worker import CropExportWorker
 from core.undo_manager import UndoManager
 
@@ -537,6 +541,18 @@ class MainWindow(QMainWindow):
 
         self.addAction(self.load_project_action)
 
+        self.settings_action = QAction(
+            self.tr("設定..."),
+            self,
+        )
+
+        self.settings_action.triggered.connect(
+            self.show_settings_dialog
+        )
+
+        self.addAction(
+            self.settings_action
+        )
 
         self.exit_action = QAction(
             self.tr("終了"),
@@ -555,6 +571,23 @@ class MainWindow(QMainWindow):
 
         file_menu = self.menuBar().addMenu(
             self.tr("ファイル")
+        )
+
+        help_menu = self.menuBar().addMenu(
+            self.tr("ヘルプ")
+        )
+
+        about_action = QAction(
+            self.tr("About AlbumCrop Studio"),
+            self,
+        )
+
+        about_action.triggered.connect(
+            self.show_about_dialog
+        )
+
+        help_menu.addAction(
+            about_action
         )
 
         file_menu.addAction(
@@ -578,8 +611,14 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         file_menu.addAction(
+            self.settings_action
+        )
+
+        file_menu.addSeparator()
+
+        file_menu.addAction(
             self.exit_action
-        )        
+        )      
 
         self.open_button.setToolTip(
             self.tr("画像またはPDFを開きます（Ctrl+O）")
@@ -704,6 +743,48 @@ class MainWindow(QMainWindow):
         self.save_button.setToolTip(
             self.tr(
                 "切り抜いた画像を書き出します"
+            )
+        )
+
+        self.zoom_out_button.setToolTip(
+            self.tr(
+                "表示を縮小します"
+            )
+        )
+
+        self.zoom_in_button.setToolTip(
+            self.tr(
+                "表示を拡大します"
+            )
+        )
+
+        self.fit_button.setToolTip(
+            self.tr(
+                "画像全体が見える表示へ戻します"
+            )
+        )
+
+        self.delete_page_button.setToolTip(
+            self.tr(
+                "選択したページを削除します"
+            )
+        )
+
+        self.dpi_preset_combo.setToolTip(
+            self.tr(
+                "よく使う解像度を一覧から選びます"
+            )
+        )
+
+        self.dpi_spin.setToolTip(
+            self.tr(
+                "書き出す画像の解像度を指定します"
+            )
+        )
+
+        self.margin_spin.setToolTip(
+            self.tr(
+                "切り抜く写真の周囲に追加する余白を指定します"
             )
         )
 
@@ -2631,6 +2712,14 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+
+    def show_about_dialog(self):
+        dialog = AboutDialog(self)
+        dialog.exec()
+
+    def show_settings_dialog(self):
+        dialog = SettingsDialog(self)
+        dialog.exec()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
