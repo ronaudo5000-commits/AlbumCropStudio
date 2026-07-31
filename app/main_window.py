@@ -647,6 +647,66 @@ class MainWindow(QMainWindow):
             self.save_crops
         )
 
+        self.open_button.setToolTip(
+            self.tr(
+                "画像またはPDFを開きます（Ctrl+O）"
+            )
+        )
+
+        self.prev_button.setToolTip(
+            self.tr(
+                "前のページを表示します"
+            )
+        )
+
+        self.next_button.setToolTip(
+            self.tr(
+                "次のページを表示します"
+            )
+        )
+
+        self.detect_button.setToolTip(
+            self.tr(
+                "画像から写真を自動検出します"
+            )
+        )
+
+        self.manual_count_spin.setToolTip(
+            self.tr(
+                "生成する写真枠の数を指定します"
+            )
+        )
+
+        self.generate_rects_button.setToolTip(
+            self.tr(
+                "指定した枚数の枠を自動配置します"
+            )
+        )
+
+        self.load_project_button.setToolTip(
+            self.tr(
+                "保存済みのプロジェクトを開きます"
+            )
+        )
+
+        self.save_project_button.setToolTip(
+            self.tr(
+                "現在のプロジェクトへ上書き保存します（Ctrl+S）"
+            )
+        )
+
+        self.save_project_as_button.setToolTip(
+            self.tr(
+                "名前を付けてプロジェクトを保存します（Ctrl+Shift+S）"
+            )
+        )
+
+        self.save_button.setToolTip(
+            self.tr(
+                "切り抜いた画像を書き出します"
+            )
+        )
+
         # ファイル操作
         file_group = QGroupBox("ファイル")
         file_layout = QHBoxLayout()
