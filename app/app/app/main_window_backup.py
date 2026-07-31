@@ -151,9 +151,6 @@ class MainWindow(QMainWindow):
         self.detected_rects = []
 
         self.current_project_path = None
-
-        self.undo_manager = UndoManager()
-
         self.project_modified = False
 
         self.image_paths = []
@@ -2075,66 +2072,28 @@ class MainWindow(QMainWindow):
         else:
             columns = 4
 
-        rows = (
-            count + columns - 1
-        ) // columns
+        rows = (count + columns - 1) // columns
 
-        margin_x = int(
-            image_w * 0.05
-        )
+        margin_x = int(image_w * 0.05)
+        margin_y = int(image_h * 0.05)
 
-        margin_y = int(
-            image_h * 0.05
-        )
+        usable_w = image_w - (margin_x * 2)
+        usable_h = image_h - (margin_y * 2)
 
-        usable_w = (
-            image_w - margin_x * 2
-        )
+        cell_w = usable_w / columns
+        cell_h = usable_h / rows
 
-        usable_h = (
-            image_h - margin_y * 2
-        )
-
-        cell_w = (
-            usable_w / columns
-        )
-
-        cell_h = (
-            usable_h / rows
-        )
-
-        # 枠生成前の状態をUndo履歴へ保存
-        self.preview_area.save_undo_state()
-
-        rects = list(
-            self.preview_area.rects
-        )
-
-        angles = list(
-            self.preview_area.rect_angles
-        )
+        rects = list(self.preview_area.rects)
 
         for index in range(count):
             row = index // columns
             column = index % columns
 
-            x = (
-                margin_x
-                + int(column * cell_w)
-            )
+            x = margin_x + int(column * cell_w)
+            y = margin_y + int(row * cell_h)
 
-            y = (
-                margin_y
-                + int(row * cell_h)
-            )
-
-            w = int(
-                cell_w * 0.8
-            )
-
-            h = int(
-                cell_h * 0.8
-            )
+            w = int(cell_w * 0.8)
+            h = int(cell_h * 0.8)
 
             rects.append(
                 (
@@ -2145,31 +2104,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
-            # 生成枠はすべて0度
-            angles.append(0.0)
-
-        self.preview_area.rects = rects
-        self.preview_area.rect_angles = angles
-        self.preview_area.selected_rect = -1
-
-        self.detected_rects = list(
-            rects
-        )
-
-        self.preview_area.rects_changed.emit()
-        self.preview_area.update()
+        self.detected_rects = rects
+        self.preview_area.set_rects(rects)
 
         self.status_label.setText(
             f"枠数: {len(rects)}"
         )
 
-        self.save_current_page_rects()
-
-        # 枠生成後、キーボード操作の入力先を
-        # キャンバスへ戻す
-        self.preview_area.setFocus(
-            Qt.FocusReason.OtherFocusReason
-        )
         self.save_current_page_rects()
 
     def copy_selected_rect(self):
