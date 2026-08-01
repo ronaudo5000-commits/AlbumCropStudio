@@ -1,3 +1,5 @@
+import math
+
 from PIL import Image
 
 from app.config import Config
@@ -54,6 +56,85 @@ class CropExportWorker(QObject):
         self.total_crops = total_crops
         self.main_window = main_window
 
+    def validate_crop_rect(
+        self,
+        rect,
+        page_index,
+        crop_index,
+    ):
+        if (
+            not isinstance(rect, (list, tuple))
+            or len(rect) != 4
+        ):
+            raise ValueError(
+                (
+                    f"ページ {page_index + 1}、"
+                    f"写真 {crop_index} の"
+                    "枠データ形式が正しくありません"
+                )
+            )
+
+        try:
+            x, y, w, h = (
+                float(value)
+                for value in rect
+            )
+
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+        ) as e:
+            raise ValueError(
+                (
+                    f"ページ {page_index + 1}、"
+                    f"写真 {crop_index} の"
+                    "座標またはサイズが数値ではありません"
+                )
+            ) from e
+
+        if not all(
+            math.isfinite(value)
+            for value in (
+                x,
+                y,
+                w,
+                h,
+            )
+        ):
+            raise ValueError(
+                (
+                    f"ページ {page_index + 1}、"
+                    f"写真 {crop_index} に"
+                    "無効な数値が含まれています"
+                )
+            )
+
+        if w <= 0:
+            raise ValueError(
+                (
+                    f"ページ {page_index + 1}、"
+                    f"写真 {crop_index} の"
+                    f"幅が不正です: {w}"
+                )
+            )
+
+        if h <= 0:
+            raise ValueError(
+                (
+                    f"ページ {page_index + 1}、"
+                    f"写真 {crop_index} の"
+                    f"高さが不正です: {h}"
+                )
+            )
+
+        return (
+            x,
+            y,
+            w,
+            h,
+        )
+
     def clamp_crop_rect(
         self,
         x,
@@ -83,30 +164,25 @@ class CropExportWorker(QObject):
             int(round(y + h)),
         )
 
-        # 枠データが異常な場合でも、
-        # 最低1pxの切り抜き範囲を確保する
-        if right <= left:
-            right = min(
-                image_width,
-                left + 1,
+        # 枠が画像とまったく重ならない場合は、
+        # 無理に1pxへ補正せずエラーにする
+        if (
+            left >= image_width
+            or top >= image_height
+            or right <= 0
+            or bottom <= 0
+            or right <= left
+            or bottom <= top
+        ):
+            raise ValueError(
+                "切り抜き枠が元画像の範囲外です"
             )
-
-        if bottom <= top:
-            bottom = min(
-                image_height,
-                top + 1,
-            )
-
-        safe_x = left
-        safe_y = top
-        safe_w = right - left
-        safe_h = bottom - top
 
         return (
-            safe_x,
-            safe_y,
-            safe_w,
-            safe_h,
+            left,
+            top,
+            right - left,
+            bottom - top,
         )
 
     def create_rotated_crop_image(
@@ -200,15 +276,21 @@ class CropExportWorker(QObject):
                     image_width = image.width
                     image_height = image.height
 
-                    for crop_index, (
-                        x,
-                        y,
-                        w,
-                        h,
-                    ) in enumerate(
+                    for crop_index, rect in enumerate(
                         page_rects,
                         start=1,
                     ):
+                        (
+                            x,
+                            y,
+                            w,
+                            h,
+                        ) = self.validate_crop_rect(
+                            rect,
+                            page_index,
+                            crop_index,
+                        )
+
                         angle = 0.0
 
                         angle_index = (
@@ -219,9 +301,37 @@ class CropExportWorker(QObject):
                             angle_index
                             < len(page_angles)
                         ):
-                            angle = page_angles[
-                                angle_index
-                            ]
+                            try:
+                                angle = float(
+                                    page_angles[
+                                        angle_index
+                                    ]
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError,
+                                OverflowError,
+                            ) as e:
+                                raise ValueError(
+                                    (
+                                        f"ページ {page_index + 1}、"
+                                        f"写真 {crop_index} の"
+                                        "回転角度が不正です"
+                                    )
+                                ) from e
+
+                            if not math.isfinite(
+                                angle
+                            ):
+                                raise ValueError(
+                                    (
+                                        f"ページ {page_index + 1}、"
+                                        f"写真 {crop_index} の"
+                                        "回転角度に無効な数値が"
+                                        "含まれています"
+                                    )
+                                )
 
                         crop_x = (
                             x - self.margin_px
@@ -241,19 +351,30 @@ class CropExportWorker(QObject):
                             + self.margin_px * 2
                         )
 
-                        (
-                            crop_x,
-                            crop_y,
-                            crop_w,
-                            crop_h,
-                        ) = self.clamp_crop_rect(
-                            crop_x,
-                            crop_y,
-                            crop_w,
-                            crop_h,
-                            image_width,
-                            image_height,
-                        )
+                        try:
+                            (
+                                crop_x,
+                                crop_y,
+                                crop_w,
+                                crop_h,
+                            ) = self.clamp_crop_rect(
+                                crop_x,
+                                crop_y,
+                                crop_w,
+                                crop_h,
+                                image_width,
+                                image_height,
+                            )
+
+                        except ValueError as e:
+                            raise ValueError(
+                                (
+                                    f"ページ {page_index + 1}、"
+                                    f"写真 {crop_index} の"
+                                    f"切り抜き範囲が不正です。"
+                                    f"\n詳細: {e}"
+                                )
+                            ) from e
 
                         crop = (
                             self.create_rotated_crop_image(
@@ -265,6 +386,19 @@ class CropExportWorker(QObject):
                                 angle,
                             )
                         )
+
+                        if (
+                            crop.width <= 0
+                            or crop.height <= 0
+                        ):
+                            raise ValueError(
+                                (
+                                    f"ページ {page_index + 1}、"
+                                    f"写真 {crop_index} の"
+                                    "切り抜き結果のサイズが"
+                                    "不正です"
+                                )
+                            )
 
                         output_path = (
                             self.output_dir
