@@ -12,6 +12,7 @@ from PySide6.QtCore import (
     QPointF,
     QThread,
 )
+
 from PySide6.QtGui import (
     QAction,
     QPixmap,
@@ -20,7 +21,6 @@ from PySide6.QtGui import (
     QColor,
     QImage,
     QIcon,
-    QTransform,
     QShortcut,
     QKeySequence,
 )
@@ -2836,8 +2836,15 @@ class MainWindow(QMainWindow):
             )
 
         # 切り抜き先のサイズ
-        crop_w = max(1, int(round(w)))
-        crop_h = max(1, int(round(h)))
+        crop_w = max(
+            1,
+            int(round(w)),
+        )
+
+        crop_h = max(
+            1,
+            int(round(h)),
+        )
 
         result = QPixmap(
             crop_w,
@@ -2848,7 +2855,9 @@ class MainWindow(QMainWindow):
             Qt.GlobalColor.transparent
         )
 
-        painter = QPainter(result)
+        painter = QPainter(
+            result
+        )
 
         painter.setRenderHint(
             QPainter.RenderHint.SmoothPixmapTransform,
@@ -2866,8 +2875,8 @@ class MainWindow(QMainWindow):
             -angle
         )
 
-        # 元画像上の枠中心が
-        # 出力画像の中心に来るよう移動
+        # 元画像上の枠中心が、
+        # 出力画像の中心へ来るよう移動
         center_x = x + w / 2
         center_y = y + h / 2
 
@@ -2886,46 +2895,6 @@ class MainWindow(QMainWindow):
         painter.end()
 
         return result
-
-        if self.current_pixmap is None:
-            return QPixmap()
-
-        if abs(angle) < 0.001:
-            return self.current_pixmap.copy(
-                int(x),
-                int(y),
-                int(w),
-                int(h),
-            )
-
-        center_x = x + w / 2
-        center_y = y + h / 2
-
-        # 元画像全体を、対象枠の中心を基準に逆回転
-        transform = QTransform()
-
-        transform.translate(
-            center_x,
-            center_y,
-        )
-
-        transform.rotate(
-            -angle
-        )
-
-        transform.translate(
-            -center_x,
-            -center_y,
-        )
-
-        rotated_pixmap = self.current_pixmap.transformed(
-            transform,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-        # transformed() では画像全体の外接矩形サイズが変わるため、
-        # ここではまず補助関数だけ用意する
-        return rotated_pixmap
 
     def clear_crop_preview(self):
         while self.crop_preview_list_layout.count():
