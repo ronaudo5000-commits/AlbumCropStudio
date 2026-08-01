@@ -8,6 +8,7 @@ class Config:
 
     DEFAULT_DPI = 350
     DEFAULT_JPEG_QUALITY = 95
+    DEFAULT_MARGIN_PX = 0
 
     @classmethod
     def settings(cls):
@@ -64,4 +65,34 @@ class Config:
         cls.settings().setValue(
             "jpeg_quality",
             safe_quality,
+        )
+
+    @classmethod
+    def get_margin_px(cls):
+        margin_px = int(
+            cls.settings().value(
+                "margin_px",
+                cls.DEFAULT_MARGIN_PX,
+            )
+        )
+
+        # 負の余白や極端に大きな値を防止する
+        return max(
+            0,
+            min(margin_px, 1000),
+        )
+
+    @classmethod
+    def set_margin_px(
+        cls,
+        margin_px,
+    ):
+        safe_margin_px = max(
+            0,
+            min(int(margin_px), 1000),
+        )
+
+        cls.settings().setValue(
+            "margin_px",
+            safe_margin_px,
         )
