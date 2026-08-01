@@ -592,10 +592,6 @@ class MainWindow(QMainWindow):
             self.exit_action
         )      
 
-        self.open_button.setToolTip(
-            self.tr("画像またはPDFを開きます（Ctrl+O）")
-        )
-
         self.prev_button = QPushButton("◀ 前へ")
         self.prev_button.setMinimumHeight(40)
         self.prev_button.clicked.connect(self.show_previous_page)
