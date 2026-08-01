@@ -8,7 +8,6 @@ import traceback
 from PySide6.QtCore import (
     Qt,
     QRect,
-    QSettings,
     QSize,
     QPointF,
     QThread,
@@ -148,8 +147,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("AlbumCrop Studio")
         self.resize(1000, 700)
         self.setAcceptDrops(True)
-
-        self.settings = QSettings("AlbumCropStudio", "AlbumCropStudio")
 
         self.current_image_path = None
         self.current_pixmap = None
@@ -418,7 +415,7 @@ class MainWindow(QMainWindow):
         )
 
         self.margin_spin.setValue(
-            int(self.settings.value("margin_mm", 0))
+            Config.get_margin_mm()
         )
 
         self.margin_spin.valueChanged.connect(
@@ -868,6 +865,59 @@ class MainWindow(QMainWindow):
         self.status_label.setText(
             f"✅ {saved_count}枚切り抜き完了"
         )
+
+        # ---------------------------------
+        # 現在ページの枠と回転角度を維持
+        # ---------------------------------
+        if (
+            self.current_page_index >= 0
+            and self.current_page_index
+            < len(self.image_paths)
+        ):
+            saved_rects = self.page_rects.get(
+                self.current_page_index,
+                [],
+            )
+
+            saved_angles = self.page_angles.get(
+                self.current_page_index,
+                [],
+            )
+
+            self.preview_area.set_rects(
+                list(saved_rects)
+            )
+
+            self.preview_area.rect_angles = list(
+                saved_angles
+            )
+
+            while len(
+                self.preview_area.rect_angles
+            ) < len(
+                self.preview_area.rects
+            ):
+                self.preview_area.rect_angles.append(
+                    0.0
+                )
+
+            if len(
+                self.preview_area.rect_angles
+            ) > len(
+                self.preview_area.rects
+            ):
+                self.preview_area.rect_angles = (
+                    self.preview_area.rect_angles[
+                        :len(self.preview_area.rects)
+                    ]
+                )
+
+            self.detected_rects = list(
+                saved_rects
+            )
+
+            self.preview_area.update()
+            self.update_crop_preview()
 
         self.progress_bar.setVisible(False)
         self.save_button.setEnabled(True)
@@ -2350,13 +2400,11 @@ class MainWindow(QMainWindow):
         )
 
     def save_settings(self):
-        self.settings.setValue(
-            "dpi",
+        Config.set_dpi(
             self.dpi_spin.value()
         )
 
-        self.settings.setValue(
-            "margin_mm",
+        Config.set_margin_mm(
             self.margin_spin.value()
         )
 
@@ -2726,6 +2774,10 @@ class MainWindow(QMainWindow):
         if result:
             self.dpi_spin.setValue(
                 Config.get_dpi()
+            )
+
+            self.margin_spin.setValue(
+                Config.get_margin_mm()
             )
 
             self.update_dpi_preset(

@@ -86,27 +86,27 @@ class SettingsDialog(QDialog):
         # ---------------------------------
         # 余白
         # ---------------------------------
-        self.margin_px_spin = QSpinBox()
-        self.margin_px_spin.setRange(0, 1000)
-        self.margin_px_spin.setSuffix(
-            self.tr(" px")
+        self.margin_mm_spin = QSpinBox()
+        self.margin_mm_spin.setRange(0, 20)
+        self.margin_mm_spin.setSuffix(
+            self.tr(" mm")
         )
 
-        self.margin_px_spin.setValue(
-            Config.get_margin_px()
+        self.margin_mm_spin.setValue(
+            Config.get_margin_mm()
         )
 
-        self.margin_px_spin.setToolTip(
+        self.margin_mm_spin.setToolTip(
             self.tr(
                 "写真の切り抜き範囲へ追加する余白を"
-                "ピクセル単位で指定します。"
+                "ミリメートル単位で指定します。"
                 "0の場合は余白を追加しません"
             )
         )
 
         form_layout.addRow(
-            self.tr("余白(px)"),
-            self.margin_px_spin,
+            self.tr("余白"),
+            self.margin_mm_spin,
         )
 
         # ---------------------------------
@@ -156,8 +156,8 @@ class SettingsDialog(QDialog):
             self.jpeg_quality_spin.value()
         )
 
-        Config.set_margin_px(
-            self.margin_px_spin.value()
+        Config.set_margin_mm(
+            self.margin_mm_spin.value()
         )
 
         self.accept()
