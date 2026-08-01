@@ -52,6 +52,7 @@ from core.photo_detector import detect_photos
 from app.photo_canvas import PhotoCanvas
 
 from app.about_dialog import AboutDialog
+from app.config import Config
 from app.settings_dialog import SettingsDialog
 
 from app.export_worker import CropExportWorker
@@ -384,12 +385,7 @@ class MainWindow(QMainWindow):
         )
 
         self.dpi_spin.setValue(
-            int(
-                self.settings.value(
-                    "dpi",
-                    600,
-                )
-            )
+            Config.get_dpi()
         )
 
         self.dpi_preset_combo = QComboBox()
@@ -2719,7 +2715,23 @@ class MainWindow(QMainWindow):
 
     def show_settings_dialog(self):
         dialog = SettingsDialog(self)
-        dialog.exec()
+
+        result = dialog.exec()
+
+        if result:
+            self.dpi_spin.setValue(
+                Config.get_dpi()
+            )
+
+            self.update_dpi_preset(
+                self.dpi_spin.value()
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "✅ 設定を保存しました"
+                )
+            )
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

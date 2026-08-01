@@ -1,10 +1,14 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QLabel,
-    QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
+
+from app.config import Config
 
 
 class SettingsDialog(QDialog):
@@ -18,7 +22,7 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(420)
         self.setMinimumHeight(220)
 
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
 
         title_label = QLabel(
             self.tr("AlbumCrop Studio 設定")
@@ -28,26 +32,66 @@ class SettingsDialog(QDialog):
             Qt.AlignmentFlag.AlignCenter
         )
 
-        placeholder_label = QLabel(
+        form_layout = QFormLayout()
+
+        self.dpi_spin = QSpinBox()
+        self.dpi_spin.setRange(200, 1200)
+        self.dpi_spin.setSuffix(
+            self.tr(" dpi")
+        )
+        self.dpi_spin.setValue(
+            Config.get_dpi()
+        )
+
+        self.dpi_spin.setToolTip(
             self.tr(
-                "設定項目は今後ここに追加されます。"
+                "新しい作業で使用する初期解像度を指定します"
             )
         )
 
-        placeholder_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
+        form_layout.addRow(
+            self.tr("初期DPI"),
+            self.dpi_spin,
         )
 
-        close_button = QPushButton(
-            self.tr("閉じる")
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
         )
 
-        close_button.clicked.connect(
-            self.accept
+        save_button = self.button_box.button(
+            QDialogButtonBox.StandardButton.Save
         )
 
-        layout.addWidget(title_label)
-        layout.addStretch()
-        layout.addWidget(placeholder_label)
-        layout.addStretch()
-        layout.addWidget(close_button)
+        cancel_button = self.button_box.button(
+            QDialogButtonBox.StandardButton.Cancel
+        )
+
+        save_button.setText(
+            self.tr("保存")
+        )
+
+        cancel_button.setText(
+            self.tr("キャンセル")
+        )
+
+        self.button_box.accepted.connect(
+            self.save_settings
+        )
+
+        self.button_box.rejected.connect(
+            self.reject
+        )
+
+        main_layout.addWidget(title_label)
+        main_layout.addSpacing(12)
+        main_layout.addLayout(form_layout)
+        main_layout.addStretch()
+        main_layout.addWidget(self.button_box)
+
+    def save_settings(self):
+        Config.set_dpi(
+            self.dpi_spin.value()
+        )
+
+        self.accept()
