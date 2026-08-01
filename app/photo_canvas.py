@@ -40,7 +40,6 @@ class PhotoCanvas(QWidget):
         self.resize_start_rect = None
 
         self.rotating = False
-        self.rotate_start_angle = 0.0        
 
         self.setMinimumHeight(400)
         self.setMouseTracking(True)
