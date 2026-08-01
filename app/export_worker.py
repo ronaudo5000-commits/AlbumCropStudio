@@ -1,5 +1,7 @@
 from PIL import Image
 
+from app.config import Config
+
 from PySide6.QtCore import (
     QObject,
     Signal,
@@ -18,6 +20,7 @@ class CropExportWorker(QObject):
         output_dir,
         dpi,
         margin_px,
+        jpeg_quality,
         total_crops,
         main_window,
     ):
@@ -42,6 +45,12 @@ class CropExportWorker(QObject):
         self.output_dir = output_dir
         self.dpi = dpi
         self.margin_px = margin_px
+
+        self.jpeg_quality = max(
+            1,
+            min(int(jpeg_quality), 100),
+        )
+
         self.total_crops = total_crops
         self.main_window = main_window
 
@@ -196,7 +205,7 @@ class CropExportWorker(QObject):
                         crop.save(
                             output_path,
                             "JPEG",
-                            quality=95,
+                            quality=self.jpeg_quality,
                             dpi=(
                                 self.dpi,
                                 self.dpi,

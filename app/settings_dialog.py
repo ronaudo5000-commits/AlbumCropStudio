@@ -20,7 +20,7 @@ class SettingsDialog(QDialog):
         )
 
         self.setMinimumWidth(420)
-        self.setMinimumHeight(220)
+        self.setMinimumHeight(260)
 
         main_layout = QVBoxLayout(self)
 
@@ -34,11 +34,15 @@ class SettingsDialog(QDialog):
 
         form_layout = QFormLayout()
 
+        # ---------------------------------
+        # 初期DPI
+        # ---------------------------------
         self.dpi_spin = QSpinBox()
         self.dpi_spin.setRange(200, 1200)
         self.dpi_spin.setSuffix(
             self.tr(" dpi")
         )
+
         self.dpi_spin.setValue(
             Config.get_dpi()
         )
@@ -54,6 +58,34 @@ class SettingsDialog(QDialog):
             self.dpi_spin,
         )
 
+        # ---------------------------------
+        # JPEG品質
+        # ---------------------------------
+        self.jpeg_quality_spin = QSpinBox()
+        self.jpeg_quality_spin.setRange(1, 100)
+        self.jpeg_quality_spin.setSuffix(
+            self.tr(" %")
+        )
+
+        self.jpeg_quality_spin.setValue(
+            Config.get_jpeg_quality()
+        )
+
+        self.jpeg_quality_spin.setToolTip(
+            self.tr(
+                "JPEG書き出し時の画質を指定します。"
+                "数値を高くすると画質とファイル容量が増えます"
+            )
+        )
+
+        form_layout.addRow(
+            self.tr("JPEG品質"),
+            self.jpeg_quality_spin,
+        )
+
+        # ---------------------------------
+        # 保存／キャンセル
+        # ---------------------------------
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
             | QDialogButtonBox.StandardButton.Cancel
@@ -92,6 +124,10 @@ class SettingsDialog(QDialog):
     def save_settings(self):
         Config.set_dpi(
             self.dpi_spin.value()
+        )
+
+        Config.set_jpeg_quality(
+            self.jpeg_quality_spin.value()
         )
 
         self.accept()

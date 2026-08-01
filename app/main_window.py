@@ -2550,6 +2550,10 @@ class MainWindow(QMainWindow):
 
         dpi = self.dpi_spin.value()
 
+        jpeg_quality = (
+            Config.get_jpeg_quality()
+        )
+
         margin_mm = (
             self.margin_spin.value()
         )
@@ -2573,6 +2577,7 @@ class MainWindow(QMainWindow):
             output_dir,
             dpi,
             margin_px,
+            jpeg_quality,
             total_crops,
             self,
         )
