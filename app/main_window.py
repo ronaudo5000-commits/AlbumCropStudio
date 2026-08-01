@@ -52,7 +52,6 @@ from app.config import Config
 from app.settings_dialog import SettingsDialog
 
 from app.export_worker import CropExportWorker
-from core.undo_manager import UndoManager
 
 class PageListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -150,8 +149,6 @@ class MainWindow(QMainWindow):
         self.detected_rects = []
 
         self.current_project_path = None
-
-        self.undo_manager = UndoManager()
 
         self.project_modified = False
 
