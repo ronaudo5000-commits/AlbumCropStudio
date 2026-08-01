@@ -1963,11 +1963,36 @@ class PhotoCanvas(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete:
-            if self.selected_rect >= 0:
+            if (
+                self.selected_rect >= 0
+                and self.selected_rect < len(self.rects)
+            ):
                 self.save_undo_state()
-                del self.rects[self.selected_rect]
+
+                delete_index = self.selected_rect
+
+                del self.rects[
+                    delete_index
+                ]
+
+                if delete_index < len(
+                    self.rect_angles
+                ):
+                    del self.rect_angles[
+                        delete_index
+                    ]
+
                 self.selected_rect = -1
+                self.dragging = False
+                self.adding_rect = False
+                self.resizing = False
+                self.rotating = False
+
+                self.rects_changed.emit()
                 self.update()
+
+                event.accept()
+
             return
 
         if self.selected_rect >= 0:
