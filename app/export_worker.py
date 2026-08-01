@@ -54,6 +54,61 @@ class CropExportWorker(QObject):
         self.total_crops = total_crops
         self.main_window = main_window
 
+    def clamp_crop_rect(
+        self,
+        x,
+        y,
+        w,
+        h,
+        image_width,
+        image_height,
+    ):
+        left = max(
+            0,
+            int(round(x)),
+        )
+
+        top = max(
+            0,
+            int(round(y)),
+        )
+
+        right = min(
+            image_width,
+            int(round(x + w)),
+        )
+
+        bottom = min(
+            image_height,
+            int(round(y + h)),
+        )
+
+        # 枠データが異常な場合でも、
+        # 最低1pxの切り抜き範囲を確保する
+        if right <= left:
+            right = min(
+                image_width,
+                left + 1,
+            )
+
+        if bottom <= top:
+            bottom = min(
+                image_height,
+                top + 1,
+            )
+
+        safe_x = left
+        safe_y = top
+        safe_w = right - left
+        safe_h = bottom - top
+
+        return (
+            safe_x,
+            safe_y,
+            safe_w,
+            safe_h,
+        )
+
     def create_rotated_crop_image(
         self,
         image,
@@ -142,6 +197,9 @@ class CropExportWorker(QObject):
                         "RGB"
                     )
 
+                    image_width = image.width
+                    image_height = image.height
+
                     for crop_index, (
                         x,
                         y,
@@ -181,6 +239,20 @@ class CropExportWorker(QObject):
                         crop_h = (
                             h
                             + self.margin_px * 2
+                        )
+
+                        (
+                            crop_x,
+                            crop_y,
+                            crop_w,
+                            crop_h,
+                        ) = self.clamp_crop_rect(
+                            crop_x,
+                            crop_y,
+                            crop_w,
+                            crop_h,
+                            image_width,
+                            image_height,
                         )
 
                         crop = (
