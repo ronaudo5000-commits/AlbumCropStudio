@@ -475,19 +475,8 @@ class MainWindow(QMainWindow):
             self.open_image
         )
 
-        self.addAction(self.open_action)
-
-        self.save_action = QAction(
-            self.tr("作業を保存"),
-            self,
-        )
-
-        self.save_action.setShortcut(
-            QKeySequence.StandardKey.Save
-        )
-
-        self.save_action.triggered.connect(
-            self.save_project_overwrite
+        self.addAction(
+            self.open_action
         )
 
         self.save_action = QAction(
@@ -503,8 +492,9 @@ class MainWindow(QMainWindow):
             self.save_project_overwrite
         )
 
-        self.addAction(self.save_action)
-
+        self.addAction(
+            self.save_action
+        )
 
         self.save_as_action = QAction(
             self.tr("名前を付けて保存"),
