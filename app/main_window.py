@@ -435,14 +435,6 @@ class MainWindow(QMainWindow):
             self.update_dpi_preset
         )
 
-        # self.dpi_spin.currentTextChanged.connect(
-        #     self.save_settings
-        # )
-
-         # self.margin_spin.valueChanged.connect(
-         #    self.save_settings
-         # )
-
         settings_layout.addWidget(dpi_label)
         settings_layout.addWidget(self.dpi_spin)
         settings_layout.addWidget(self.dpi_preset_combo)
