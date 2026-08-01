@@ -27,6 +27,7 @@ class PhotoCanvas(QWidget):
         self.last_pan_pos = None
 
         self.dragging = False
+        self.drag_undo_saved = False
         self.last_image_x = 0
         self.last_image_y = 0
 
@@ -1049,9 +1050,8 @@ class PhotoCanvas(QWidget):
             if inside_rect or inside_label:
                 self.selected_rect = index
 
-                self.save_undo_state()
-
                 self.dragging = True
+                self.drag_undo_saved = False
                 self.adding_rect = False
                 self.resizing = False
                 self.rotating = False
@@ -1888,12 +1888,20 @@ class PhotoCanvas(QWidget):
             self.selected_rect
         ]
 
-        self.rects[self.selected_rect] = (
-            int(x + dx),
-            int(y + dy),
-            w,
-            h,
-        )
+        new_x = int(x + dx)
+        new_y = int(y + dy)
+
+        if new_x != x or new_y != y:
+            if not self.drag_undo_saved:
+                self.save_undo_state()
+                self.drag_undo_saved = True
+
+            self.rects[self.selected_rect] = (
+                new_x,
+                new_y,
+                w,
+                h,
+            )
 
         self.last_image_x = image_x
         self.last_image_y = image_y
@@ -1918,6 +1926,7 @@ class PhotoCanvas(QWidget):
         )
 
         self.dragging = False
+        self.drag_undo_saved = False
         self.adding_rect = False
         self.resizing = False
         self.rotating = False
