@@ -7,9 +7,7 @@ import traceback
 
 from PySide6.QtCore import (
     Qt,
-    QRect,
     QSize,
-    QPointF,
     QThread,
 )
 
@@ -21,7 +19,6 @@ from PySide6.QtGui import (
     QColor,
     QImage,
     QIcon,
-    QShortcut,
     QKeySequence,
 )
 
