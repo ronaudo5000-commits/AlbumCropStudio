@@ -46,6 +46,10 @@ from PySide6.QtWidgets import (
 from core.photo_detector import detect_photos
 
 from app.photo_canvas import PhotoCanvas
+from app.version import (
+    APP_NAME,
+    APP_VERSION,
+)
 
 from app.about_dialog import AboutDialog
 from app.config import Config
@@ -140,7 +144,9 @@ class MainWindow(QMainWindow):
 
         self.export_running = False
 
-        self.setWindowTitle("AlbumCrop Studio")
+        self.setWindowTitle(
+            f"{APP_NAME} {APP_VERSION}"
+        )
         self.resize(1000, 700)
         self.setAcceptDrops(True)
 

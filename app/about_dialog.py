@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 
 from app.version import (
     APP_NAME,
+    APP_TAGLINE,
     APP_VERSION,
     COPYRIGHT_TEXT,
 )
@@ -32,6 +33,16 @@ class AboutDialog(QDialog):
         title.setAlignment(
             Qt.AlignmentFlag.AlignCenter
         )
+
+        tagline = QLabel(
+            APP_TAGLINE
+        )
+
+        tagline.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        tagline.setWordWrap(True)
 
         version = QLabel(
             f"Version {APP_VERSION}"
@@ -58,6 +69,8 @@ class AboutDialog(QDialog):
         )
 
         layout.addWidget(title)
+        layout.addWidget(tagline)
+        layout.addSpacing(10)
         layout.addWidget(version)
         layout.addSpacing(10)
         layout.addWidget(copyright_label)
