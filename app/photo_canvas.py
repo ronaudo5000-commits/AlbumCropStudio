@@ -1885,28 +1885,9 @@ class PhotoCanvas(QWidget):
         dx = image_x - self.last_image_x
         dy = image_y - self.last_image_y
 
-        angle = 0.0
-
-        if self.selected_rect < len(self.rect_angles):
-            angle = self.rect_angles[
-                self.selected_rect
-            ]
-
-        angle_rad = math.radians(
-            -angle
-        )
-
-        local_dx = (
-            dx * math.cos(angle_rad)
-            - dy * math.sin(angle_rad)
-        )
-
-        local_dy = (
-            dx * math.sin(angle_rad)
-            + dy * math.cos(angle_rad)
-        )
-
-        x, y, w, h = self.rects[self.selected_rect]
+        x, y, w, h = self.rects[
+            self.selected_rect
+        ]
 
         self.rects[self.selected_rect] = (
             int(x + dx),
