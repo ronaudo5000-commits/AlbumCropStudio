@@ -439,8 +439,6 @@ class MainWindow(QMainWindow):
         settings_box.setLayout(settings_layout)
         main_layout.addWidget(settings_box)
 
-        button_layout = QHBoxLayout()
-
         self.open_button = QPushButton("画像を開く")
         self.open_button.setMinimumHeight(40)
         self.open_button.clicked.connect(self.open_image)
