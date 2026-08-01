@@ -2,8 +2,6 @@ import math
 
 from PIL import Image
 
-from app.config import Config
-
 from PySide6.QtCore import (
     QObject,
     Signal,
@@ -24,7 +22,6 @@ class CropExportWorker(QObject):
         margin_px,
         jpeg_quality,
         total_crops,
-        main_window,
     ):
         super().__init__()
 
@@ -54,7 +51,6 @@ class CropExportWorker(QObject):
         )
 
         self.total_crops = total_crops
-        self.main_window = main_window
 
     def validate_crop_rect(
         self,

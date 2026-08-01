@@ -2627,7 +2627,6 @@ class MainWindow(QMainWindow):
             margin_px,
             jpeg_quality,
             total_crops,
-            self,
         )
 
         self.export_worker.moveToThread(
