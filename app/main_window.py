@@ -374,9 +374,6 @@ class MainWindow(QMainWindow):
         self.dpi_spin = QSpinBox()
         self.dpi_spin.setRange(200, 1200)
         self.dpi_spin.setSuffix(" dpi")
-        self.dpi_spin.setToolTip(
-            "書き出す画像の解像度を指定します。"
-        )
 
         self.dpi_spin.setValue(
             Config.get_dpi()
@@ -407,9 +404,6 @@ class MainWindow(QMainWindow):
         self.margin_spin = QSpinBox()
         self.margin_spin.setRange(0, 20)
         self.margin_spin.setSuffix(" mm")
-        self.margin_spin.setToolTip(
-            "切り抜く写真の周囲に追加する余白です。"
-        )
 
         self.margin_spin.setValue(
             Config.get_margin_mm()
