@@ -1,18 +1,32 @@
-pycache/
-*.pyc
-*.pyo
-*.pyd
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
 
+# Virtual environments
 .venv/
 venv/
+env/
 
-dist/
+# Test files and caches
+.pytest_cache/
+tests/output/
+.coverage
+htmlcov/
+
+# Application logs
+logs/
+*.log
+
+# Build and distribution files
 build/
+dist/
+*.egg-info/
 
+# Editor settings
 .idea/
 .vscode/
 
+# Operating-system files
 .DS_Store
 Thumbs.db
-
-tests/output/
