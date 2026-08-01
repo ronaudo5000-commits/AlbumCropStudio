@@ -2324,7 +2324,6 @@ class MainWindow(QMainWindow):
         self.preview_area.setFocus(
             Qt.FocusReason.OtherFocusReason
         )
-        self.save_current_page_rects()
 
     def copy_selected_rect(self):
         selected_index = self.preview_area.selected_rect
