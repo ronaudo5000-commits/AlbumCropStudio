@@ -227,11 +227,18 @@ class CropExportWorker(QObject):
                         )
 
             except Exception as e:
-                print(
-                    f"ページ {page_index + 1} "
-                    f"の書き出しに失敗しました: "
-                    f"{e}"
+                image_name = str(
+                    image_path
                 )
+
+                raise RuntimeError(
+                    (
+                        f"ページ {page_index + 1} の"
+                        f"書き出しに失敗しました。\n"
+                        f"対象ファイル: {image_name}\n"
+                        f"詳細: {e}"
+                    )
+                ) from e
 
         return saved_count
 
