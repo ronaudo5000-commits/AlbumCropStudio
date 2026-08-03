@@ -22,6 +22,7 @@ class CropExportWorker(QObject):
         margin_px,
         jpeg_quality,
         total_crops,
+        export_page_indexes=None,
     ):
         super().__init__()
 
@@ -51,6 +52,15 @@ class CropExportWorker(QObject):
         )
 
         self.total_crops = total_crops
+
+        if export_page_indexes is None:
+            self.export_page_indexes = None
+        else:
+            self.export_page_indexes = {
+                int(page_index)
+                for page_index
+                in export_page_indexes
+            }
 
     def validate_crop_rect(
         self,
@@ -248,6 +258,14 @@ class CropExportWorker(QObject):
         for page_index, image_path in enumerate(
             self.image_paths
         ):
+            if (
+                self.export_page_indexes
+                is not None
+                and page_index
+                not in self.export_page_indexes
+            ):
+                continue
+
             page_rects = self.page_rects.get(
                 page_index,
                 [],

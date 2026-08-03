@@ -63,79 +63,242 @@ class PageListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.delete_button_size = 24
+        self.control_size = 24
+        self.control_margin = 6
+
         self.delete_callback = None
+        self.check_callback = None
 
     def paintEvent(self, event):
         super().paintEvent(event)
 
-        current_row = self.currentRow()
-
-        if current_row < 0:
-            return
-
-        item = self.item(current_row)
-
-        if item is None:
-            return
-
-        item_rect = self.visualItemRect(item)
-
-        painter = QPainter(self.viewport())
-
-        size = self.delete_button_size
-
-        delete_x = item_rect.right() - size - 6
-        delete_y = item_rect.top() + 6
-
-        painter.fillRect(
-            delete_x,
-            delete_y,
-            size,
-            size,
-            QColor(220, 60, 60),
+        painter = QPainter(
+            self.viewport()
         )
 
-        painter.setPen(
-            QColor(255, 255, 255)
-        )
+        for row in range(
+            self.count()
+        ):
+            item = self.item(
+                row
+            )
 
-        painter.drawText(
-            delete_x,
-            delete_y,
-            size,
-            size,
-            Qt.AlignmentFlag.AlignCenter,
-            "×",
-        )
+            if item is None:
+                continue
+
+            item_rect = self.visualItemRect(
+                item
+            )
+
+            if not item_rect.intersects(
+                self.viewport().rect()
+            ):
+                continue
+
+            size = self.control_size
+            margin = self.control_margin
+
+            # ---------------------------------
+            # 書き出し対象チェック
+            # ---------------------------------
+            check_x = (
+                item_rect.left()
+                + margin
+            )
+
+            check_y = (
+                item_rect.top()
+                + margin
+            )
+
+            checked = bool(
+                item.data(
+                    Qt.ItemDataRole.UserRole
+                )
+            )
+
+            painter.setPen(
+                QColor(80, 80, 80)
+            )
+
+            if checked:
+                painter.setBrush(
+                    QColor(60, 170, 220)
+                )
+            else:
+                painter.setBrush(
+                    QColor(255, 255, 255)
+                )
+
+            painter.drawRect(
+                check_x,
+                check_y,
+                size - 1,
+                size - 1,
+            )
+
+            if checked:
+                painter.setPen(
+                    QColor(255, 255, 255)
+                )
+
+                painter.drawText(
+                    check_x,
+                    check_y,
+                    size,
+                    size,
+                    Qt.AlignmentFlag.AlignCenter,
+                    "✓",
+                )
+
+            # ---------------------------------
+            # ページ削除ボタン
+            # ---------------------------------
+            delete_x = (
+                item_rect.right()
+                - size
+                - margin
+            )
+
+            delete_y = (
+                item_rect.top()
+                + margin
+            )
+
+            painter.fillRect(
+                delete_x,
+                delete_y,
+                size,
+                size,
+                QColor(220, 60, 60),
+            )
+
+            painter.setPen(
+                QColor(255, 255, 255)
+            )
+
+            painter.drawText(
+                delete_x,
+                delete_y,
+                size,
+                size,
+                Qt.AlignmentFlag.AlignCenter,
+                "×",
+            )
 
     def mousePressEvent(self, event):
-        current_row = self.currentRow()
+        pos = event.position()
 
-        if current_row >= 0:
-            item = self.item(current_row)
+        item = self.itemAt(
+            pos.toPoint()
+        )
 
-            if item is not None:
-                item_rect = self.visualItemRect(item)
+        if item is not None:
+            row = self.row(
+                item
+            )
 
-                size = self.delete_button_size
+            item_rect = self.visualItemRect(
+                item
+            )
 
-                delete_x = item_rect.right() - size - 6
-                delete_y = item_rect.top() + 6
+            size = self.control_size
+            margin = self.control_margin
 
-                pos = event.position()
+            check_x = (
+                item_rect.left()
+                + margin
+            )
 
-                if (
-                    delete_x <= pos.x() <= delete_x + size
-                    and delete_y <= pos.y() <= delete_y + size
-                ):
-                    if self.delete_callback is not None:
-                        self.delete_callback()
+            check_y = (
+                item_rect.top()
+                + margin
+            )
 
-                    return
+            delete_x = (
+                item_rect.right()
+                - size
+                - margin
+            )
 
-        super().mousePressEvent(event)
+            delete_y = (
+                item_rect.top()
+                + margin
+            )
 
+            # ---------------------------------
+            # チェック欄
+            # ---------------------------------
+            if (
+                check_x
+                <= pos.x()
+                <= check_x + size
+                and check_y
+                <= pos.y()
+                <= check_y + size
+            ):
+                current_state = bool(
+                    item.data(
+                        Qt.ItemDataRole.UserRole
+                    )
+                )
+
+                new_state = not current_state
+
+                item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    new_state,
+                )
+
+                if self.check_callback is not None:
+                    self.check_callback(
+                        row,
+                        new_state,
+                    )
+
+                self.viewport().update()
+                return
+
+            # ---------------------------------
+            # 削除ボタン
+            # ---------------------------------
+            if (
+                delete_x
+                <= pos.x()
+                <= delete_x + size
+                and delete_y
+                <= pos.y()
+                <= delete_y + size
+            ):
+                self.setCurrentItem(
+                    item
+                )
+
+                if self.delete_callback is not None:
+                    self.delete_callback()
+
+                return
+
+        super().mousePressEvent(
+            event
+        )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(
+            event
+        )
+
+        available_width = max(
+            108,
+            self.viewport().width() - 8,
+        )
+
+        self.setGridSize(
+            QSize(
+                available_width,
+                142,
+            )
+        )
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -172,6 +335,8 @@ class MainWindow(QMainWindow):
         self.page_angles = {}
         self.deleted_pages_stack = []
 
+        self.page_export_enabled = []
+
         self.pdf_temp_dir = (
             Path.home()
             / ".albumcrop_studio"
@@ -199,7 +364,10 @@ class MainWindow(QMainWindow):
         self.page_list = PageListWidget()
         self.page_list.setStyleSheet("""
             QListWidget::item {
-                padding: 4px;
+                padding-top: 34px;
+                padding-left: 4px;
+                padding-right: 4px;
+                padding-bottom: 4px;
                 margin: 2px;
                 border: 2px solid transparent;
             }
@@ -214,6 +382,9 @@ class MainWindow(QMainWindow):
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.page_list.delete_callback = self.delete_current_page
+        self.page_list.check_callback = (
+            self.set_page_export_enabled
+        )
         self.page_list.setMinimumWidth(120)
 
         self.page_list.setViewMode(
@@ -235,11 +406,11 @@ class MainWindow(QMainWindow):
         )
 
         self.page_list.setIconSize(
-            QSize(110, 82)
+            QSize(100, 75)
         )
 
         self.page_list.setGridSize(
-            QSize(135, 120)
+            QSize(135, 142)
         )
 
         self.page_list.setTextElideMode(
@@ -1355,8 +1526,17 @@ class MainWindow(QMainWindow):
 
         for file_path in file_paths:
             if file_path not in self.image_paths:
-                self.image_paths.append(file_path)
-                new_file_paths.append(file_path)
+                self.image_paths.append(
+                    file_path
+                )
+
+                self.page_export_enabled.append(
+                    True
+                )
+
+                new_file_paths.append(
+                    file_path
+                )
 
         if was_empty and self.image_paths:
             self.current_page_index = 0
@@ -1402,7 +1582,14 @@ class MainWindow(QMainWindow):
                 item_name,
             )
 
-            self.page_list.addItem(item)
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                True,
+            )
+
+            self.page_list.addItem(
+                item
+            )
 
         if was_empty and self.image_paths:
             self.page_list.setCurrentRow(0)
@@ -1458,6 +1645,27 @@ class MainWindow(QMainWindow):
 
         event.acceptProposedAction()
 
+    def set_page_export_enabled(
+        self,
+        row,
+        enabled,
+    ):
+        if (
+            row < 0
+            or row >= len(
+                self.page_export_enabled
+            )
+        ):
+            return
+
+        self.page_export_enabled[
+            row
+        ] = bool(
+            enabled
+        )
+
+        self.project_modified = True
+
     def update_page_label(self):
         total = len(self.image_paths)
 
@@ -1499,6 +1707,18 @@ class MainWindow(QMainWindow):
                 [],
             )
 
+            if (
+                page_index
+                < len(self.page_export_enabled)
+            ):
+                export_enabled = bool(
+                    self.page_export_enabled[
+                        page_index
+                    ]
+                )
+            else:
+                export_enabled = True
+
             pages.append(
                 {
                     "image_path": image_path,
@@ -1507,6 +1727,9 @@ class MainWindow(QMainWindow):
                         for rect in rects
                     ],
                     "angles": list(angles),
+                    "export_enabled": (
+                        export_enabled
+                    ),
                 }
             )
 
@@ -1728,6 +1951,7 @@ class MainWindow(QMainWindow):
         self.page_rects = {}
         self.page_angles = {}
         self.deleted_pages_stack = []
+        self.page_export_enabled = []
 
         self.page_list.clear()
 
@@ -1750,8 +1974,19 @@ class MainWindow(QMainWindow):
                 [],
             )
 
+            export_enabled = bool(
+                page_data.get(
+                    "export_enabled",
+                    True,
+                )
+            )
+
             self.image_paths.append(
                 image_path
+            )
+
+            self.page_export_enabled.append(
+                export_enabled
             )
 
             self.page_rects[
@@ -1807,6 +2042,11 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(
                 QIcon(thumbnail),
                 item_name,
+            )
+
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                export_enabled,
             )
 
             self.page_list.addItem(
@@ -2004,17 +2244,45 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            if (
+                delete_index
+                < len(self.page_export_enabled)
+            ):
+                deleted_export_enabled = (
+                    self.page_export_enabled[
+                        delete_index
+                    ]
+                )
+            else:
+                deleted_export_enabled = True
+
             deleted_group.append(
                 {
                     "index": delete_index,
                     "path": deleted_path,
                     "rects": deleted_rects,
                     "angles": deleted_angles,
+                    "export_enabled": (
+                        deleted_export_enabled
+                    ),
                 }
-)
+            )
 
-            self.image_paths.pop(delete_index)
-            self.page_list.takeItem(delete_index)
+            self.image_paths.pop(
+                delete_index
+            )
+
+            self.page_list.takeItem(
+                delete_index
+            )
+
+            if (
+                delete_index
+                < len(self.page_export_enabled)
+            ):
+                self.page_export_enabled.pop(
+                    delete_index
+                )
 
             if delete_index in self.page_rects:
                 del self.page_rects[delete_index]
@@ -2136,12 +2404,24 @@ class MainWindow(QMainWindow):
                     [],
                 )
 
+                restore_export_enabled = bool(
+                    page.get(
+                        "export_enabled",
+                        True,
+                    )
+                )
+
                 if restore_index > len(self.image_paths):
                     restore_index = len(self.image_paths)
 
                 self.image_paths.insert(
                     restore_index,
                     restore_path,
+                )
+
+                self.page_export_enabled.insert(
+                    restore_index,
+                    restore_export_enabled,
                 )
 
                 new_page_rects = {}
@@ -2181,6 +2461,11 @@ class MainWindow(QMainWindow):
                     item_name,
                 )
 
+                item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    restore_export_enabled,
+                )
+
                 self.page_list.insertItem(
                     restore_index,
                     item,
@@ -2199,12 +2484,24 @@ class MainWindow(QMainWindow):
             restore_path = deleted["path"]
             restore_rects = deleted["rects"]
 
+            restore_export_enabled = bool(
+                deleted.get(
+                    "export_enabled",
+                    True,
+                )
+            )
+
             if restore_index > len(self.image_paths):
                 restore_index = len(self.image_paths)
 
             self.image_paths.insert(
                 restore_index,
                 restore_path,
+            )
+
+            self.page_export_enabled.insert(
+                restore_index,
+                restore_export_enabled,
             )
 
             new_page_rects = {}
@@ -2236,6 +2533,11 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(
                 QIcon(thumbnail),
                 item_name,
+            )
+
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                restore_export_enabled,
             )
 
             self.page_list.insertItem(
@@ -2717,7 +3019,33 @@ class MainWindow(QMainWindow):
             self.save_button.setEnabled(True)
             return
 
-        # 全ページの枠数を確認
+        export_page_indexes = {
+            page_index
+            for page_index in range(
+                len(self.image_paths)
+            )
+            if (
+                page_index
+                < len(self.page_export_enabled)
+                and self.page_export_enabled[
+                    page_index
+                ]
+            )
+        }
+
+        if not export_page_indexes:
+            print(
+                "書き出し対象のページがありません"
+            )
+
+            self.status_label.setText(
+                "書き出し対象のページがありません"
+            )
+
+            self.save_button.setEnabled(True)
+            return
+
+        # 書き出し対象ページの枠数を確認
         total_crops = sum(
             len(
                 self.page_rects.get(
@@ -2725,16 +3053,17 @@ class MainWindow(QMainWindow):
                     [],
                 )
             )
-            for page_index in range(
-                len(self.image_paths)
-            )
+            for page_index
+            in export_page_indexes
         )
 
         if total_crops == 0:
-            print("保存する枠がありません")
+            print(
+                "書き出し対象ページに枠がありません"
+            )
 
             self.status_label.setText(
-                "保存する枠がありません"
+                "書き出し対象ページに枠がありません"
             )
 
             self.save_button.setEnabled(True)
@@ -2770,8 +3099,8 @@ class MainWindow(QMainWindow):
 
         existing_files = []
 
-        for page_index in range(
-            len(self.image_paths)
+        for page_index in sorted(
+            export_page_indexes
         ):
             page_rects = self.page_rects.get(
                 page_index,
@@ -2852,6 +3181,7 @@ class MainWindow(QMainWindow):
             margin_px,
             jpeg_quality,
             total_crops,
+            export_page_indexes,
         )
 
         self.export_worker.moveToThread(
