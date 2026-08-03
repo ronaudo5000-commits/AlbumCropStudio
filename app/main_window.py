@@ -366,6 +366,12 @@ class MainWindow(QMainWindow):
         settings_box = QGroupBox("出力設定")
         settings_layout = QHBoxLayout()
 
+        # ---------------------------------
+        # 解像度
+        # ---------------------------------
+        dpi_layout = QHBoxLayout()
+        dpi_layout.setSpacing(6)
+
         dpi_label = QLabel("解像度")
 
         self.dpi_spin = QSpinBox()
@@ -397,7 +403,18 @@ class MainWindow(QMainWindow):
             self.apply_dpi_preset
         )
 
+        dpi_layout.addWidget(dpi_label)
+        dpi_layout.addWidget(self.dpi_spin)
+        dpi_layout.addWidget(self.dpi_preset_combo)
+
+        # ---------------------------------
+        # 余白
+        # ---------------------------------
+        margin_layout = QHBoxLayout()
+        margin_layout.setSpacing(6)
+
         margin_label = QLabel("余白")
+
         self.margin_spin = QSpinBox()
         self.margin_spin.setRange(0, 20)
         self.margin_spin.setSuffix(" mm")
@@ -406,11 +423,45 @@ class MainWindow(QMainWindow):
             Config.get_margin_mm()
         )
 
+        margin_layout.addWidget(margin_label)
+        margin_layout.addWidget(self.margin_spin)
+
+        # ---------------------------------
+        # JPEG品質
+        # ---------------------------------
+        jpeg_quality_layout = QHBoxLayout()
+        jpeg_quality_layout.setSpacing(6)
+
+        jpeg_quality_label = QLabel("JPEG品質")
+
+        self.jpeg_quality_spin = QSpinBox()
+        self.jpeg_quality_spin.setRange(1, 100)
+        self.jpeg_quality_spin.setSuffix(" %")
+
+        self.jpeg_quality_spin.setValue(
+            Config.get_jpeg_quality()
+        )
+
+        jpeg_quality_layout.addWidget(
+            jpeg_quality_label
+        )
+
+        jpeg_quality_layout.addWidget(
+            self.jpeg_quality_spin
+        )
+
+        # ---------------------------------
+        # 設定変更時の処理
+        # ---------------------------------
         self.margin_spin.valueChanged.connect(
             self.mark_project_modified
         )
 
         self.dpi_spin.valueChanged.connect(
+            self.mark_project_modified
+        )
+
+        self.jpeg_quality_spin.valueChanged.connect(
             self.mark_project_modified
         )
 
@@ -419,6 +470,10 @@ class MainWindow(QMainWindow):
         )
 
         self.margin_spin.valueChanged.connect(
+            self.save_settings
+        )
+
+        self.jpeg_quality_spin.valueChanged.connect(
             self.save_settings
         )
 
@@ -426,12 +481,20 @@ class MainWindow(QMainWindow):
             self.update_dpi_preset
         )
 
-        settings_layout.addWidget(dpi_label)
-        settings_layout.addWidget(self.dpi_spin)
-        settings_layout.addWidget(self.dpi_preset_combo)
-        settings_layout.addSpacing(20)
-        settings_layout.addWidget(margin_label)
-        settings_layout.addWidget(self.margin_spin)
+        # ---------------------------------
+        # 出力設定全体の配置
+        # ---------------------------------
+        settings_layout.addLayout(dpi_layout)
+        settings_layout.addSpacing(16)
+
+        settings_layout.addLayout(margin_layout)
+        settings_layout.addSpacing(16)
+
+        settings_layout.addLayout(
+            jpeg_quality_layout
+        )
+
+        settings_layout.addStretch()
 
         settings_box.setLayout(settings_layout)
         main_layout.addWidget(settings_box)
@@ -1255,6 +1318,9 @@ class MainWindow(QMainWindow):
             "settings": {
                 "dpi": self.dpi_spin.value(),
                 "margin_mm": self.margin_spin.value(),
+                "jpeg_quality": (
+                    self.jpeg_quality_spin.value()
+                ),
             },
         }
 
@@ -1558,7 +1624,7 @@ class MainWindow(QMainWindow):
             int(
                 settings.get(
                     "dpi",
-                    350,
+                    Config.get_dpi(),
                 )
             )
         )
@@ -1567,7 +1633,16 @@ class MainWindow(QMainWindow):
             int(
                 settings.get(
                     "margin_mm",
-                    0,
+                    Config.get_margin_mm(),
+                )
+            )
+        )
+
+        self.jpeg_quality_spin.setValue(
+            int(
+                settings.get(
+                    "jpeg_quality",
+                    Config.get_jpeg_quality(),
                 )
             )
         )
@@ -2367,10 +2442,13 @@ class MainWindow(QMainWindow):
             self.dpi_spin.value()
         )
 
+        Config.set_jpeg_quality(
+            self.jpeg_quality_spin.value()
+        )
+
         Config.set_margin_mm(
             self.margin_spin.value()
         )
-
     def save_crops(self):
         self.save_button.setEnabled(False)
         self.status_label.setText(
@@ -2498,7 +2576,7 @@ class MainWindow(QMainWindow):
         dpi = self.dpi_spin.value()
 
         jpeg_quality = (
-            Config.get_jpeg_quality()
+            self.jpeg_quality_spin.value()
         )
 
         margin_mm = (
@@ -2631,6 +2709,10 @@ class MainWindow(QMainWindow):
                 Config.get_margin_mm()
             )
 
+            self.jpeg_quality_spin.setValue(
+                Config.get_jpeg_quality()
+            )
+
             self.update_dpi_preset(
                 self.dpi_spin.value()
             )
@@ -2643,10 +2725,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-
-        if self.current_pixmap is not None:
-            self.show_image()
-
+        
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             file_path = event.mimeData().urls()[0].toLocalFile()
