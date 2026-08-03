@@ -57,6 +57,7 @@ from app.config import Config
 from app.settings_dialog import SettingsDialog
 
 from app.export_worker import CropExportWorker
+from app.detection_worker import DetectionWorker
 
 class PageListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -144,6 +145,12 @@ class MainWindow(QMainWindow):
         self.export_worker = None
 
         self.export_running = False
+
+        self.detection_thread = None
+        self.detection_worker = None
+
+        self.detection_running = False
+        self.detection_image_path = None
 
         self.setWindowTitle(
             f"{APP_NAME} {APP_VERSION}"
@@ -1016,6 +1023,159 @@ class MainWindow(QMainWindow):
     def export_thread_finished(self):
         self.export_worker = None
         self.export_thread = None
+
+    def set_detection_controls_enabled(
+        self,
+        enabled,
+    ):
+        self.detect_button.setEnabled(
+            enabled
+        )
+
+        self.open_button.setEnabled(
+            enabled
+        )
+
+        self.open_action.setEnabled(
+            enabled
+        )
+
+        self.load_project_button.setEnabled(
+            enabled
+        )
+
+        self.load_project_action.setEnabled(
+            enabled
+        )
+
+        self.prev_button.setEnabled(
+            enabled
+        )
+
+        self.next_button.setEnabled(
+            enabled
+        )
+
+        self.page_list.setEnabled(
+            enabled
+        )
+
+        self.manual_count_spin.setEnabled(
+            enabled
+        )
+
+        self.generate_rects_button.setEnabled(
+            enabled
+        )
+
+    def detection_finished(
+        self,
+        rects,
+    ):
+        detected_rects = [
+            tuple(rect)
+            for rect in rects
+        ]
+
+        # 通常の0～100表示へ戻す
+        self.progress_bar.setRange(
+            0,
+            100,
+        )
+
+        self.progress_bar.setValue(
+            100
+        )
+
+        self.progress_bar.setVisible(
+            False
+        )
+
+        self.set_detection_controls_enabled(
+            True
+        )
+
+        self.detection_running = False
+
+        if (
+            self.detection_image_path
+            != self.current_image_path
+        ):
+            self.status_label.setText(
+                "検出対象の画像が変更されたため、"
+                "結果を反映しませんでした"
+            )
+            return
+
+        self.detected_rects = (
+            detected_rects
+        )
+
+        self.preview_area.set_rects(
+            list(detected_rects)
+        )
+
+        self.preview_area.rect_angles = [
+            0.0
+            for _ in detected_rects
+        ]
+
+        self.save_current_page_rects()
+        self.update_crop_preview()
+
+        self.status_label.setText(
+            f"検出数: {len(detected_rects)}"
+        )
+
+        self.preview_area.update()
+
+    def detection_failed(
+        self,
+        error_message,
+    ):
+        print(
+            "写真の自動検出に失敗しました: "
+            f"{error_message}"
+        )
+
+        # 通常の0～100表示へ戻す
+        self.progress_bar.setRange(
+            0,
+            100,
+        )
+
+        self.progress_bar.setValue(
+            0
+        )
+
+        self.progress_bar.setVisible(
+            False
+        )
+
+        self.set_detection_controls_enabled(
+            True
+        )
+
+        self.detection_running = False
+
+        self.status_label.setText(
+            "❌ 写真の自動検出に失敗しました"
+        )
+
+        QMessageBox.critical(
+            self,
+            "自動検出エラー",
+            (
+                "写真の自動検出中に"
+                "エラーが発生しました。\n\n"
+                f"{error_message}"
+            ),
+        )
+
+    def detection_thread_finished(self):
+        self.detection_worker = None
+        self.detection_thread = None
+        self.detection_image_path = None
 
     def mark_project_modified(self, *args):
         self.project_modified = True
@@ -2287,39 +2447,88 @@ class MainWindow(QMainWindow):
     def detect_photos(self):
         if not self.current_image_path:
             self.preview_area.setText(
-            "先に画像を読み込んでください。"
-        )
+                "先に画像を読み込んでください。"
+            )
             return
 
-        # 検出開始
-        self.detect_button.setEnabled(False)
+        if self.detection_running:
+            return
 
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
+        self.detection_running = True
 
-        self.status_label.setText("🔍 写真を検出中...")
-        self.status_label.repaint()
-
-        QApplication.processEvents()
-
-        self.detected_rects = detect_photos(
+        self.detection_image_path = (
             self.current_image_path
         )
 
-        # 検出終了
-        self.progress_bar.setValue(100)
-
-        QApplication.processEvents()
-
-        self.progress_bar.setVisible(False)
-
-        self.detect_button.setEnabled(True)
-
-        self.status_label.setText(
-            f"検出数: {len(self.detected_rects)}"
+        self.set_detection_controls_enabled(
+            False
         )
 
-        self.show_image()
+        # 終了時に同じ画像へ結果を反映するため、
+        # 検出開始時のパスをWorkerへ渡す
+        image_path = self.detection_image_path
+
+        self.status_label.setText(
+            "🔍 写真を検出中..."
+        )
+
+        # 0, 0は処理時間が未確定の進捗表示
+        self.progress_bar.setRange(
+            0,
+            0,
+        )
+
+        self.progress_bar.setVisible(
+            True
+        )
+
+        self.detection_thread = QThread()
+
+        self.detection_worker = DetectionWorker(
+            image_path
+        )
+
+        self.detection_worker.moveToThread(
+            self.detection_thread
+        )
+
+        self.detection_thread.started.connect(
+            self.detection_worker.run
+        )
+
+        self.detection_worker.finished.connect(
+            self.detection_finished
+        )
+
+        self.detection_worker.failed.connect(
+            self.detection_failed
+        )
+
+        self.detection_worker.finished.connect(
+            self.detection_thread.quit
+        )
+
+        self.detection_worker.failed.connect(
+            self.detection_thread.quit
+        )
+
+        self.detection_worker.finished.connect(
+            self.detection_worker.deleteLater
+        )
+
+        self.detection_worker.failed.connect(
+            self.detection_worker.deleteLater
+        )
+
+        self.detection_thread.finished.connect(
+            self.detection_thread_finished
+        )
+
+        self.detection_thread.finished.connect(
+            self.detection_thread.deleteLater
+        )
+
+        self.detection_thread.start()
 
     def generate_manual_rects(self):
         if self.current_pixmap is None:
@@ -2725,6 +2934,20 @@ class MainWindow(QMainWindow):
         return False
 
     def closeEvent(self, event):
+        if self.detection_running:
+            QMessageBox.information(
+                self,
+                "自動検出中",
+                (
+                    "現在、写真の自動検出を実行しています。\n\n"
+                    "検出が完了してから、"
+                    "もう一度終了してください。"
+                ),
+            )
+
+            event.ignore()
+            return
+
         if self.confirm_discard_changes():
             event.accept()
         else:
