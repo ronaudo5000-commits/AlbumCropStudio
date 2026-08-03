@@ -272,6 +272,292 @@ class PhotoCanvas(QWidget):
 
         return rotated_x, rotated_y
 
+    def operation_control_geometry(
+        self,
+        x,
+        y,
+        w,
+        h,
+        angle,
+        x_offset,
+        y_offset,
+        scale_x,
+        scale_y,
+    ):
+        button_size = 28
+        button_gap = 4
+        rotate_handle_size = 18
+        rotate_distance = 45
+        edge_margin = 4
+
+        screen_w = w * scale_x
+        screen_h = h * scale_y
+
+        screen_center_x = (
+            x_offset
+            + (x + w / 2) * scale_x
+        )
+
+        screen_center_y = (
+            y_offset
+            + (y + h / 2) * scale_y
+        )
+
+        angle_rad = math.radians(
+            angle
+        )
+
+        # 枠の横方向を表す単位ベクトル
+        width_axis_x = math.cos(
+            angle_rad
+        )
+
+        width_axis_y = math.sin(
+            angle_rad
+        )
+
+        # 枠の上から下へ向かう単位ベクトル
+        down_axis_x = -math.sin(
+            angle_rad
+        )
+
+        down_axis_y = math.cos(
+            angle_rad
+        )
+
+        half_w = screen_w / 2
+        half_h = screen_h / 2
+
+        top_center_x = (
+            screen_center_x
+            - down_axis_x * half_h
+        )
+
+        top_center_y = (
+            screen_center_y
+            - down_axis_y * half_h
+        )
+
+        bottom_center_x = (
+            screen_center_x
+            + down_axis_x * half_h
+        )
+
+        bottom_center_y = (
+            screen_center_y
+            + down_axis_y * half_h
+        )
+
+        top_right_x = (
+            screen_center_x
+            + width_axis_x * half_w
+            - down_axis_x * half_h
+        )
+
+        top_right_y = (
+            screen_center_y
+            + width_axis_y * half_w
+            - down_axis_y * half_h
+        )
+
+        bottom_right_x = (
+            screen_center_x
+            + width_axis_x * half_w
+            + down_axis_x * half_h
+        )
+
+        bottom_right_y = (
+            screen_center_y
+            + width_axis_y * half_w
+            + down_axis_y * half_h
+        )
+
+        required_space = max(
+            button_size + button_gap,
+            rotate_distance
+            + rotate_handle_size / 2,
+        )
+
+        available_top = min(
+            top_center_y,
+            top_right_y,
+        ) - edge_margin
+
+        available_bottom = (
+            self.height()
+            - edge_margin
+            - max(
+                bottom_center_y,
+                bottom_right_y,
+            )
+        )
+
+        if available_top >= required_space:
+            place_below = False
+        elif available_bottom >= required_space:
+            place_below = True
+        else:
+            place_below = (
+                available_bottom
+                > available_top
+            )
+
+        if place_below:
+            control_corner_x = bottom_right_x
+            control_corner_y = bottom_right_y
+
+            line_anchor_x = bottom_center_x
+            line_anchor_y = bottom_center_y
+
+            rotate_center_x = (
+                bottom_center_x
+                + down_axis_x
+                * rotate_distance
+            )
+
+            rotate_center_y = (
+                bottom_center_y
+                + down_axis_y
+                * rotate_distance
+            )
+
+            button_y = (
+                control_corner_y
+                + button_gap
+            )
+
+        else:
+            control_corner_x = top_right_x
+            control_corner_y = top_right_y
+
+            line_anchor_x = top_center_x
+            line_anchor_y = top_center_y
+
+            rotate_center_x = (
+                top_center_x
+                - down_axis_x
+                * rotate_distance
+            )
+
+            rotate_center_y = (
+                top_center_y
+                - down_axis_y
+                * rotate_distance
+            )
+
+            button_y = (
+                control_corner_y
+                - button_size
+                - button_gap
+            )
+
+        # コピーと削除を一組として左右端へ収める
+        button_group_width = (
+            button_size * 2
+            + button_gap
+        )
+
+        desired_group_x = (
+            control_corner_x
+            - button_size
+        )
+
+        maximum_group_x = max(
+            edge_margin,
+            self.width()
+            - button_group_width
+            - edge_margin,
+        )
+
+        group_x = min(
+            max(
+                desired_group_x,
+                edge_margin,
+            ),
+            maximum_group_x,
+        )
+
+        copy_x = group_x
+
+        delete_x = (
+            group_x
+            + button_size
+            + button_gap
+        )
+
+        maximum_button_y = max(
+            edge_margin,
+            self.height()
+            - button_size
+            - edge_margin,
+        )
+
+        button_y = min(
+            max(
+                button_y,
+                edge_margin,
+            ),
+            maximum_button_y,
+        )
+
+        rotate_radius = (
+            rotate_handle_size / 2
+        )
+
+        rotate_center_x = min(
+            max(
+                rotate_center_x,
+                edge_margin
+                + rotate_radius,
+            ),
+            max(
+                edge_margin
+                + rotate_radius,
+                self.width()
+                - edge_margin
+                - rotate_radius,
+            ),
+        )
+
+        rotate_center_y = min(
+            max(
+                rotate_center_y,
+                edge_margin
+                + rotate_radius,
+            ),
+            max(
+                edge_margin
+                + rotate_radius,
+                self.height()
+                - edge_margin
+                - rotate_radius,
+            ),
+        )
+
+        return {
+            "button_size": button_size,
+            "copy_x": int(copy_x),
+            "copy_y": int(button_y),
+            "delete_x": int(delete_x),
+            "delete_y": int(button_y),
+            "rotate_handle_size": (
+                rotate_handle_size
+            ),
+            "rotate_center_x": (
+                rotate_center_x
+            ),
+            "rotate_center_y": (
+                rotate_center_y
+            ),
+            "line_anchor_x": (
+                line_anchor_x
+            ),
+            "line_anchor_y": (
+                line_anchor_y
+            ),
+            "place_below": place_below,
+        }
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(245, 245, 245))
@@ -421,95 +707,110 @@ class PhotoCanvas(QWidget):
                         QColor(255, 200, 0),
                     )
 
-                delete_button_size = 28
-
-                rect_center_x = x + w / 2
-                rect_center_y = y + h / 2
-
-                rotated_top_right_x, rotated_top_right_y = self.rotate_point(
-                    x + w,
-                    y,
-                    rect_center_x,
-                    rect_center_y,
-                    angle,
+                controls = (
+                    self.operation_control_geometry(
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                        x_offset,
+                        y_offset,
+                        scale_x,
+                        scale_y,
+                    )
                 )
 
-                delete_x = int(
-                    x_offset + rotated_top_right_x * scale_x
-                ) + 4
+                button_size = controls[
+                    "button_size"
+                ]
 
-                delete_y = int(
-                    y_offset + rotated_top_right_y * scale_y
-                ) - delete_button_size - 4
+                copy_x = controls[
+                    "copy_x"
+                ]
 
+                copy_y = controls[
+                    "copy_y"
+                ]
+
+                delete_x = controls[
+                    "delete_x"
+                ]
+
+                delete_y = controls[
+                    "delete_y"
+                ]
+
+                # ---------------------------------
+                # 削除ボタン
+                # ---------------------------------
                 painter.fillRect(
                     delete_x,
                     delete_y,
-                    delete_button_size,
-                    delete_button_size,
+                    button_size,
+                    button_size,
                     QColor(220, 60, 60),
                 )
 
-                painter.setPen(QColor(255, 255, 255))
+                painter.setPen(
+                    QColor(255, 255, 255)
+                )
 
                 painter.drawText(
                     delete_x,
                     delete_y,
-                    delete_button_size,
-                    delete_button_size,
+                    button_size,
+                    button_size,
                     Qt.AlignmentFlag.AlignCenter,
                     "×",
                 )
 
-                copy_button_size = 28
-
-                copy_x = delete_x - copy_button_size - 4
-                copy_y = delete_y
-
+                # ---------------------------------
+                # コピーボタン
+                # ---------------------------------
                 painter.fillRect(
                     copy_x,
                     copy_y,
-                    copy_button_size,
-                    copy_button_size,
+                    button_size,
+                    button_size,
                     QColor(70, 120, 220),
                 )
 
-                painter.setPen(QColor(255, 255, 255))
+                painter.setPen(
+                    QColor(255, 255, 255)
+                )
 
                 painter.drawText(
                     copy_x,
                     copy_y,
-                    copy_button_size,
-                    copy_button_size,
+                    button_size,
+                    button_size,
                     Qt.AlignmentFlag.AlignCenter,
                     "⧉",
                 )
 
-                rotate_handle_size = 18
+                # ---------------------------------
+                # 回転ハンドル
+                # ---------------------------------
+                rotate_handle_size = controls[
+                    "rotate_handle_size"
+                ]
 
-                angle_rad = math.radians(angle)
+                rotate_center_x = controls[
+                    "rotate_center_x"
+                ]
 
-                screen_center_x = (
-                    x_offset + (x + w / 2) * scale_x
-                )
+                rotate_center_y = controls[
+                    "rotate_center_y"
+                ]
 
-                screen_center_y = (
-                    y_offset + (y + h / 2) * scale_y
-                )
+                line_anchor_x = controls[
+                    "line_anchor_x"
+                ]
 
-                top_offset = (
-                    h * scale_y / 2 + 45
-                )
-
-                rotate_center_x = (
-                    screen_center_x
-                    + math.sin(angle_rad) * top_offset
-                )
-
-                rotate_center_y = (
-                    screen_center_y
-                    - math.cos(angle_rad) * top_offset
-                )
+                line_anchor_y = controls[
+                    "line_anchor_y"
+                ]
 
                 rotate_x = int(
                     rotate_center_x
@@ -521,21 +822,13 @@ class PhotoCanvas(QWidget):
                     - rotate_handle_size / 2
                 )
 
-                top_center_x = (
-                    screen_center_x
-                    + math.sin(angle_rad)
-                    * (h * scale_y / 2)
-                )
-
-                top_center_y = (
-                    screen_center_y
-                    - math.cos(angle_rad)
-                    * (h * scale_y / 2)
+                painter.setPen(
+                    QColor(0, 0, 0)
                 )
 
                 painter.drawLine(
-                    int(top_center_x),
-                    int(top_center_y),
+                    int(line_anchor_x),
+                    int(line_anchor_y),
                     int(rotate_center_x),
                     int(rotate_center_y),
                 )
@@ -555,21 +848,62 @@ class PhotoCanvas(QWidget):
                     Qt.BrushStyle.NoBrush
                 )
 
-                if index < len(self.rect_angles):
-                    angle = self.rect_angles[index]
+                # ---------------------------------
+                # 回転角度表示
+                # ---------------------------------
+                angle_label_width = 80
+                angle_label_height = 24
+                edge_margin = 4
 
-                    painter.setPen(
-                        QColor(255, 200, 0)
+                angle_label_x = (
+                    rotate_x + 24
+                )
+
+                # 右側に表示できない場合は
+                # 回転ハンドルの左側へ表示
+                if (
+                    angle_label_x
+                    + angle_label_width
+                    > self.width() - edge_margin
+                ):
+                    angle_label_x = (
+                        rotate_x
+                        - angle_label_width
+                        - 6
                     )
 
-                    painter.drawText(
-                        rotate_x + 24,
+                angle_label_x = max(
+                    edge_margin,
+                    min(
+                        angle_label_x,
+                        self.width()
+                        - angle_label_width
+                        - edge_margin,
+                    ),
+                )
+
+                angle_label_y = max(
+                    edge_margin,
+                    min(
                         rotate_y,
-                        80,
-                        24,
-                        Qt.AlignmentFlag.AlignVCenter,
-                        f"{angle:.1f}°",
-                    )
+                        self.height()
+                        - angle_label_height
+                        - edge_margin,
+                    ),
+                )
+
+                painter.setPen(
+                    QColor(255, 200, 0)
+                )
+
+                painter.drawText(
+                    int(angle_label_x),
+                    int(angle_label_y),
+                    angle_label_width,
+                    angle_label_height,
+                    Qt.AlignmentFlag.AlignVCenter,
+                    f"{angle:.1f}°",
+                )
 
     def mouseDoubleClickEvent(self, event):
         if self.pixmap is None:
@@ -578,14 +912,26 @@ class PhotoCanvas(QWidget):
         if self.selected_rect < 0:
             return
 
+        if self.selected_rect >= len(
+            self.rects
+        ):
+            return
+
         if event.button() != Qt.MouseButton.LeftButton:
             return
 
         info = self.image_display_info()
+
         if info is None:
             return
 
-        _, x_offset, y_offset, scale_x, scale_y = info
+        (
+            _,
+            x_offset,
+            y_offset,
+            scale_x,
+            scale_y,
+        ) = info
 
         pos = event.position()
 
@@ -595,38 +941,40 @@ class PhotoCanvas(QWidget):
 
         angle = 0.0
 
-        if self.selected_rect < len(self.rect_angles):
+        if self.selected_rect < len(
+            self.rect_angles
+        ):
             angle = self.rect_angles[
                 self.selected_rect
             ]
 
-        # 現在の角度に追従した回転ハンドル位置を計算
-        angle_rad = math.radians(angle)
-
-        screen_center_x = (
-            x_offset + (x + w / 2) * scale_x
+        controls = (
+            self.operation_control_geometry(
+                x,
+                y,
+                w,
+                h,
+                angle,
+                x_offset,
+                y_offset,
+                scale_x,
+                scale_y,
+            )
         )
 
-        screen_center_y = (
-            y_offset + (y + h / 2) * scale_y
-        )
+        rotate_handle_size = controls[
+            "rotate_handle_size"
+        ]
 
-        top_offset = (
-            h * scale_y / 2 + 45
-        )
-
-        rotate_center_x = (
-            screen_center_x
-            + math.sin(angle_rad) * top_offset
-        )
-
-        rotate_center_y = (
-            screen_center_y
-            - math.cos(angle_rad) * top_offset
-        )
-
-        rotate_handle_size = 18
         rotate_hit_margin = 14
+
+        rotate_center_x = controls[
+            "rotate_center_x"
+        ]
+
+        rotate_center_y = controls[
+            "rotate_center_y"
+        ]
 
         rotate_x = (
             rotate_center_x
@@ -638,20 +986,29 @@ class PhotoCanvas(QWidget):
             - rotate_handle_size / 2
         )
 
-        # 回転ハンドル周辺をダブルクリックした場合
         if (
             rotate_x - rotate_hit_margin
             <= pos.x()
-            <= rotate_x + rotate_handle_size + rotate_hit_margin
+            <= rotate_x
+            + rotate_handle_size
+            + rotate_hit_margin
             and
             rotate_y - rotate_hit_margin
             <= pos.y()
-            <= rotate_y + rotate_handle_size + rotate_hit_margin
+            <= rotate_y
+            + rotate_handle_size
+            + rotate_hit_margin
         ):
             self.save_undo_state()
 
-            while len(self.rect_angles) < len(self.rects):
-                self.rect_angles.append(0.0)
+            while len(
+                self.rect_angles
+            ) < len(
+                self.rects
+            ):
+                self.rect_angles.append(
+                    0.0
+                )
 
             self.rect_angles[
                 self.selected_rect
@@ -708,8 +1065,6 @@ class PhotoCanvas(QWidget):
                 self.selected_rect
             ]
 
-            button_size = 28
-
             angle = 0.0
 
             if self.selected_rect < len(
@@ -719,36 +1074,39 @@ class PhotoCanvas(QWidget):
                     self.selected_rect
                 ]
 
-            rect_center_x = x + w / 2
-            rect_center_y = y + h / 2
-
-            rotated_top_right_x, rotated_top_right_y = (
-                self.rotate_point(
-                    x + w,
+            controls = (
+                self.operation_control_geometry(
+                    x,
                     y,
-                    rect_center_x,
-                    rect_center_y,
+                    w,
+                    h,
                     angle,
+                    x_offset,
+                    y_offset,
+                    scale_x,
+                    scale_y,
                 )
             )
 
-            delete_x = int(
-                x_offset
-                + rotated_top_right_x * scale_x
-            ) + 4
+            button_size = controls[
+                "button_size"
+            ]
 
-            delete_y = int(
-                y_offset
-                + rotated_top_right_y * scale_y
-            ) - button_size - 4
+            copy_x = controls[
+                "copy_x"
+            ]
 
-            copy_x = (
-                delete_x
-                - button_size
-                - 4
-            )
+            copy_y = controls[
+                "copy_y"
+            ]
 
-            copy_y = delete_y
+            delete_x = controls[
+                "delete_x"
+            ]
+
+            delete_y = controls[
+                "delete_y"
+            ]
 
             # ---------------------------------------------
             # コピーボタン
@@ -831,46 +1189,26 @@ class PhotoCanvas(QWidget):
             # ---------------------------------------------
             # 回転ハンドル
             # ---------------------------------------------
-            rotate_handle_size = 18
+            rotate_handle_size = controls[
+                "rotate_handle_size"
+            ]
+
             rotate_hit_margin = 14
 
-            angle_rad = math.radians(
-                angle
-            )
+            rotate_center_x = controls[
+                "rotate_center_x"
+            ]
 
-            screen_center_x = (
-                x_offset
-                + (x + w / 2) * scale_x
-            )
+            rotate_center_y = controls[
+                "rotate_center_y"
+            ]
 
-            screen_center_y = (
-                y_offset
-                + (y + h / 2) * scale_y
-            )
-
-            top_offset = (
-                h * scale_y / 2
-                + 45
-            )
-
-            rotate_center_x = (
-                screen_center_x
-                + math.sin(angle_rad)
-                * top_offset
-            )
-
-            rotate_center_y = (
-                screen_center_y
-                - math.cos(angle_rad)
-                * top_offset
-            )
-
-            rotate_x = int(
+            rotate_x = (
                 rotate_center_x
                 - rotate_handle_size / 2
             )
 
-            rotate_y = int(
+            rotate_y = (
                 rotate_center_y
                 - rotate_handle_size / 2
             )
