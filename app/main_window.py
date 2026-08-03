@@ -325,6 +325,9 @@ class MainWindow(QMainWindow):
         self.current_pixmap = None
         self.detected_rects = []
 
+        self.pixmap_cache = {}
+        self.pixmap_cache_limit = 3
+
         self.current_project_path = None
 
         self.project_modified = False
@@ -2173,7 +2176,9 @@ class MainWindow(QMainWindow):
         self.current_page_index = row
 
         self.load_image(
-            self.image_paths[self.current_page_index]
+            self.image_paths[
+                self.current_page_index
+            ]
         )
 
         saved_rects = self.page_rects.get(
@@ -2181,8 +2186,13 @@ class MainWindow(QMainWindow):
             [],
         )
 
-        self.preview_area.set_rects(saved_rects)
-        self.detected_rects = list(saved_rects)
+        self.preview_area.set_rects(
+            saved_rects
+        )
+
+        self.detected_rects = list(
+            saved_rects
+        )
 
         saved_angles = self.page_angles.get(
             self.current_page_index,
@@ -2193,10 +2203,14 @@ class MainWindow(QMainWindow):
             saved_angles
         )
 
-        while len(self.preview_area.rect_angles) < len(
+        while len(
+            self.preview_area.rect_angles
+        ) < len(
             self.preview_area.rects
         ):
-            self.preview_area.rect_angles.append(0.0)
+            self.preview_area.rect_angles.append(
+                0.0
+            )
 
         self.preview_area.update()
 
@@ -2204,7 +2218,9 @@ class MainWindow(QMainWindow):
             f"検出数: {len(saved_rects)}"
         )
 
-        self.delete_page_button.setEnabled(True)
+        self.delete_page_button.setEnabled(
+            True
+        )
 
         self.update_crop_preview()
         self.update_page_label()
@@ -2695,49 +2711,193 @@ class MainWindow(QMainWindow):
 
         self.update_page_label()
 
-    def load_image(self, file_path):
-        path = Path(file_path)
-
-        print(f"load_image(): {path}")
-        print(f"exists: {path.exists()}")
-
-        if path.suffix.lower() not in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
-            self.preview_area.setText("対応していないファイル形式です。")
-            return
-
-        try:
-            image = Image.open(path).convert("RGB")
-        except Exception as e:
-            print("=" * 60)
-            traceback.print_exc()
-            print("=" * 60)
-            return
-
-        w, h = image.size
-        data = image.tobytes("raw", "RGB")
-
-        qimage = QImage(
-            data,
-            w,
-            h,
-            w * 3,
-            QImage.Format.Format_RGB888,
+    def get_cached_pixmap(
+        self,
+        file_path,
+    ):
+        cache_key = str(
+            Path(file_path)
         )
 
-        pixmap = QPixmap.fromImage(qimage)
+        pixmap = self.pixmap_cache.get(
+            cache_key
+        )
 
-        self.current_image_path = str(path)
+        if pixmap is None:
+            return None
+
+        # 最近使った画像として末尾へ移動
+        self.pixmap_cache.pop(
+            cache_key
+        )
+
+        self.pixmap_cache[
+            cache_key
+        ] = pixmap
+
+        return pixmap
+
+    def store_pixmap_cache(
+        self,
+        file_path,
+        pixmap,
+    ):
+        if pixmap is None:
+            return
+
+        if pixmap.isNull():
+            return
+
+        cache_key = str(
+            Path(file_path)
+        )
+
+        if cache_key in self.pixmap_cache:
+            self.pixmap_cache.pop(
+                cache_key
+            )
+
+        self.pixmap_cache[
+            cache_key
+        ] = pixmap
+
+        while (
+            len(self.pixmap_cache)
+            > self.pixmap_cache_limit
+        ):
+            oldest_key = next(
+                iter(self.pixmap_cache)
+            )
+
+            self.pixmap_cache.pop(
+                oldest_key
+            )
+
+    def get_cached_pixmap(
+        self,
+        file_path,
+    ):
+        cache_key = str(
+            Path(file_path)
+        )
+
+        pixmap = self.pixmap_cache.get(
+            cache_key
+        )
+
+        if pixmap is None:
+            return None
+
+        # 最近使った画像として末尾へ移動
+        self.pixmap_cache.pop(
+            cache_key
+        )
+
+        self.pixmap_cache[
+            cache_key
+        ] = pixmap
+
+        return pixmap
+
+    def load_image(self, file_path):
+        path = Path(
+            file_path
+        )
+
+        if path.suffix.lower() not in [
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".tif",
+            ".tiff",
+        ]:
+            self.preview_area.setText(
+                "対応していないファイル形式です。"
+            )
+            return
+
+        # ---------------------------------
+        # キャッシュを確認
+        # ---------------------------------
+        pixmap = self.get_cached_pixmap(
+            path
+        )
+
+        if pixmap is None:
+            try:
+                with Image.open(
+                    path
+                ) as source_image:
+                    image = source_image.convert(
+                        "RGB"
+                    )
+
+                    w, h = image.size
+
+                    data = image.tobytes(
+                        "raw",
+                        "RGB",
+                    )
+
+                    qimage = QImage(
+                        data,
+                        w,
+                        h,
+                        w * 3,
+                        QImage.Format.Format_RGB888,
+                    )
+
+                    pixmap = QPixmap.fromImage(
+                        qimage
+                    )
+
+            except Exception:
+                print(
+                    "=" * 60
+                )
+
+                traceback.print_exc()
+
+                print(
+                    "=" * 60
+                )
+                return
+
+            self.store_pixmap_cache(
+                path,
+                pixmap,
+            )
+
+        self.current_image_path = str(
+            path
+        )
+
         self.current_pixmap = pixmap
         self.detected_rects = []
 
-        self.preview_area.set_image(pixmap)
-        self.preview_area.set_rects([])
+        self.preview_area.set_image(
+            pixmap
+        )
 
-        self.status_label.setText("検出数: 0")
+        self.preview_area.set_rects(
+            []
+        )
 
-        if hasattr(self, "add_rect_button"):
-            self.add_rect_button.setChecked(False)
-            self.preview_area.set_add_mode(False)
+        self.status_label.setText(
+            "検出数: 0"
+        )
+
+        if hasattr(
+            self,
+            "add_rect_button",
+        ):
+            self.add_rect_button.setChecked(
+                False
+            )
+
+            self.preview_area.set_add_mode(
+                False
+            )
 
     def show_image(self):
         if self.current_pixmap is None:
