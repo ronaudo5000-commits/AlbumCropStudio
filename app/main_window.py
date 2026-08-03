@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QVBoxLayout,
     QHBoxLayout,
+    QSplitter,
     QWidget,
     QGroupBox,
     QListWidget,
@@ -180,7 +181,13 @@ class MainWindow(QMainWindow):
 
         main_layout = QVBoxLayout(central)
 
-        content_layout = QHBoxLayout()
+        self.content_splitter = QSplitter(
+            Qt.Orientation.Horizontal
+        )
+
+        self.content_splitter.setChildrenCollapsible(
+            False
+        )
 
         self.page_list = PageListWidget()
         self.page_list.setStyleSheet("""
@@ -200,8 +207,7 @@ class MainWindow(QMainWindow):
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.page_list.delete_callback = self.delete_current_page
-        self.page_list.setMinimumWidth(145)
-        self.page_list.setMaximumWidth(165)
+        self.page_list.setMinimumWidth(120)
 
         self.page_list.setViewMode(
             QListView.ViewMode.IconMode
@@ -312,8 +318,7 @@ class MainWindow(QMainWindow):
 
         # 切り抜き後プレビュー欄
         self.crop_preview_box = QGroupBox("切り抜きプレビュー")
-        self.crop_preview_box.setMinimumWidth(180)
-        self.crop_preview_box.setMaximumWidth(260)
+        self.crop_preview_box.setMinimumWidth(140)
 
         crop_preview_layout = QVBoxLayout()
 
@@ -357,11 +362,45 @@ class MainWindow(QMainWindow):
         preview_container = QWidget()
         preview_container.setLayout(preview_layout)
 
-        content_layout.addWidget(page_list_container)
-        content_layout.addWidget(preview_container, 1)
-        content_layout.addWidget(self.crop_preview_box)
+        self.content_splitter.addWidget(
+            page_list_container
+        )
 
-        main_layout.addLayout(content_layout)
+        self.content_splitter.addWidget(
+            preview_container
+        )
+
+        self.content_splitter.addWidget(
+            self.crop_preview_box
+        )
+
+        # 中央の編集キャンバスを優先して伸縮させる
+        self.content_splitter.setStretchFactor(
+            0,
+            0,
+        )
+
+        self.content_splitter.setStretchFactor(
+            1,
+            1,
+        )
+
+        self.content_splitter.setStretchFactor(
+            2,
+            0,
+        )
+
+        # 起動時のおおよその初期幅
+        self.content_splitter.setSizes([
+            165,
+            650,
+            220,
+        ])
+
+        main_layout.addWidget(
+            self.content_splitter,
+            1,
+        )
 
         settings_box = QGroupBox("出力設定")
         settings_layout = QHBoxLayout()
@@ -2725,7 +2764,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             file_path = event.mimeData().urls()[0].toLocalFile()
