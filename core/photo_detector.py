@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 DEBUG = False
-DEBUG_SAVE_IMAGE = True
+DEBUG_SAVE_IMAGE = False
 
 SMALL_CANDIDATE_MIN_RATIO = 0.004
 SMALL_CANDIDATE_MAX_RATIO = 0.008
@@ -278,79 +278,101 @@ def detect_photos(image_path):
     if image is None:
         return []
 
-    width, height, image_area = get_image_info(image)
+    width, height, image_area = get_image_info(
+        image
+    )
 
-    gray = create_gray(image)
+    gray = create_gray(
+        image
+    )
 
-    edges = create_edges(gray)
+    edges = create_edges(
+        gray
+    )
 
-    # edges = cv2.morphologyEx(
-    #     edges,
-    #     cv2.MORPH_CLOSE,
-    #     kernel_close,
-    #     iterations=1,
-    # )
+    mask = create_mask(
+        gray
+    )
 
-    # median_brightness = int(cv2.medianBlur(gray, 51).mean())
+    small_photo_mask = create_small_photo_mask(
+        gray
+    )
 
-    # if median_brightness < 100:
-    #     _, mask = cv2.threshold(
-    #         gray,
-    #         60,
-    #         255,
-    #         cv2.THRESH_BINARY
-    #     )
-    # else:
-    
-    mask = create_mask(gray)
-    small_photo_mask = create_small_photo_mask(gray)
-
-    test_mask = None
-
-    if DEBUG_SAVE_IMAGE:
-        small_photo_mask = create_small_photo_mask(gray)
-
+    # ---------------------------------
+    # デバッグ画像の作成・保存
+    # ---------------------------------
     if DEBUG_SAVE_IMAGE:
         output_dir = (
             Path(__file__).resolve().parent.parent
             / "tests"
             / "output"
         )
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        image_name = Path(image_path).stem
+        output_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-        small_photo_lines = create_small_photo_line_debug(
-            image,
+        image_name = Path(
+            image_path
+        ).stem
+
+        small_photo_lines = (
+            create_small_photo_line_debug(
+                image,
+                edges,
+            )
+        )
+
+        cv2.imwrite(
+            str(
+                output_dir
+                / (
+                    f"{image_name}_"
+                    "small_photo_lines.png"
+                )
+            ),
+            small_photo_lines,
+        )
+
+        cv2.imwrite(
+            str(
+                output_dir
+                / f"{image_name}_edges.png"
+            ),
             edges,
         )
 
         cv2.imwrite(
             str(
                 output_dir
-                / f"{image_name}_small_photo_lines.png"
+                / f"{image_name}_mask.png"
             ),
-            small_photo_lines,
+            mask,
         )
 
         cv2.imwrite(
-            str(output_dir / f"{image_name}_edges.png"),
-            edges,
-        )
-        cv2.imwrite(
-            str(output_dir / f"{image_name}_mask.png"),
-            mask,
-        )
-        cv2.imwrite(
-            str(output_dir / f"{image_name}_mask_test.png"),
+            str(
+                output_dir
+                / f"{image_name}_mask_test.png"
+            ),
             small_photo_mask,
         )
 
-    contours = find_all_contours(mask, edges)
+        cv2.imwrite(
+            str(
+                output_dir
+                / (
+                    f"{image_name}_"
+                    "small_photo_mask.png"
+                )
+            ),
+            small_photo_mask,
+        )
 
-    cv2.imwrite(
-        str(output_dir / f"{image_name}_small_photo_mask.png"),
-        small_photo_mask,
+    contours = find_all_contours(
+        mask,
+        edges,
     )
 
     candidates = build_candidates(
@@ -362,7 +384,9 @@ def detect_photos(image_path):
         height,
     )
 
-    candidates = postprocess_candidates(candidates)
+    candidates = postprocess_candidates(
+        candidates
+    )
 
     return candidates
 
