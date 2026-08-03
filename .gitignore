@@ -21,6 +21,7 @@ logs/
 # Build and distribution files
 build/
 dist/
+*.zip
 *.egg-info/
 
 # Editor settings
