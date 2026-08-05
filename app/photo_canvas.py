@@ -40,6 +40,8 @@ class PhotoCanvas(QWidget):
         self.resize_handle_size = 10
         self.resize_start_rect = None
 
+        self.aspect_ratio_mode = "free"
+
         self.rotating = False
 
         self.setMinimumHeight(400)
@@ -202,6 +204,35 @@ class PhotoCanvas(QWidget):
         self.adding_rect = False
         self.selected_rect = -1
         self.update()
+
+    def get_active_aspect_ratio(
+        self,
+        start_w,
+        start_h,
+    ):
+        if (
+            start_w <= 0
+            or start_h <= 0
+        ):
+            return None
+
+        aspect_ratios = {
+            "16:9": 16 / 9,
+            "9:16": 9 / 16,
+            "4:3": 4 / 3,
+            "3:2": 3 / 2,
+            "1:1": 1.0,
+        }
+
+        if self.aspect_ratio_mode == "free":
+            return None
+
+        if self.aspect_ratio_mode == "current":
+            return start_w / start_h
+
+        return aspect_ratios.get(
+            self.aspect_ratio_mode
+        )
 
     def image_display_info(self):
         if self.pixmap is None:
