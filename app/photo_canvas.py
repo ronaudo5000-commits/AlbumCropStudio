@@ -272,6 +272,307 @@ class PhotoCanvas(QWidget):
 
         return rotated_x, rotated_y
 
+    def aspect_locked_corner_rect(
+        self,
+        handle_name,
+        mouse_x,
+        mouse_y,
+        start_x,
+        start_y,
+        start_w,
+        start_h,
+    ):
+        if (
+            start_w <= 0
+            or start_h <= 0
+        ):
+            return None
+
+        aspect_ratio = (
+            start_w / start_h
+        )
+
+        if handle_name == "top_left":
+            fixed_x = start_x + start_w
+            fixed_y = start_y + start_h
+
+            if (
+                mouse_x >= fixed_x
+                or mouse_y >= fixed_y
+            ):
+                return None
+
+            raw_w = fixed_x - mouse_x
+            raw_h = fixed_y - mouse_y
+
+        elif handle_name == "top_right":
+            fixed_x = start_x
+            fixed_y = start_y + start_h
+
+            if (
+                mouse_x <= fixed_x
+                or mouse_y >= fixed_y
+            ):
+                return None
+
+            raw_w = mouse_x - fixed_x
+            raw_h = fixed_y - mouse_y
+
+        elif handle_name == "bottom_right":
+            fixed_x = start_x
+            fixed_y = start_y
+
+            if (
+                mouse_x <= fixed_x
+                or mouse_y <= fixed_y
+            ):
+                return None
+
+            raw_w = mouse_x - fixed_x
+            raw_h = mouse_y - fixed_y
+
+        elif handle_name == "bottom_left":
+            fixed_x = start_x + start_w
+            fixed_y = start_y
+
+            if (
+                mouse_x >= fixed_x
+                or mouse_y <= fixed_y
+            ):
+                return None
+
+            raw_w = fixed_x - mouse_x
+            raw_h = mouse_y - fixed_y
+
+        else:
+            return None
+
+        if (
+            raw_w <= 0
+            or raw_h <= 0
+        ):
+            return None
+
+        if (
+            raw_w / raw_h
+            >= aspect_ratio
+        ):
+            new_w = raw_w
+            new_h = (
+                new_w / aspect_ratio
+            )
+        else:
+            new_h = raw_h
+            new_w = (
+                new_h * aspect_ratio
+            )
+
+        if handle_name == "top_left":
+            left = fixed_x - new_w
+            top = fixed_y - new_h
+            right = fixed_x
+            bottom = fixed_y
+
+        elif handle_name == "top_right":
+            left = fixed_x
+            top = fixed_y - new_h
+            right = fixed_x + new_w
+            bottom = fixed_y
+
+        elif handle_name == "bottom_right":
+            left = fixed_x
+            top = fixed_y
+            right = fixed_x + new_w
+            bottom = fixed_y + new_h
+
+        else:
+            left = fixed_x - new_w
+            top = fixed_y
+            right = fixed_x
+            bottom = fixed_y + new_h
+
+        return (
+            left,
+            top,
+            right,
+            bottom,
+        )
+
+    def aspect_locked_edge_rect(
+        self,
+        handle_name,
+        mouse_x,
+        mouse_y,
+        start_x,
+        start_y,
+        start_w,
+        start_h,
+        angle,
+    ):
+        if (
+            start_w <= 0
+            or start_h <= 0
+        ):
+            return None
+
+        aspect_ratio = (
+            start_w / start_h
+        )
+
+        start_center_x = (
+            start_x + start_w / 2
+        )
+
+        start_center_y = (
+            start_y + start_h / 2
+        )
+
+        angle_rad = math.radians(
+            angle
+        )
+
+        if handle_name == "right":
+            new_w = (
+                mouse_x - start_x
+            )
+
+            if new_w <= 0:
+                return None
+
+            new_h = (
+                new_w / aspect_ratio
+            )
+
+            center_shift = (
+                new_w - start_w
+            ) / 2
+
+            new_center_x = (
+                start_center_x
+                + math.cos(angle_rad)
+                * center_shift
+            )
+
+            new_center_y = (
+                start_center_y
+                + math.sin(angle_rad)
+                * center_shift
+            )
+
+        elif handle_name == "left":
+            new_w = (
+                start_x
+                + start_w
+                - mouse_x
+            )
+
+            if new_w <= 0:
+                return None
+
+            new_h = (
+                new_w / aspect_ratio
+            )
+
+            center_shift = (
+                new_w - start_w
+            ) / 2
+
+            new_center_x = (
+                start_center_x
+                - math.cos(angle_rad)
+                * center_shift
+            )
+
+            new_center_y = (
+                start_center_y
+                - math.sin(angle_rad)
+                * center_shift
+            )
+
+        elif handle_name == "top":
+            new_h = (
+                start_y
+                + start_h
+                - mouse_y
+            )
+
+            if new_h <= 0:
+                return None
+
+            new_w = (
+                new_h * aspect_ratio
+            )
+
+            center_shift = (
+                new_h - start_h
+            ) / 2
+
+            new_center_x = (
+                start_center_x
+                + math.sin(angle_rad)
+                * center_shift
+            )
+
+            new_center_y = (
+                start_center_y
+                - math.cos(angle_rad)
+                * center_shift
+            )
+
+        elif handle_name == "bottom":
+            new_h = (
+                mouse_y - start_y
+            )
+
+            if new_h <= 0:
+                return None
+
+            new_w = (
+                new_h * aspect_ratio
+            )
+
+            center_shift = (
+                new_h - start_h
+            ) / 2
+
+            new_center_x = (
+                start_center_x
+                - math.sin(angle_rad)
+                * center_shift
+            )
+
+            new_center_y = (
+                start_center_y
+                + math.cos(angle_rad)
+                * center_shift
+            )
+
+        else:
+            return None
+
+        left = (
+            new_center_x - new_w / 2
+        )
+
+        top = (
+            new_center_y - new_h / 2
+        )
+
+        right = (
+            new_center_x + new_w / 2
+        )
+
+        bottom = (
+            new_center_y + new_h / 2
+        )
+
+        return (
+            left,
+            top,
+            right,
+            bottom,
+        )
+
     def operation_control_geometry(
         self,
         x,
@@ -1526,6 +1827,11 @@ class PhotoCanvas(QWidget):
                     x, y, w, h
                 )
 
+            keep_aspect_ratio = bool(
+                event.modifiers()
+                & Qt.KeyboardModifier.ShiftModifier
+            )
+
             left = x
             top = y
             right = x + w
@@ -1763,15 +2069,96 @@ class PhotoCanvas(QWidget):
                 right = start_x + start_w
                 bottom = local_mouse_y
 
+            corner_handles = {
+                "top_left",
+                "top_right",
+                "bottom_right",
+                "bottom_left",
+            }
+
+            edge_handles = {
+                "top",
+                "right",
+                "bottom",
+                "left",
+            }
+
+            if (
+                keep_aspect_ratio
+                and self.resize_handle
+                in corner_handles
+            ):
+                locked_rect = (
+                    self.aspect_locked_corner_rect(
+                        self.resize_handle,
+                        local_mouse_x,
+                        local_mouse_y,
+                        start_x,
+                        start_y,
+                        start_w,
+                        start_h,
+                    )
+                )
+
+                if locked_rect is None:
+                    return
+
+                (
+                    left,
+                    top,
+                    right,
+                    bottom,
+                ) = locked_rect
+
             if right - left < 5:
                 return
+
+            if (
+                keep_aspect_ratio
+                and self.resize_handle
+                in edge_handles
+            ):
+                angle = 0.0
+
+                if self.selected_rect < len(
+                    self.rect_angles
+                ):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                locked_rect = (
+                    self.aspect_locked_edge_rect(
+                        self.resize_handle,
+                        local_mouse_x,
+                        local_mouse_y,
+                        start_x,
+                        start_y,
+                        start_w,
+                        start_h,
+                        angle,
+                    )
+                )
+
+                if locked_rect is None:
+                    return
+
+                (
+                    left,
+                    top,
+                    right,
+                    bottom,
+                ) = locked_rect
 
             if bottom - top < 5:
                 return
             
             # 回転枠の右中央ハンドルを動かした場合、
             # ドラッグ開始時の左辺を固定して中心位置を補正する
-            if self.resize_handle == "right":
+            if (
+                self.resize_handle == "right"
+                and not keep_aspect_ratio
+            ):
                 old_center_x = (
                     start_x + start_w / 2
                 )
@@ -1815,7 +2202,10 @@ class PhotoCanvas(QWidget):
 
             # 回転枠の左中央ハンドルを動かした場合、
             # ドラッグ開始時の右辺を固定して中心位置を補正する
-            if self.resize_handle == "left":
+            if (
+                self.resize_handle == "left"
+                and not keep_aspect_ratio
+            ):
                 old_center_x = (
                     start_x + start_w / 2
                 )
@@ -1859,7 +2249,10 @@ class PhotoCanvas(QWidget):
 
             # 回転枠の上中央ハンドルを動かした場合、
             # ドラッグ開始時の下辺を固定して中心位置を補正する
-            if self.resize_handle == "top":
+            if (
+                self.resize_handle == "top"
+                and not keep_aspect_ratio
+            ):
                 old_center_x = (
                     start_x + start_w / 2
                 )
@@ -1905,7 +2298,10 @@ class PhotoCanvas(QWidget):
 
             # 回転枠の下中央ハンドルを動かした場合、
             # ドラッグ開始時の上辺を固定して中心位置を補正する
-            if self.resize_handle == "bottom":
+            if (
+                self.resize_handle == "bottom"
+                and not keep_aspect_ratio
+            ):
                 old_center_x = (
                     start_x + start_w / 2
                 )
