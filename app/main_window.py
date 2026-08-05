@@ -1168,6 +1168,11 @@ class MainWindow(QMainWindow):
 
         self.progress_bar.setVisible(False)
         self.save_button.setEnabled(True)
+
+        self.save_button.setText(
+            self.tr("切り抜き")
+        )
+
         self.export_running = False
 
     def export_failed(self, error_message):
@@ -1182,6 +1187,11 @@ class MainWindow(QMainWindow):
 
         self.progress_bar.setVisible(False)
         self.save_button.setEnabled(True)
+
+        self.save_button.setText(
+            self.tr("切り抜き")
+        )
+
         self.export_running = False
 
         QMessageBox.critical(
@@ -3167,6 +3177,11 @@ class MainWindow(QMainWindow):
         )
     def save_crops(self):
         self.save_button.setEnabled(False)
+
+        self.save_button.setText(
+            self.tr("切り抜き中…")
+        )
+
         self.status_label.setText(
             "✂️ 切り抜き中..."
         )
