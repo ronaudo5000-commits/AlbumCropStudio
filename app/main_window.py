@@ -1052,6 +1052,61 @@ class MainWindow(QMainWindow):
 
         edit_layout.addWidget(self.generate_rects_button)
 
+        self.aspect_ratio_combo = QComboBox()
+
+        self.aspect_ratio_combo.addItem(
+            self.tr("自由変形"),
+            "free",
+        )
+
+        self.aspect_ratio_combo.addItem(
+            self.tr("現在の比率"),
+            "current",
+        )
+
+        self.aspect_ratio_combo.addItem(
+            "16:9",
+            "16:9",
+        )
+
+        self.aspect_ratio_combo.addItem(
+            "9:16",
+            "9:16",
+        )
+
+        self.aspect_ratio_combo.addItem(
+            "4:3",
+            "4:3",
+        )
+
+        self.aspect_ratio_combo.addItem(
+            "3:2",
+            "3:2",
+        )
+
+        self.aspect_ratio_combo.addItem(
+            "1:1",
+            "1:1",
+        )
+
+        self.aspect_ratio_combo.setMinimumWidth(
+            110
+        )
+
+        self.aspect_ratio_combo.setToolTip(
+            self.tr(
+                "枠をリサイズするときの縦横比を選びます"
+            )
+        )
+
+        self.aspect_ratio_combo.currentIndexChanged.connect(
+            self.apply_aspect_ratio_mode
+        )
+
+        edit_layout.addWidget(
+            self.aspect_ratio_combo
+        )
+
         edit_group.setLayout(edit_layout)
 
 
@@ -1369,6 +1424,21 @@ class MainWindow(QMainWindow):
 
     def mark_project_modified(self, *args):
         self.project_modified = True
+
+    def apply_aspect_ratio_mode(
+        self,
+        index,
+    ):
+        mode = self.aspect_ratio_combo.itemData(
+            index
+        )
+
+        if mode is None:
+            mode = "free"
+
+        self.preview_area.aspect_ratio_mode = str(
+            mode
+        )
 
     def apply_dpi_preset(self, text):
         if text == "プリセット":

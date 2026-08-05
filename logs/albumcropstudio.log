@@ -17,3 +17,13 @@ Traceback (most recent call last):
     self.page_list.delete_callback = self.delete_current_page
                                      ^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'MainWindow' object has no attribute 'delete_current_page'
+2026-08-05 16:44:02,401
+ERROR
+Unexpected application error
+Traceback (most recent call last):
+  File "C:\Users\fukay\Documents\GitHub\AlbumCropStudio\main.py", line 17, in main
+    window = MainWindow()
+  File "C:\Users\fukay\Documents\GitHub\AlbumCropStudio\app\main_window.py", line 965, in __init__
+    self.aspect_ratio_combo.setToolTip(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MainWindow' object has no attribute 'aspect_ratio_combo'
