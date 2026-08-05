@@ -21,15 +21,20 @@ records.
 - Automatically detect photographs on scanned album pages
 - Create crop frames manually
 - Move, resize, copy, rotate, and delete crop frames
+- Hold Shift while resizing to preserve the frame's aspect ratio
 - Undo and redo editing operations
 - Work with multiple pages
+- Select which pages should be included in export
 - Save and reopen project files
+- Preserve page export selections in project files
 - Configure output DPI
 - Configure crop margins in millimeters
 - Configure JPEG quality
-- Export cropped photographs as JPEG files
+- Export selected pages as JPEG files
+- Preserve original page numbers in exported filenames
 - Preserve crop frames after export
 - Confirm before overwriting existing files
+- Cache recently viewed pages for faster page switching
 
 ## Supported Platforms
 
@@ -91,9 +96,11 @@ python main.py
 1. Open an image or PDF document.
 2. Run automatic photo detection, or create crop frames manually.
 3. Adjust the position, size, and rotation of each frame.
-4. Open Settings to configure DPI, margin, and JPEG quality.
-5. Choose an output folder.
-6. Export the cropped photographs.
+4. Hold Shift while resizing when you want to preserve the current aspect ratio.
+5. Select the pages that should be included in export.
+6. Configure DPI, margin, and JPEG quality from the main window or Settings.
+7. Choose an output folder.
+8. Export the cropped photographs.
 
 ## Project Files
 
@@ -105,9 +112,11 @@ A saved project can contain information such as:
 - Crop-frame positions
 - Crop-frame sizes
 - Rotation angles
+- Page export selections
 - Output settings
 
-Keep the original image and PDF files available when reopening a project.
+Keep the original image and PDF files available in their original locations
+when reopening a project.
 
 ## Beta Notice
 
@@ -129,6 +138,7 @@ layout, image quality, background, shadows, decorations, or damaged pages.
 - Overlapping photographs may require manual frame creation
 - Decorative borders and page backgrounds may affect detection
 - Very large images and PDFs may require significant memory
+- Only a limited number of recently viewed pages are cached in memory
 - macOS has not yet received the same level of testing as Windows 11
 - The interface is currently primarily intended for Japanese-language use
 - Advanced metadata and geolocation features are not included in this beta
