@@ -1206,6 +1206,12 @@ class MainWindow(QMainWindow):
             enabled
         )
 
+        self.detect_button.setText(
+            self.tr("写真を検出")
+            if enabled
+            else self.tr("検出中…")
+        )
+
         self.open_button.setEnabled(
             enabled
         )
