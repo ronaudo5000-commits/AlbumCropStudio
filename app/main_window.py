@@ -1103,6 +1103,10 @@ class MainWindow(QMainWindow):
             self.apply_aspect_ratio_mode
         )
 
+        self.preview_area.selected_rect_changed.connect(
+            self.sync_aspect_ratio_to_selected_rect
+        )
+
         edit_layout.addWidget(
             self.aspect_ratio_combo
         )
@@ -1424,6 +1428,67 @@ class MainWindow(QMainWindow):
 
     def mark_project_modified(self, *args):
         self.project_modified = True
+
+    def sync_aspect_ratio_to_selected_rect(
+        self,
+        rect_index,
+    ):
+        if (
+            rect_index < 0
+            or rect_index
+            >= len(self.preview_area.rects)
+        ):
+            return
+
+        _, _, width, height = (
+            self.preview_area.rects[
+                rect_index
+            ]
+        )
+
+        if width <= 0 or height <= 0:
+            return
+
+        current_ratio = (
+            width / height
+        )
+
+        preset_ratios = {
+            "16:9": 16 / 9,
+            "9:16": 9 / 16,
+            "4:3": 4 / 3,
+            "3:2": 3 / 2,
+            "1:1": 1.0,
+        }
+
+        detected_mode = "current"
+        tolerance = 0.02
+
+        for mode, preset_ratio in (
+            preset_ratios.items()
+        ):
+            if (
+                abs(
+                    current_ratio
+                    - preset_ratio
+                )
+                <= tolerance
+            ):
+                detected_mode = mode
+                break
+
+        combo_index = (
+            self.aspect_ratio_combo.findData(
+                detected_mode
+            )
+        )
+
+        if combo_index < 0:
+            return
+
+        self.aspect_ratio_combo.setCurrentIndex(
+            combo_index
+        )
 
     def apply_aspect_ratio_mode(
         self,

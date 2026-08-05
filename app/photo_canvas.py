@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QWidget
 class PhotoCanvas(QWidget):
     zoom_changed = Signal(float)
     rects_changed = Signal()
+    selected_rect_changed = Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -312,6 +313,7 @@ class PhotoCanvas(QWidget):
         start_y,
         start_w,
         start_h,
+        aspect_ratio=None,
     ):
         if (
             start_w <= 0
@@ -319,9 +321,13 @@ class PhotoCanvas(QWidget):
         ):
             return None
 
-        aspect_ratio = (
-            start_w / start_h
-        )
+        if aspect_ratio is None:
+            aspect_ratio = (
+                start_w / start_h
+            )
+
+        if aspect_ratio <= 0:
+            return None
 
         if handle_name == "top_left":
             fixed_x = start_x + start_w
@@ -1720,6 +1726,10 @@ class PhotoCanvas(QWidget):
             if inside_rect or inside_label:
                 self.selected_rect = index
 
+                self.selected_rect_changed.emit(
+                    self.selected_rect
+                )
+
                 self.dragging = True
                 self.drag_undo_saved = False
                 self.adding_rect = False
@@ -1858,10 +1868,28 @@ class PhotoCanvas(QWidget):
                     x, y, w, h
                 )
 
-            keep_aspect_ratio = bool(
+            shift_pressed = bool(
                 event.modifiers()
                 & Qt.KeyboardModifier.ShiftModifier
             )
+
+            keep_aspect_ratio = (
+                shift_pressed
+            )
+
+            if shift_pressed:
+                corner_aspect_ratio = (
+                    start_w / start_h
+                    if start_h > 0
+                    else None
+                )
+            else:
+                corner_aspect_ratio = (
+                    self.get_active_aspect_ratio(
+                        start_w,
+                        start_h,
+                    )
+                )
 
             left = x
             top = y
@@ -2115,7 +2143,7 @@ class PhotoCanvas(QWidget):
             }
 
             if (
-                keep_aspect_ratio
+                corner_aspect_ratio is not None
                 and self.resize_handle
                 in corner_handles
             ):
@@ -2128,6 +2156,7 @@ class PhotoCanvas(QWidget):
                         start_y,
                         start_w,
                         start_h,
+                        corner_aspect_ratio,
                     )
                 )
 
@@ -2606,21 +2635,71 @@ class PhotoCanvas(QWidget):
         
         if self.adding_rect:
             info = self.image_display_info()
+
             if info is None:
                 return
 
-            _, x_offset, y_offset, scale_x, scale_y = info
+            (
+                _,
+                x_offset,
+                y_offset,
+                scale_x,
+                scale_y,
+            ) = info
+
             pos = event.position()
 
-            image_x = (pos.x() - x_offset) / scale_x
-            image_y = (pos.y() - y_offset) / scale_y
+            image_x = (
+                pos.x() - x_offset
+            ) / scale_x
 
-            x = min(self.add_start_x, image_x)
-            y = min(self.add_start_y, image_y)
-            w = abs(image_x - self.add_start_x)
-            h = abs(image_y - self.add_start_y)
+            image_y = (
+                pos.y() - y_offset
+            ) / scale_y
 
-            self.rects[self.selected_rect] = (
+            raw_w = abs(
+                image_x - self.add_start_x
+            )
+
+            raw_h = abs(
+                image_y - self.add_start_y
+            )
+
+            aspect_ratio = (
+                self.get_active_aspect_ratio(
+                    raw_w,
+                    raw_h,
+                )
+            )
+
+            if aspect_ratio is not None:
+                if (
+                    raw_h > 0
+                    and raw_w / raw_h
+                    >= aspect_ratio
+                ):
+                    w = raw_w
+                    h = w / aspect_ratio
+                else:
+                    h = raw_h
+                    w = h * aspect_ratio
+            else:
+                w = raw_w
+                h = raw_h
+
+            if image_x >= self.add_start_x:
+                x = self.add_start_x
+            else:
+                x = self.add_start_x - w
+
+            if image_y >= self.add_start_y:
+                y = self.add_start_y
+            else:
+                y = self.add_start_y - h
+
+            self.rects[
+                self.selected_rect
+            ] = (
                 int(x),
                 int(y),
                 int(w),
@@ -2734,6 +2813,16 @@ class PhotoCanvas(QWidget):
 
         if was_editing_rect:
             self.rects_changed.emit()
+
+        if (
+            was_adding_rect
+            and self.selected_rect >= 0
+            and self.selected_rect
+            < len(self.rects)
+        ):
+            self.selected_rect_changed.emit(
+                self.selected_rect
+            )
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete:
