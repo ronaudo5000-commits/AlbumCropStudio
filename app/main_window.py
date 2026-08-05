@@ -336,6 +336,7 @@ class MainWindow(QMainWindow):
         self.current_page_index = -1
         self.page_rects = {}
         self.page_angles = {}
+        self.page_aspect_modes = {}
         self.deleted_pages_stack = []
 
         self.page_export_enabled = []
@@ -1060,7 +1061,7 @@ class MainWindow(QMainWindow):
         )
 
         self.aspect_ratio_combo.addItem(
-            self.tr("現在の比率"),
+            self.tr("縦横比を固定"),
             "current",
         )
 
@@ -1222,6 +1223,8 @@ class MainWindow(QMainWindow):
                 saved_rects
             )
 
+            self.restore_current_page_aspect_modes()
+
             self.preview_area.update()
             self.update_crop_preview()
 
@@ -1369,6 +1372,11 @@ class MainWindow(QMainWindow):
             for _ in detected_rects
         ]
 
+        self.preview_area.rect_aspect_modes = [
+            "free"
+            for _ in detected_rects
+        ]
+
         self.save_current_page_rects()
         self.update_crop_preview()
 
@@ -1440,46 +1448,36 @@ class MainWindow(QMainWindow):
         ):
             return
 
-        _, _, width, height = (
-            self.preview_area.rects[
-                rect_index
-            ]
-        )
+        selected_mode = "free"
 
-        if width <= 0 or height <= 0:
-            return
+        if (
+            rect_index
+            < len(
+                self.preview_area.rect_aspect_modes
+            )
+        ):
+            selected_mode = str(
+                self.preview_area.rect_aspect_modes[
+                    rect_index
+                ]
+            )
 
-        current_ratio = (
-            width / height
-        )
-
-        preset_ratios = {
-            "16:9": 16 / 9,
-            "9:16": 9 / 16,
-            "4:3": 4 / 3,
-            "3:2": 3 / 2,
-            "1:1": 1.0,
+        valid_modes = {
+            "free",
+            "current",
+            "16:9",
+            "9:16",
+            "4:3",
+            "3:2",
+            "1:1",
         }
 
-        detected_mode = "current"
-        tolerance = 0.02
-
-        for mode, preset_ratio in (
-            preset_ratios.items()
-        ):
-            if (
-                abs(
-                    current_ratio
-                    - preset_ratio
-                )
-                <= tolerance
-            ):
-                detected_mode = mode
-                break
+        if selected_mode not in valid_modes:
+            selected_mode = "free"
 
         combo_index = (
             self.aspect_ratio_combo.findData(
-                detected_mode
+                selected_mode
             )
         )
 
@@ -1835,12 +1833,22 @@ class MainWindow(QMainWindow):
         if self.current_page_index < 0:
             return
 
-        self.page_rects[self.current_page_index] = list(
+        self.page_rects[
+            self.current_page_index
+        ] = list(
             self.preview_area.rects
         )
 
-        self.page_angles[self.current_page_index] = list(
+        self.page_angles[
+            self.current_page_index
+        ] = list(
             self.preview_area.rect_angles
+        )
+
+        self.page_aspect_modes[
+            self.current_page_index
+        ] = list(
+            self.preview_area.rect_aspect_modes
         )
 
     def build_project_data(self):
@@ -1859,6 +1867,13 @@ class MainWindow(QMainWindow):
             angles = self.page_angles.get(
                 page_index,
                 [],
+            )
+
+            aspect_modes = (
+                self.page_aspect_modes.get(
+                    page_index,
+                    [],
+                )
             )
 
             if (
@@ -1881,6 +1896,10 @@ class MainWindow(QMainWindow):
                         for rect in rects
                     ],
                     "angles": list(angles),
+                    "aspect_modes": [
+                        str(mode)
+                        for mode in aspect_modes
+                    ],
                     "export_enabled": (
                         export_enabled
                     ),
@@ -1901,6 +1920,43 @@ class MainWindow(QMainWindow):
         }
 
         return project_data
+
+    def restore_current_page_aspect_modes(
+        self,
+    ):
+        saved_modes = (
+            self.page_aspect_modes.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.rect_aspect_modes = [
+            str(mode)
+            for mode in saved_modes
+        ]
+
+        while (
+            len(
+                self.preview_area.rect_aspect_modes
+            )
+            < len(self.preview_area.rects)
+        ):
+            self.preview_area.rect_aspect_modes.append(
+                "free"
+            )
+
+        if (
+            len(
+                self.preview_area.rect_aspect_modes
+            )
+            > len(self.preview_area.rects)
+        ):
+            self.preview_area.rect_aspect_modes = (
+                self.preview_area.rect_aspect_modes[
+                    :len(self.preview_area.rects)
+                ]
+            )
     
     def save_project(self):
         project_data = self.build_project_data()
@@ -2104,6 +2160,7 @@ class MainWindow(QMainWindow):
         self.image_paths = []
         self.page_rects = {}
         self.page_angles = {}
+        self.page_aspect_modes = {}
         self.deleted_pages_stack = []
         self.page_export_enabled = []
 
@@ -2127,6 +2184,34 @@ class MainWindow(QMainWindow):
                 "angles",
                 [],
             )
+
+            aspect_modes = page_data.get(
+                "aspect_modes",
+                [],
+            )
+
+            normalized_aspect_modes = [
+                str(mode)
+                for mode in aspect_modes
+            ]
+
+            while (
+                len(normalized_aspect_modes)
+                < len(rects)
+            ):
+                normalized_aspect_modes.append(
+                    "free"
+                )
+
+            if (
+                len(normalized_aspect_modes)
+                > len(rects)
+            ):
+                normalized_aspect_modes = (
+                    normalized_aspect_modes[
+                        :len(rects)
+                    ]
+                )
 
             export_enabled = bool(
                 page_data.get(
@@ -2154,6 +2239,12 @@ class MainWindow(QMainWindow):
                 page_index
             ] = list(
                 angles
+            )
+
+            self.page_aspect_modes[
+                page_index
+            ] = list(
+                normalized_aspect_modes
             )
 
             # サムネイルを作成
@@ -2289,6 +2380,8 @@ class MainWindow(QMainWindow):
                 0.0
             )
 
+        self.restore_current_page_aspect_modes()
+
         self.detected_rects = list(
             saved_rects
         )
@@ -2363,6 +2456,8 @@ class MainWindow(QMainWindow):
                 0.0
             )
 
+        self.restore_current_page_aspect_modes()
+
         self.preview_area.update()
 
         self.status_label.setText(
@@ -2411,6 +2506,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            deleted_aspect_modes = list(
+                self.page_aspect_modes.get(
+                    delete_index,
+                    [],
+                )
+            )
+
             if (
                 delete_index
                 < len(self.page_export_enabled)
@@ -2429,6 +2531,9 @@ class MainWindow(QMainWindow):
                     "path": deleted_path,
                     "rects": deleted_rects,
                     "angles": deleted_angles,
+                    "aspect_modes": (
+                        deleted_aspect_modes
+                    ),
                     "export_enabled": (
                         deleted_export_enabled
                     ),
@@ -2457,6 +2562,14 @@ class MainWindow(QMainWindow):
             if delete_index in self.page_angles:
                 del self.page_angles[delete_index]
 
+            if (
+                delete_index
+                in self.page_aspect_modes
+            ):
+                del self.page_aspect_modes[
+                    delete_index
+                ]
+
             new_page_rects = {}
 
             for old_index, rects in self.page_rects.items():
@@ -2476,6 +2589,25 @@ class MainWindow(QMainWindow):
                     new_page_angles[old_index] = angles
 
             self.page_angles = new_page_angles
+
+            new_page_aspect_modes = {}
+
+            for (
+                old_index,
+                aspect_modes,
+            ) in self.page_aspect_modes.items():
+                if old_index > delete_index:
+                    new_page_aspect_modes[
+                        old_index - 1
+                    ] = aspect_modes
+                else:
+                    new_page_aspect_modes[
+                        old_index
+                    ] = aspect_modes
+
+            self.page_aspect_modes = (
+                new_page_aspect_modes
+            )
 
         self.deleted_pages_stack.append(
             {
@@ -2532,6 +2664,8 @@ class MainWindow(QMainWindow):
         ):
             self.preview_area.rect_angles.append(0.0)
 
+        self.restore_current_page_aspect_modes()
+
         self.preview_area.update()
 
         self.page_list.setCurrentRow(
@@ -2568,6 +2702,11 @@ class MainWindow(QMainWindow):
                 restore_rects = page["rects"]
                 restore_angles = page.get(
                     "angles",
+                    [],
+                )
+
+                restore_aspect_modes = page.get(
+                    "aspect_modes",
                     [],
                 )
 
@@ -2611,11 +2750,40 @@ class MainWindow(QMainWindow):
                     else:
                         new_page_angles[old_index] = angles
 
-                new_page_angles[restore_index] = list(
+                new_page_angles[
+                    restore_index
+                ] = list(
                     restore_angles
                 )
 
-                self.page_angles = new_page_angles
+                new_page_aspect_modes = {}
+
+                for (
+                    old_index,
+                    aspect_modes,
+                ) in self.page_aspect_modes.items():
+                    if old_index >= restore_index:
+                        new_page_aspect_modes[
+                            old_index + 1
+                        ] = aspect_modes
+                    else:
+                        new_page_aspect_modes[
+                            old_index
+                        ] = aspect_modes
+
+                new_page_aspect_modes[
+                    restore_index
+                ] = list(
+                    restore_aspect_modes
+                )
+
+                self.page_angles = (
+                    new_page_angles
+                )
+
+                self.page_aspect_modes = (
+                    new_page_aspect_modes
+                )
 
                 self.page_rects = new_page_rects
 
@@ -2651,6 +2819,11 @@ class MainWindow(QMainWindow):
             restore_path = deleted["path"]
             restore_rects = deleted["rects"]
 
+            restore_aspect_modes = deleted.get(
+                "aspect_modes",
+                [],
+            )
+
             restore_export_enabled = bool(
                 deleted.get(
                     "export_enabled",
@@ -2679,15 +2852,46 @@ class MainWindow(QMainWindow):
                 else:
                     new_page_rects[old_index] = rects
 
-            new_page_rects[restore_index] = list(
+            new_page_rects[
+                restore_index
+            ] = list(
                 restore_rects
+            )
+
+            new_page_aspect_modes = {}
+
+            for (
+                old_index,
+                aspect_modes,
+            ) in self.page_aspect_modes.items():
+                if old_index >= restore_index:
+                    new_page_aspect_modes[
+                        old_index + 1
+                    ] = aspect_modes
+                else:
+                    new_page_aspect_modes[
+                        old_index
+                    ] = aspect_modes
+
+            new_page_aspect_modes[
+                restore_index
+            ] = list(
+                restore_aspect_modes
             )
 
             self.page_rects = new_page_rects
 
-            item_name = Path(restore_path).name
+            self.page_aspect_modes = (
+                new_page_aspect_modes
+            )
 
-            thumbnail = QPixmap(restore_path)
+            item_name = Path(
+                restore_path
+            ).name
+
+            thumbnail = QPixmap(
+                restore_path
+            )
 
             if not thumbnail.isNull():
                 thumbnail = thumbnail.scaled(
@@ -2745,6 +2949,8 @@ class MainWindow(QMainWindow):
         ):
             self.preview_area.rect_angles.append(0.0)
 
+        self.restore_current_page_aspect_modes()
+
         self.preview_area.update()
 
         self.page_list.setCurrentRow(
@@ -2792,12 +2998,18 @@ class MainWindow(QMainWindow):
             saved_angles
         )
 
-        while len(self.preview_area.rect_angles) < len(
+        while len(
+            self.preview_area.rect_angles
+        ) < len(
             self.preview_area.rects
         ):
-            self.preview_area.rect_angles.append(0.0)
+            self.preview_area.rect_angles.append(
+                0.0
+            )
 
-        self.preview_area.update()        
+        self.restore_current_page_aspect_modes()
+
+        self.preview_area.update()     
 
         self.status_label.setText(
             f"検出数: {len(saved_rects)}"
@@ -2843,12 +3055,18 @@ class MainWindow(QMainWindow):
             saved_angles
         )
 
-        while len(self.preview_area.rect_angles) < len(
+        while len(
+            self.preview_area.rect_angles
+        ) < len(
             self.preview_area.rects
         ):
-            self.preview_area.rect_angles.append(0.0)
+            self.preview_area.rect_angles.append(
+                0.0
+            )
 
-        self.preview_area.update()        
+        self.restore_current_page_aspect_modes()
+
+        self.preview_area.update()     
 
         self.status_label.setText(
             f"検出数: {len(saved_rects)}"
@@ -3201,6 +3419,10 @@ class MainWindow(QMainWindow):
             self.preview_area.rect_angles
         )
 
+        aspect_modes = list(
+            self.preview_area.rect_aspect_modes
+        )
+
         for index in range(count):
             row = index // columns
             column = index % columns
@@ -3235,8 +3457,16 @@ class MainWindow(QMainWindow):
             # 生成枠はすべて0度
             angles.append(0.0)
 
+            # 自動配置された枠は自由変形
+            aspect_modes.append(
+                "free"
+            )
+
         self.preview_area.rects = rects
         self.preview_area.rect_angles = angles
+        self.preview_area.rect_aspect_modes = (
+            aspect_modes
+        )
         self.preview_area.selected_rect = -1
 
         self.detected_rects = list(

@@ -53,6 +53,7 @@ class PhotoCanvas(QWidget):
         self.pixmap = pixmap
         self.rects = []
         self.rect_angles = []
+        self.rect_aspect_modes = []
         self.selected_rect = -1
 
         self.zoom_factor = 1.0
@@ -79,6 +80,30 @@ class PhotoCanvas(QWidget):
                 :len(self.rects)
             ]
 
+        # 枠数に合わせて縦横比モードを用意する
+        if (
+            len(self.rect_aspect_modes)
+            < len(self.rects)
+        ):
+            missing_count = (
+                len(self.rects)
+                - len(self.rect_aspect_modes)
+            )
+
+            self.rect_aspect_modes.extend(
+                ["free"] * missing_count
+            )
+
+        elif (
+            len(self.rect_aspect_modes)
+            > len(self.rects)
+        ):
+            self.rect_aspect_modes = (
+                self.rect_aspect_modes[
+                    :len(self.rects)
+                ]
+            )
+
         self.selected_rect = -1
         self.update()
 
@@ -91,6 +116,9 @@ class PhotoCanvas(QWidget):
                 ],
                 "angles": list(
                     self.rect_angles
+                ),
+                "aspect_modes": list(
+                    self.rect_aspect_modes
                 ),
             }
         )
@@ -133,6 +161,13 @@ class PhotoCanvas(QWidget):
             )
         )
 
+        self.rect_aspect_modes = list(
+            state.get(
+                "aspect_modes",
+                [],
+            )
+        )
+
         while len(self.rect_angles) < len(self.rects):
             self.rect_angles.append(0.0)
 
@@ -140,6 +175,24 @@ class PhotoCanvas(QWidget):
             self.rect_angles = self.rect_angles[
                 :len(self.rects)
             ]
+
+        while (
+            len(self.rect_aspect_modes)
+            < len(self.rects)
+        ):
+            self.rect_aspect_modes.append(
+                "free"
+            )
+
+        if (
+            len(self.rect_aspect_modes)
+            > len(self.rects)
+        ):
+            self.rect_aspect_modes = (
+                self.rect_aspect_modes[
+                    :len(self.rects)
+                ]
+            )
 
         self.selected_rect = -1
         self.dragging = False
@@ -163,6 +216,9 @@ class PhotoCanvas(QWidget):
                 "angles": list(
                     self.rect_angles
                 ),
+                "aspect_modes": list(
+                    self.rect_aspect_modes
+                ),
             }
         )
 
@@ -183,6 +239,13 @@ class PhotoCanvas(QWidget):
             )
         )
 
+        self.rect_aspect_modes = list(
+            state.get(
+                "aspect_modes",
+                [],
+            )
+        )
+
         while len(self.rect_angles) < len(self.rects):
             self.rect_angles.append(0.0)
 
@@ -190,6 +253,24 @@ class PhotoCanvas(QWidget):
             self.rect_angles = self.rect_angles[
                 :len(self.rects)
             ]
+
+        while (
+            len(self.rect_aspect_modes)
+            < len(self.rects)
+        ):
+            self.rect_aspect_modes.append(
+                "free"
+            )
+
+        if (
+            len(self.rect_aspect_modes)
+            > len(self.rects)
+        ):
+            self.rect_aspect_modes = (
+                self.rect_aspect_modes[
+                    :len(self.rects)
+                ]
+            )
 
         self.selected_rect = -1
         self.dragging = False
@@ -445,6 +526,7 @@ class PhotoCanvas(QWidget):
         start_w,
         start_h,
         angle,
+        aspect_ratio=None,
     ):
         if (
             start_w <= 0
@@ -452,9 +534,13 @@ class PhotoCanvas(QWidget):
         ):
             return None
 
-        aspect_ratio = (
-            start_w / start_h
-        )
+        if aspect_ratio is None:
+            aspect_ratio = (
+                start_w / start_h
+            )
+
+        if aspect_ratio <= 0:
+            return None
 
         start_center_x = (
             start_x + start_w / 2
@@ -1477,6 +1563,22 @@ class PhotoCanvas(QWidget):
                     angle
                 )
 
+                copied_mode = "free"
+
+                if (
+                    self.selected_rect
+                    < len(self.rect_aspect_modes)
+                ):
+                    copied_mode = (
+                        self.rect_aspect_modes[
+                            self.selected_rect
+                        ]
+                    )
+
+                self.rect_aspect_modes.append(
+                    copied_mode
+                )
+
                 self.selected_rect = (
                     len(self.rects) - 1
                 )
@@ -1511,6 +1613,13 @@ class PhotoCanvas(QWidget):
                     self.rect_angles
                 ):
                     del self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                if self.selected_rect < len(
+                    self.rect_aspect_modes
+                ):
+                    del self.rect_aspect_modes[
                         self.selected_rect
                     ]
 
@@ -1774,6 +1883,11 @@ class PhotoCanvas(QWidget):
             0.0
         )
 
+        # 作成時の縦横比モードを記録
+        self.rect_aspect_modes.append(
+            str(self.aspect_ratio_mode)
+        )
+
         self.selected_rect = (
             len(self.rects) - 1
         )
@@ -1873,23 +1987,32 @@ class PhotoCanvas(QWidget):
                 & Qt.KeyboardModifier.ShiftModifier
             )
 
-            keep_aspect_ratio = (
-                shift_pressed
-            )
-
             if shift_pressed:
-                corner_aspect_ratio = (
+                active_aspect_ratio = (
                     start_w / start_h
                     if start_h > 0
                     else None
                 )
             else:
-                corner_aspect_ratio = (
+                active_aspect_ratio = (
                     self.get_active_aspect_ratio(
                         start_w,
                         start_h,
                     )
                 )
+
+            corner_aspect_ratio = (
+                active_aspect_ratio
+            )
+
+            edge_aspect_ratio = (
+                active_aspect_ratio
+            )
+
+            keep_aspect_ratio = (
+                active_aspect_ratio
+                is not None
+            )
 
             left = x
             top = y
@@ -2174,7 +2297,7 @@ class PhotoCanvas(QWidget):
                 return
 
             if (
-                keep_aspect_ratio
+                edge_aspect_ratio is not None
                 and self.resize_handle
                 in edge_handles
             ):
@@ -2197,6 +2320,7 @@ class PhotoCanvas(QWidget):
                         start_w,
                         start_h,
                         angle,
+                        edge_aspect_ratio,
                     )
                 )
 
@@ -2761,6 +2885,7 @@ class PhotoCanvas(QWidget):
             return
 
         was_adding_rect = self.adding_rect
+        was_resizing_rect = self.resizing
 
         was_editing_rect = (
             self.dragging
@@ -2805,11 +2930,39 @@ class PhotoCanvas(QWidget):
                         self.selected_rect
                     ]
 
+                if (
+                    self.selected_rect
+                    < len(self.rect_aspect_modes)
+                ):
+                    del self.rect_aspect_modes[
+                        self.selected_rect
+                    ]
+
                 self.selected_rect = -1
 
                 self.rects_changed.emit()
                 self.update()
                 return
+
+        if (
+            was_resizing_rect
+            and self.selected_rect >= 0
+            and self.selected_rect
+            < len(self.rects)
+        ):
+            while (
+                len(self.rect_aspect_modes)
+                < len(self.rects)
+            ):
+                self.rect_aspect_modes.append(
+                    "free"
+                )
+
+            self.rect_aspect_modes[
+                self.selected_rect
+            ] = str(
+                self.aspect_ratio_mode
+            )
 
         if was_editing_rect:
             self.rects_changed.emit()
@@ -2842,6 +2995,13 @@ class PhotoCanvas(QWidget):
                     self.rect_angles
                 ):
                     del self.rect_angles[
+                        delete_index
+                    ]
+
+                if delete_index < len(
+                    self.rect_aspect_modes
+                ):
+                    del self.rect_aspect_modes[
                         delete_index
                     ]
 
