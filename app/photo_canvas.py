@@ -16,6 +16,7 @@ class PhotoCanvas(QWidget):
         self.pixmap = None
         self.rects = []
         self.rect_angles = []
+        self.rect_aspect_modes = []
         self.selected_rect = -1
         self.undo_stack = []
         self.redo_stack = []
@@ -140,6 +141,9 @@ class PhotoCanvas(QWidget):
                 ],
                 "angles": list(
                     self.rect_angles
+                ),
+                "aspect_modes": list(
+                    self.rect_aspect_modes
                 ),
             }
         )
