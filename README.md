@@ -21,7 +21,12 @@ records.
 - Automatically detect photographs on scanned album pages
 - Create crop frames manually
 - Move, resize, copy, rotate, and delete crop frames
-- Hold Shift while resizing to preserve the frame's aspect ratio
+- Set an aspect-ratio mode for each crop frame
+- Use free resizing, preserve the current ratio, or select a preset ratio
+- Choose from 16:9, 9:16, 4:3, 3:2, and 1:1 presets
+- Preserve per-frame aspect-ratio settings across page changes, undo and redo,
+  project saving and loading, and export
+- Hold Shift while resizing to temporarily preserve the frame's current ratio
 - Undo and redo editing operations
 - Work with multiple pages
 - Select which pages should be included in export
@@ -96,11 +101,14 @@ python main.py
 1. Open an image or PDF document.
 2. Run automatic photo detection, or create crop frames manually.
 3. Adjust the position, size, and rotation of each frame.
-4. Hold Shift while resizing when you want to preserve the current aspect ratio.
-5. Select the pages that should be included in export.
-6. Configure DPI, margin, and JPEG quality from the main window or Settings.
-7. Choose an output folder.
-8. Export the cropped photographs.
+4. Choose free resizing, preserve the frame's current ratio, or select a
+   preset aspect ratio for each frame.
+5. Hold Shift while resizing when you want to temporarily preserve the
+   frame's current ratio.
+6. Select the pages that should be included in export.
+7. Configure DPI, margin, and JPEG quality from the main window or Settings.
+8. Choose an output folder.
+9. Export the cropped photographs.
 
 ## Project Files
 
@@ -112,8 +120,13 @@ A saved project can contain information such as:
 - Crop-frame positions
 - Crop-frame sizes
 - Rotation angles
+- Per-frame aspect-ratio modes
 - Page export selections
 - Output settings
+
+Aspect-ratio modes are stored separately for each crop frame. Projects created
+before this feature was added remain compatible; frames without saved ratio
+information are opened in free-resize mode.
 
 Keep the original image and PDF files available in their original locations
 when reopening a project.
