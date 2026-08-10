@@ -155,7 +155,7 @@ class PageListWidget(QListWidget):
             # ページ削除ボタン
             # ---------------------------------
             delete_x = (
-                item_rect.right()
+                self.viewport().width()
                 - size
                 - margin
             )
@@ -216,7 +216,7 @@ class PageListWidget(QListWidget):
             )
 
             delete_x = (
-                item_rect.right()
+                self.viewport().width()
                 - size
                 - margin
             )
@@ -293,10 +293,18 @@ class PageListWidget(QListWidget):
             self.viewport().width() - 8,
         )
 
+        if (
+            self.viewMode()
+            == QListView.ViewMode.IconMode
+        ):
+            item_height = 142
+        else:
+            item_height = 40
+
         self.setGridSize(
             QSize(
                 available_width,
-                142,
+                item_height,
             )
         )
 
@@ -424,6 +432,26 @@ class MainWindow(QMainWindow):
             self.change_page_from_list
         )
 
+        self.page_list_display_combo = QComboBox()
+
+        self.page_list_display_combo.addItem(
+            "サムネイル",
+            "thumbnail",
+        )
+
+        self.page_list_display_combo.addItem(
+            "コンパクト",
+            "compact",
+        )
+
+        self.page_list_display_combo.setToolTip(
+            "左側のページ一覧の表示方法を切り替えます"
+        )
+
+        self.page_list_display_combo.currentIndexChanged.connect(
+            self.apply_page_list_display_mode
+        )
+
         self.delete_page_button = QPushButton("🗑 ページを削除")
         self.delete_page_button.setMinimumHeight(36)
         self.delete_page_button.setEnabled(False)
@@ -433,8 +461,15 @@ class MainWindow(QMainWindow):
         )
 
         page_list_layout = QVBoxLayout()
-        page_list_layout.addWidget(self.page_list)
-        page_list_layout.addWidget(self.delete_page_button)
+        page_list_layout.addWidget(
+            self.page_list_display_combo
+        )
+        page_list_layout.addWidget(
+            self.page_list
+        )
+        page_list_layout.addWidget(
+            self.delete_page_button
+        )
 
         page_list_container = QWidget()
         page_list_container.setLayout(page_list_layout)
@@ -1158,6 +1193,8 @@ class MainWindow(QMainWindow):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.status_label)
 
+        self.apply_page_list_display_mode()        
+
     def update_export_progress(self, value):
         self.progress_bar.setValue(value)
         QApplication.processEvents()
@@ -1817,6 +1854,118 @@ class MainWindow(QMainWindow):
         )
 
         self.project_modified = True
+
+    def apply_page_list_display_mode(self):
+        mode = self.page_list_display_combo.currentData()
+
+        available_width = max(
+            108,
+            self.page_list.viewport().width() - 8,
+        )
+
+        if mode == "compact":
+            self.page_list.setViewMode(
+                QListView.ViewMode.ListMode
+            )
+
+            self.page_list.setIconSize(
+                QSize(0, 0)
+            )
+
+            self.page_list.setGridSize(
+                QSize(
+                    available_width,
+                    40,
+                )
+            )
+
+            self.page_list.setStyleSheet("""
+                QListWidget::item {
+                    padding-top: 4px;
+                    padding-left: 36px;
+                    padding-right: 36px;
+                    padding-bottom: 4px;
+                    margin: 2px;
+                    border: 2px solid transparent;
+                }
+
+                QListWidget::item:selected {
+                    background-color: #cfe8ff;
+                    border: 3px solid #2f80ed;
+                    color: #111111;
+                }
+            """)
+
+            for row in range(
+                self.page_list.count()
+            ):
+                item = self.page_list.item(row)
+
+                if (
+                    item is None
+                    or row >= len(self.image_paths)
+                ):
+                    continue
+
+                file_name = Path(
+                    self.image_paths[row]
+                ).name
+
+                item.setText(
+                    f"{row + 1:03d}  {file_name}"
+                )
+
+        else:
+            self.page_list.setViewMode(
+                QListView.ViewMode.IconMode
+            )
+
+            self.page_list.setIconSize(
+                QSize(100, 75)
+            )
+
+            self.page_list.setGridSize(
+                QSize(
+                    available_width,
+                    142,
+                )
+            )
+
+            self.page_list.setStyleSheet("""
+                QListWidget::item {
+                    padding-top: 34px;
+                    padding-left: 4px;
+                    padding-right: 4px;
+                    padding-bottom: 4px;
+                    margin: 2px;
+                    border: 2px solid transparent;
+                }
+
+                QListWidget::item:selected {
+                    background-color: #cfe8ff;
+                    border: 3px solid #2f80ed;
+                    color: #111111;
+                }
+            """)
+
+            for row in range(
+                self.page_list.count()
+            ):
+                item = self.page_list.item(row)
+
+                if (
+                    item is None
+                    or row >= len(self.image_paths)
+                ):
+                    continue
+
+                item.setText(
+                    Path(
+                        self.image_paths[row]
+                    ).name
+                )
+
+        self.page_list.viewport().update()
 
     def update_page_label(self):
         total = len(self.image_paths)
