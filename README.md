@@ -20,21 +20,29 @@ records.
 - Load image files and PDF documents
 - Automatically detect photographs on scanned album pages
 - Create crop frames manually
-- Move, resize, copy, rotate, and delete crop frames
+- Select multiple crop frames
+- Move and delete multiple selected crop frames together
+- Copy and paste multiple crop frames while preserving their relative layout
+- Copy crop-frame layouts between different pages during the same session
+- Move, resize, copy, rotate, and delete individual crop frames
 - Set an aspect-ratio mode for each crop frame
 - Use free resizing, preserve the current ratio, or select a preset ratio
 - Choose from 16:9, 9:16, 4:3, 3:2, and 1:1 presets
 - Preserve per-frame aspect-ratio settings across page changes, undo and redo,
   project saving and loading, and export
 - Hold Shift while resizing to temporarily preserve the frame's current ratio
+- Use compact resize handles with a reduced hit area for easier work with
+  closely spaced crop frames
 - Undo and redo editing operations
 - Work with multiple pages
+- Switch the page list between thumbnail and compact display modes
 - Select which pages should be included in export
 - Save and reopen project files
 - Preserve page export selections in project files
 - Configure output DPI
 - Configure crop margins in millimeters
 - Configure JPEG quality
+- Preview cropped photographs fitted to the available preview-pane width
 - Export selected pages as JPEG files
 - Preserve original page numbers in exported filenames
 - Preserve crop frames after export
@@ -105,10 +113,19 @@ python main.py
    preset aspect ratio for each frame.
 5. Hold Shift while resizing when you want to temporarily preserve the
    frame's current ratio.
-6. Select the pages that should be included in export.
-7. Configure DPI, margin, and JPEG quality from the main window or Settings.
-8. Choose an output folder.
-9. Export the cropped photographs.
+6. Use Ctrl-click to select multiple crop frames when you want to move,
+   delete, copy, or reuse a group of frames.
+7. Use Ctrl+C and Ctrl+V to copy and paste selected crop frames while
+   preserving their relative layout. Copied layouts can also be pasted onto
+   another page during the same application session.
+8. Switch the page list between thumbnail and compact modes when working with
+   many pages.
+9. Check cropped results in the preview pane, which fits previews to the
+   available pane width.
+10. Select the pages that should be included in export.
+11. Configure DPI, margin, and JPEG quality from the main window or Settings.
+12. Choose an output folder.
+13. Export the cropped photographs.
 
 ## Project Files
 

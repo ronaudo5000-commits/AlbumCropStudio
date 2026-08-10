@@ -19,12 +19,26 @@ features, improvements, and important fixes.
 - Added aspect-ratio preservation when pages are deleted and restored
 - Added aspect-ratio state support for crop-frame copy, deletion, undo, and redo
 - Added free-resize defaults for automatically detected and generated frames
+- Added multiple crop-frame selection
+- Added grouped movement and deletion of selected crop frames
+- Added multiple crop-frame copy and paste while preserving relative layout
+- Added copy and paste of crop-frame layouts between pages during the same
+  application session
+- Added thumbnail and compact display modes for the page list
+- Added crop-preview fitting to the available preview-pane width
+
+### Changed
+
+- Reduced the visual size and hit area of crop-frame resize handles
+- Improved crop-preview resizing when the preview pane width changes
 
 ### Fixed
 
 - Fixed redo losing the crop frame's saved aspect-ratio mode
 - Fixed missing initialization of the crop-frame aspect-ratio state
 - Fixed aspect-ratio modes not being restored after export
+- Fixed page-list delete controls being clipped by long filenames in compact
+  display mode
 
 ## [0.10.0-beta.2]
 
