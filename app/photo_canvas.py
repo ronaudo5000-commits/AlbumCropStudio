@@ -24,6 +24,9 @@ class PhotoCanvas(QWidget):
         # 複数選択されている枠番号
         self.selected_rects = set()
 
+        # Ctrl+Cでコピーした枠情報を保持する
+        self.copied_rects = []
+
         self.undo_stack = []
         self.redo_stack = []
         self.zoom_factor = 1.0
@@ -3079,6 +3082,157 @@ class PhotoCanvas(QWidget):
             )
 
     def keyPressEvent(self, event):
+        if (
+            event.key() == Qt.Key.Key_C
+            and event.modifiers()
+            == Qt.KeyboardModifier.ControlModifier
+        ):
+            copy_indexes = set(
+                self.selected_rects
+            )
+
+            # 念のため単一選択状態にも対応
+            if (
+                not copy_indexes
+                and self.selected_rect >= 0
+            ):
+                copy_indexes.add(
+                    self.selected_rect
+                )
+
+            if copy_indexes:
+                self.copied_rects = []
+
+                for copy_index in sorted(
+                    copy_indexes
+                ):
+                    if (
+                        copy_index < 0
+                        or copy_index >= len(self.rects)
+                    ):
+                        continue
+
+                    x, y, w, h = self.rects[
+                        copy_index
+                    ]
+
+                    angle = 0.0
+
+                    if copy_index < len(
+                        self.rect_angles
+                    ):
+                        angle = self.rect_angles[
+                            copy_index
+                        ]
+
+                    aspect_mode = "free"
+
+                    if copy_index < len(
+                        self.rect_aspect_modes
+                    ):
+                        aspect_mode = (
+                            self.rect_aspect_modes[
+                                copy_index
+                            ]
+                        )
+
+                    self.copied_rects.append(
+                        {
+                            "rect": (
+                                x,
+                                y,
+                                w,
+                                h,
+                            ),
+                            "angle": angle,
+                            "aspect_mode": aspect_mode,
+                        }
+                    )
+
+            event.accept()
+            return
+
+        if (
+            event.key() == Qt.Key.Key_V
+            and event.modifiers()
+            == Qt.KeyboardModifier.ControlModifier
+        ):
+            if not self.copied_rects:
+                event.accept()
+                return
+
+            self.save_undo_state()
+
+            offset = 30
+
+            new_indexes = []
+
+            for copied in self.copied_rects:
+                x, y, w, h = copied[
+                    "rect"
+                ]
+
+                angle = copied.get(
+                    "angle",
+                    0.0,
+                )
+
+                aspect_mode = copied.get(
+                    "aspect_mode",
+                    "free",
+                )
+
+                new_rect = (
+                    x + offset,
+                    y + offset,
+                    w,
+                    h,
+                )
+
+                self.rects.append(
+                    new_rect
+                )
+
+                self.rect_angles.append(
+                    angle
+                )
+
+                self.rect_aspect_modes.append(
+                    aspect_mode
+                )
+
+                new_indexes.append(
+                    len(self.rects) - 1
+                )
+
+            self.selected_rects = set(
+                new_indexes
+            )
+
+            if new_indexes:
+                self.selected_rect = (
+                    new_indexes[-1]
+                )
+            else:
+                self.selected_rect = -1
+
+            if self.selected_rect >= 0:
+                self.selected_rect_changed.emit(
+                    self.selected_rect
+                )
+
+            self.dragging = False
+            self.drag_undo_saved = False
+            self.adding_rect = False
+            self.resizing = False
+            self.rotating = False
+
+            self.rects_changed.emit()
+            self.update()
+
+            event.accept()
+            return
+
         if event.key() == Qt.Key.Key_Delete:
             delete_indexes = set(
                 self.selected_rects
