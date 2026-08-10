@@ -17,7 +17,13 @@ class PhotoCanvas(QWidget):
         self.rects = []
         self.rect_angles = []
         self.rect_aspect_modes = []
+
+        # 単一操作の基準になる枠
         self.selected_rect = -1
+
+        # 複数選択されている枠番号
+        self.selected_rects = set()
+
         self.undo_stack = []
         self.redo_stack = []
         self.zoom_factor = 1.0
@@ -56,6 +62,7 @@ class PhotoCanvas(QWidget):
         self.rect_angles = []
         self.rect_aspect_modes = []
         self.selected_rect = -1
+        self.selected_rects.clear()
 
         self.zoom_factor = 1.0
         self.pan_x = 0.0
@@ -106,6 +113,7 @@ class PhotoCanvas(QWidget):
             )
 
         self.selected_rect = -1
+        self.selected_rects.clear()
         self.update()
 
     def save_undo_state(self):
@@ -199,6 +207,7 @@ class PhotoCanvas(QWidget):
             )
 
         self.selected_rect = -1
+        self.selected_rects.clear()
         self.dragging = False
         self.adding_rect = False
         self.resizing = False
@@ -277,6 +286,7 @@ class PhotoCanvas(QWidget):
             )
 
         self.selected_rect = -1
+        self.selected_rects.clear()
         self.dragging = False
         self.adding_rect = False
         self.resizing = False
@@ -289,6 +299,7 @@ class PhotoCanvas(QWidget):
         self.add_mode = enabled
         self.adding_rect = False
         self.selected_rect = -1
+        self.selected_rects.clear()
         self.update()
 
     def get_active_aspect_ratio(
@@ -1012,7 +1023,7 @@ class PhotoCanvas(QWidget):
         )
 
         for index, (x, y, w, h) in enumerate(self.rects):
-            if index == self.selected_rect:
+            if index in self.selected_rects:
                 pen = QPen(QColor(255, 200, 0))
             else:
                 pen = QPen(QColor(255, 0, 0))
@@ -1587,6 +1598,10 @@ class PhotoCanvas(QWidget):
                     len(self.rects) - 1
                 )
 
+                self.selected_rects = {
+                    self.selected_rect
+                }
+
                 self.dragging = False
                 self.adding_rect = False
                 self.resizing = False
@@ -1609,25 +1624,48 @@ class PhotoCanvas(QWidget):
             ):
                 self.save_undo_state()
 
-                del self.rects[
-                    self.selected_rect
-                ]
+                delete_indexes = set(
+                    self.selected_rects
+                )
 
-                if self.selected_rect < len(
-                    self.rect_angles
-                ):
-                    del self.rect_angles[
+                # 念のため単一選択状態にも対応
+                if not delete_indexes:
+                    delete_indexes.add(
                         self.selected_rect
+                    )
+
+                # インデックスずれを防ぐため、
+                # 大きい番号から削除する
+                for delete_index in sorted(
+                    delete_indexes,
+                    reverse=True,
+                ):
+                    if (
+                        delete_index < 0
+                        or delete_index >= len(self.rects)
+                    ):
+                        continue
+
+                    del self.rects[
+                        delete_index
                     ]
 
-                if self.selected_rect < len(
-                    self.rect_aspect_modes
-                ):
-                    del self.rect_aspect_modes[
-                        self.selected_rect
-                    ]
+                    if delete_index < len(
+                        self.rect_angles
+                    ):
+                        del self.rect_angles[
+                            delete_index
+                        ]
+
+                    if delete_index < len(
+                        self.rect_aspect_modes
+                    ):
+                        del self.rect_aspect_modes[
+                            delete_index
+                        ]
 
                 self.selected_rect = -1
+                self.selected_rects.clear()
                 self.dragging = False
                 self.adding_rect = False
                 self.resizing = False
@@ -1837,13 +1875,50 @@ class PhotoCanvas(QWidget):
             )
 
             if inside_rect or inside_label:
-                self.selected_rect = index
-
-                self.selected_rect_changed.emit(
-                    self.selected_rect
+                ctrl_pressed = bool(
+                    event.modifiers()
+                    & Qt.KeyboardModifier.ControlModifier
                 )
 
-                self.dragging = True
+                if ctrl_pressed:
+                    # Ctrl + クリックでは選択を追加／解除する
+                    if index in self.selected_rects:
+                        self.selected_rects.remove(index)
+
+                        if index == self.selected_rect:
+                            if self.selected_rects:
+                                self.selected_rect = max(
+                                    self.selected_rects
+                                )
+                            else:
+                                self.selected_rect = -1
+                    else:
+                        self.selected_rects.add(index)
+                        self.selected_rect = index
+
+                else:
+                    # 複数選択済みの枠をクリックした場合は、
+                    # 選択状態を保ったままドラッグできるようにする
+                    if (
+                        index in self.selected_rects
+                        and len(self.selected_rects) > 1
+                    ):
+                        self.selected_rect = index
+
+                    else:
+                        # それ以外は従来どおり単一選択
+                        self.selected_rects = {index}
+                        self.selected_rect = index
+
+                if self.selected_rect >= 0:
+                    self.selected_rect_changed.emit(
+                        self.selected_rect
+                    )
+
+                # Ctrlクリックは選択だけ行い、
+                # そのままドラッグ移動は開始しない
+                self.dragging = not ctrl_pressed
+
                 self.drag_undo_saved = False
                 self.adding_rect = False
                 self.resizing = False
@@ -1895,6 +1970,10 @@ class PhotoCanvas(QWidget):
         self.selected_rect = (
             len(self.rects) - 1
         )
+
+        self.selected_rects = {
+            self.selected_rect
+        }
 
         self.update()
 
@@ -2856,24 +2935,42 @@ class PhotoCanvas(QWidget):
         dx = image_x - self.last_image_x
         dy = image_y - self.last_image_y
 
-        x, y, w, h = self.rects[
-            self.selected_rect
-        ]
+        move_x = int(dx)
+        move_y = int(dy)
 
-        new_x = int(x + dx)
-        new_y = int(y + dy)
-
-        if new_x != x or new_y != y:
+        if move_x != 0 or move_y != 0:
             if not self.drag_undo_saved:
                 self.save_undo_state()
                 self.drag_undo_saved = True
 
-            self.rects[self.selected_rect] = (
-                new_x,
-                new_y,
-                w,
-                h,
+            # 複数選択されている場合は全選択枠を移動する
+            move_indexes = set(
+                self.selected_rects
             )
+
+            # 念のため単一選択状態も保証する
+            if not move_indexes:
+                move_indexes.add(
+                    self.selected_rect
+                )
+
+            for rect_index in move_indexes:
+                if (
+                    rect_index < 0
+                    or rect_index >= len(self.rects)
+                ):
+                    continue
+
+                x, y, w, h = self.rects[
+                    rect_index
+                ]
+
+                self.rects[rect_index] = (
+                    x + move_x,
+                    y + move_y,
+                    w,
+                    h,
+                )
 
         self.last_image_x = image_x
         self.last_image_y = image_y
@@ -2983,33 +3080,54 @@ class PhotoCanvas(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete:
+            delete_indexes = set(
+                self.selected_rects
+            )
+
+            # 念のため単一選択状態にも対応
             if (
-                self.selected_rect >= 0
-                and self.selected_rect < len(self.rects)
+                not delete_indexes
+                and self.selected_rect >= 0
             ):
+                delete_indexes.add(
+                    self.selected_rect
+                )
+
+            if delete_indexes:
                 self.save_undo_state()
 
-                delete_index = self.selected_rect
-
-                del self.rects[
-                    delete_index
-                ]
-
-                if delete_index < len(
-                    self.rect_angles
+                # インデックスずれを防ぐため、
+                # 大きい番号から削除する
+                for delete_index in sorted(
+                    delete_indexes,
+                    reverse=True,
                 ):
-                    del self.rect_angles[
+                    if (
+                        delete_index < 0
+                        or delete_index >= len(self.rects)
+                    ):
+                        continue
+
+                    del self.rects[
                         delete_index
                     ]
 
-                if delete_index < len(
-                    self.rect_aspect_modes
-                ):
-                    del self.rect_aspect_modes[
-                        delete_index
-                    ]
+                    if delete_index < len(
+                        self.rect_angles
+                    ):
+                        del self.rect_angles[
+                            delete_index
+                        ]
+
+                    if delete_index < len(
+                        self.rect_aspect_modes
+                    ):
+                        del self.rect_aspect_modes[
+                            delete_index
+                        ]
 
                 self.selected_rect = -1
+                self.selected_rects.clear()
                 self.dragging = False
                 self.adding_rect = False
                 self.resizing = False
