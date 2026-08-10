@@ -45,7 +45,7 @@ class PhotoCanvas(QWidget):
         self.add_start_y = 0
 
         self.resizing = False
-        self.resize_handle_size = 10
+        self.resize_handle_size = 7
         self.resize_start_rect = None
 
         self.aspect_ratio_mode = "free"
@@ -1759,7 +1759,7 @@ class PhotoCanvas(QWidget):
             center_x = x + w / 2
             center_y = y + h / 2
 
-            handle_hit_size = 14
+            handle_hit_size = 8
 
             handles = self.resize_handles(
                 x,
