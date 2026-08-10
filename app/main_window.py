@@ -373,6 +373,11 @@ class MainWindow(QMainWindow):
             False
         )
 
+        self.content_splitter.splitterMoved.connect(
+            lambda position, index:
+            self.update_crop_preview()
+        )
+
         self.page_list = PageListWidget()
         self.page_list.setStyleSheet("""
             QListWidget::item {
@@ -4211,8 +4216,14 @@ class MainWindow(QMainWindow):
                 Qt.AlignmentFlag.AlignCenter
             )
 
+            preview_width = max(
+                80,
+                self.crop_preview_scroll.viewport().width()
+                - 24,
+            )
+
             preview_pixmap = crop_pixmap.scaled(
-                220,
+                preview_width,
                 180,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
