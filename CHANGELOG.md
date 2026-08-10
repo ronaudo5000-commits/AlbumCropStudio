@@ -5,7 +5,7 @@ All notable changes to AlbumCrop Studio will be documented in this file.
 The project is currently in beta, and the changelog records user-visible
 features, improvements, and important fixes.
 
-## [Unreleased]
+## [0.10.0-beta.3]
 
 ### Added
 
