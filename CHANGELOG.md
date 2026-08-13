@@ -5,6 +5,28 @@ All notable changes to AlbumCrop Studio will be documented in this file.
 The project is currently in beta, and the changelog records user-visible
 features, improvements, and important fixes.
 
+## [0.10.0-beta.4]
+
+### Added
+
+- Added Ctrl+A to select all crop frames on the current page
+- Added Ctrl+X to cut one or multiple selected crop frames
+- Added cross-page cut and paste of crop-frame layouts during the same
+  application session
+
+### Changed
+
+- Improved standard keyboard-shortcut support for crop-frame editing
+- Improved cross-page copy and paste when source and destination image
+  dimensions differ
+- Pasted crop-frame layouts are now scaled proportionally to match the
+  destination page dimensions
+
+### Fixed
+
+- Fixed crop frames being pasted outside the expected page area when copying
+  layouts between pages with different image dimensions
+
 ## [0.10.0-beta.3]
 
 ### Added

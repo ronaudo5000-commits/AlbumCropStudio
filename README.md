@@ -13,7 +13,7 @@ records.
 
 ## Current Version
 
-`0.10.0-beta.3`
+`0.10.0-beta.4`
 
 ## Features
 
@@ -21,9 +21,14 @@ records.
 - Automatically detect photographs on scanned album pages
 - Create crop frames manually
 - Select multiple crop frames
+- Select all crop frames on the current page with Ctrl+A
 - Move and delete multiple selected crop frames together
-- Copy and paste multiple crop frames while preserving their relative layout
-- Copy crop-frame layouts between different pages during the same session
+- Copy, cut, and paste multiple crop frames while preserving their relative
+  layout
+- Copy or move crop-frame layouts between different pages during the same
+  session
+- Scale pasted crop-frame layouts proportionally when the source and
+  destination page dimensions differ
 - Move, resize, copy, rotate, and delete individual crop frames
 - Set an aspect-ratio mode for each crop frame
 - Use free resizing, preserve the current ratio, or select a preset ratio
@@ -113,11 +118,13 @@ python main.py
    preset aspect ratio for each frame.
 5. Hold Shift while resizing when you want to temporarily preserve the
    frame's current ratio.
-6. Use Ctrl-click to select multiple crop frames when you want to move,
-   delete, copy, or reuse a group of frames.
-7. Use Ctrl+C and Ctrl+V to copy and paste selected crop frames while
-   preserving their relative layout. Copied layouts can also be pasted onto
-   another page during the same application session.
+6. Use Ctrl-click to select multiple crop frames, or Ctrl+A to select all crop
+   frames on the current page.
+7. Use Ctrl+C to copy or Ctrl+X to cut selected crop frames, then Ctrl+V to
+   paste them while preserving their relative layout. Crop-frame layouts can
+   also be copied or moved to another page during the same application
+   session. When page dimensions differ, pasted frames are scaled
+   proportionally to match the destination page.
 8. Switch the page list between thumbnail and compact modes when working with
    many pages.
 9. Check cropped results in the preview pane, which fits previews to the
