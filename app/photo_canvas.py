@@ -3083,6 +3083,163 @@ class PhotoCanvas(QWidget):
 
     def keyPressEvent(self, event):
         if (
+            event.key() == Qt.Key.Key_A
+            and event.modifiers()
+            == Qt.KeyboardModifier.ControlModifier
+        ):
+            if self.rects:
+                self.selected_rects = set(
+                    range(len(self.rects))
+                )
+
+                self.selected_rect = (
+                    len(self.rects) - 1
+                )
+
+                self.selected_rect_changed.emit(
+                    self.selected_rect
+                )
+
+            else:
+                self.selected_rect = -1
+                self.selected_rects.clear()
+
+            self.dragging = False
+            self.drag_undo_saved = False
+            self.adding_rect = False
+            self.resizing = False
+            self.rotating = False
+
+            self.update()
+
+            event.accept()
+            return
+
+        if (
+            event.key() == Qt.Key.Key_X
+            and event.modifiers()
+            == Qt.KeyboardModifier.ControlModifier
+        ):
+            cut_indexes = set(
+                self.selected_rects
+            )
+
+            # 念のため単一選択状態にも対応
+            if (
+                not cut_indexes
+                and self.selected_rect >= 0
+            ):
+                cut_indexes.add(
+                    self.selected_rect
+                )
+
+            if cut_indexes:
+                self.copied_rects = []
+
+                for cut_index in sorted(
+                    cut_indexes
+                ):
+                    if (
+                        cut_index < 0
+                        or cut_index >= len(self.rects)
+                    ):
+                        continue
+
+                    x, y, w, h = self.rects[
+                        cut_index
+                    ]
+
+                    angle = 0.0
+
+                    if cut_index < len(
+                        self.rect_angles
+                    ):
+                        angle = self.rect_angles[
+                            cut_index
+                        ]
+
+                    aspect_mode = "free"
+
+                    if cut_index < len(
+                        self.rect_aspect_modes
+                    ):
+                        aspect_mode = (
+                            self.rect_aspect_modes[
+                                cut_index
+                            ]
+                        )
+
+                    self.copied_rects.append(
+                        {
+                            "rect": (
+                                x,
+                                y,
+                                w,
+                                h,
+                            ),
+                            "angle": angle,
+                            "aspect_mode": aspect_mode,
+                            "source_width": (
+                                self.pixmap.width()
+                                if self.pixmap is not None
+                                else 0
+                            ),
+                            "source_height": (
+                                self.pixmap.height()
+                                if self.pixmap is not None
+                                else 0
+                            ),
+                        }
+                    )
+
+                self.save_undo_state()
+
+                # インデックスずれを防ぐため、
+                # 大きい番号から削除する
+                for cut_index in sorted(
+                    cut_indexes,
+                    reverse=True,
+                ):
+                    if (
+                        cut_index < 0
+                        or cut_index >= len(self.rects)
+                    ):
+                        continue
+
+                    del self.rects[
+                        cut_index
+                    ]
+
+                    if cut_index < len(
+                        self.rect_angles
+                    ):
+                        del self.rect_angles[
+                            cut_index
+                        ]
+
+                    if cut_index < len(
+                        self.rect_aspect_modes
+                    ):
+                        del self.rect_aspect_modes[
+                            cut_index
+                        ]
+
+                self.selected_rect = -1
+                self.selected_rects.clear()
+
+                self.dragging = False
+                self.drag_undo_saved = False
+                self.adding_rect = False
+                self.resizing = False
+                self.rotating = False
+
+                self.rects_changed.emit()
+                self.update()
+
+            event.accept()
+            return
+
+        if (
             event.key() == Qt.Key.Key_C
             and event.modifiers()
             == Qt.KeyboardModifier.ControlModifier
@@ -3146,6 +3303,16 @@ class PhotoCanvas(QWidget):
                             ),
                             "angle": angle,
                             "aspect_mode": aspect_mode,
+                            "source_width": (
+                                self.pixmap.width()
+                                if self.pixmap is not None
+                                else 0
+                            ),
+                            "source_height": (
+                                self.pixmap.height()
+                                if self.pixmap is not None
+                                else 0
+                            ),
                         }
                     )
 
@@ -3182,11 +3349,55 @@ class PhotoCanvas(QWidget):
                     "free",
                 )
 
+                source_width = copied.get(
+                    "source_width",
+                    0,
+                )
+
+                source_height = copied.get(
+                    "source_height",
+                    0,
+                )
+
+                scale_x = 1.0
+                scale_y = 1.0
+
+                if (
+                    self.pixmap is not None
+                    and source_width > 0
+                    and source_height > 0
+                ):
+                    scale_x = (
+                        self.pixmap.width()
+                        / source_width
+                    )
+
+                    scale_y = (
+                        self.pixmap.height()
+                        / source_height
+                    )
+
                 new_rect = (
-                    x + offset,
-                    y + offset,
-                    w,
-                    h,
+                    int(round(
+                        x * scale_x
+                        + offset
+                    )),
+                    int(round(
+                        y * scale_y
+                        + offset
+                    )),
+                    max(
+                        1,
+                        int(round(
+                            w * scale_x
+                        )),
+                    ),
+                    max(
+                        1,
+                        int(round(
+                            h * scale_y
+                        )),
+                    ),
                 )
 
                 self.rects.append(
