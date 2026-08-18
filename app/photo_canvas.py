@@ -54,6 +54,7 @@ class PhotoCanvas(QWidget):
         self.aspect_ratio_mode = "free"
 
         self.rotating = False
+        self.rotation_handle_below = False
 
         self.setMinimumHeight(400)
         self.setMouseTracking(True)
@@ -1721,6 +1722,14 @@ class PhotoCanvas(QWidget):
                 self.save_undo_state()
 
                 self.rotating = True
+
+                self.rotation_handle_below = bool(
+                    controls.get(
+                        "place_below",
+                        False,
+                    )
+                )
+
                 self.dragging = False
                 self.adding_rect = False
                 self.resizing = False
@@ -2027,9 +2036,14 @@ class PhotoCanvas(QWidget):
             dx = image_x - center_x
             dy = image_y - center_y
 
-            angle = math.degrees(
+            pointer_angle = math.degrees(
                 math.atan2(dy, dx)
-            ) + 90.0
+            )
+
+            if self.rotation_handle_below:
+                angle = pointer_angle - 90.0
+            else:
+                angle = pointer_angle + 90.0
 
             # -180～180度に収める
             angle = (
@@ -3027,9 +3041,9 @@ class PhotoCanvas(QWidget):
         self.adding_rect = False
         self.resizing = False
         self.rotating = False
+        self.rotation_handle_below = False
         self.resize_handle = None
         self.resize_start_rect = None
-
         # 新規作成した枠が小さすぎる場合は削除
         if (
             was_adding_rect
