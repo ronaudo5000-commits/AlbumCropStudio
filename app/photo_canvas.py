@@ -2988,6 +2988,9 @@ class PhotoCanvas(QWidget):
             event.accept()
             return
 
+        was_dragging = self.dragging
+        drag_moved = self.drag_undo_saved
+
         was_adding_rect = self.adding_rect
         was_resizing_rect = self.resizing
 
@@ -2997,6 +3000,27 @@ class PhotoCanvas(QWidget):
             or self.resizing
             or self.rotating
         )
+
+        # 複数選択中の枠を通常クリックしただけの場合は、
+        # クリックした1枠だけの選択へ戻す。
+        #
+        # 実際にドラッグした場合は、
+        # 従来どおり複数選択を維持してグループ移動する。
+        if (
+            was_dragging
+            and not drag_moved
+            and self.selected_rect >= 0
+            and len(self.selected_rects) > 1
+        ):
+            self.selected_rects = {
+                self.selected_rect
+            }
+
+            self.selected_rect_changed.emit(
+                self.selected_rect
+            )
+
+            self.update()
 
         self.dragging = False
         self.drag_undo_saved = False
