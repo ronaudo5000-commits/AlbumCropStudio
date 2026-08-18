@@ -68,6 +68,7 @@ class PageListWidget(QListWidget):
 
         self.delete_callback = None
         self.check_callback = None
+        self.rect_count_callback = None
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -185,6 +186,78 @@ class PageListWidget(QListWidget):
                 Qt.AlignmentFlag.AlignCenter,
                 "×",
             )
+
+            # ---------------------------------
+            # 切り抜き枠数バッジ
+            # ---------------------------------
+            if (
+                self.viewMode()
+                == QListView.ViewMode.IconMode
+                and self.rect_count_callback
+                is not None
+            ):
+                rect_count = (
+                    self.rect_count_callback(row)
+                )
+
+                badge_width = 44
+                badge_height = 22
+
+                badge_x = (
+                    item_rect.right()
+                    - badge_width
+                    - margin
+                )
+
+                badge_y = (
+                    item_rect.top()
+                    + 34
+                    + 75
+                    - badge_height
+                )
+
+                painter.save()
+
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                painter.setBrush(
+                    QColor(
+                        40,
+                        40,
+                        40,
+                        220,
+                    )
+                )
+
+                painter.drawRoundedRect(
+                    badge_x,
+                    badge_y,
+                    badge_width,
+                    badge_height,
+                    5,
+                    5,
+                )
+
+                painter.setPen(
+                    QColor(
+                        255,
+                        255,
+                        255,
+                    )
+                )
+
+                painter.drawText(
+                    badge_x,
+                    badge_y,
+                    badge_width,
+                    badge_height,
+                    Qt.AlignmentFlag.AlignCenter,
+                    f"{rect_count}枠",
+                )
+
+                painter.restore()
 
     def mousePressEvent(self, event):
         pos = event.position()
@@ -402,6 +475,11 @@ class MainWindow(QMainWindow):
         self.page_list.check_callback = (
             self.set_page_export_enabled
         )
+
+        self.page_list.rect_count_callback = (
+            self.get_page_rect_count
+        )
+
         self.page_list.setMinimumWidth(120)
 
         self.page_list.setViewMode(
@@ -491,6 +569,10 @@ class MainWindow(QMainWindow):
 
         self.preview_area.rects_changed.connect(
             self.mark_project_modified
+        )
+
+        self.preview_area.rects_changed.connect(
+            self.update_current_page_list_item_text
         )
 
         self.zoom_out_button = QPushButton("−")
@@ -1188,7 +1270,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(controls_layout)
 
-        self.status_label = QLabel("検出数: 0")
+        self.status_label = QLabel("枠数: 0")
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -1423,7 +1505,7 @@ class MainWindow(QMainWindow):
         self.update_crop_preview()
 
         self.status_label.setText(
-            f"検出数: {len(detected_rects)}"
+            f"枠数: {len(detected_rects)}"
         )
 
         self.preview_area.update()
@@ -1799,6 +1881,7 @@ class MainWindow(QMainWindow):
         self.project_modified = True
 
         self.update_page_label()
+        self.apply_page_list_display_mode()
 
     def dropEvent(self, event):
         if not event.mimeData().hasUrls():
@@ -1859,6 +1942,97 @@ class MainWindow(QMainWindow):
         )
 
         self.project_modified = True
+
+    def update_current_rect_count_status(
+        self,
+    ):
+        if (
+            self.current_page_index < 0
+            or self.current_page_index
+            >= len(self.image_paths)
+        ):
+            self.status_label.setText(
+                "枠数: 0"
+            )
+            return
+
+        rect_count = len(
+            self.preview_area.rects
+        )
+
+        self.status_label.setText(
+            f"枠数: {rect_count}"
+        )
+
+    def get_page_rect_count(
+        self,
+        row,
+    ):
+        if (
+            row < 0
+            or row >= len(self.image_paths)
+        ):
+            return 0
+
+        if row == self.current_page_index:
+            return len(
+                self.preview_area.rects
+            )
+
+        return len(
+            self.page_rects.get(
+                row,
+                [],
+            )
+        )
+
+    def update_current_page_list_item_text(
+        self,
+        *args,
+    ):
+        row = self.current_page_index
+
+        if (
+            row < 0
+            or row >= len(self.image_paths)
+            or row >= self.page_list.count()
+        ):
+            return
+
+        item = self.page_list.item(row)
+
+        if item is None:
+            return
+
+        file_name = Path(
+            self.image_paths[row]
+        ).name
+
+        rect_count = self.get_page_rect_count(
+            row
+        )
+
+        mode = (
+            self.page_list_display_combo.currentData()
+        )
+
+        if mode == "compact":
+            item.setText(
+                (
+                    f"{row + 1:03d}  "
+                    f"{file_name}  "
+                    f"{rect_count}枠"
+                )
+            )
+        else:
+            # サムネイル表示では枠数は
+            # paintEventのバッジとして描画する
+            item.setText(
+                file_name
+            )
+
+        self.page_list.viewport().update()
+        self.update_current_rect_count_status()
 
     def apply_page_list_display_mode(self):
         mode = self.page_list_display_combo.currentData()
@@ -1953,23 +2127,37 @@ class MainWindow(QMainWindow):
                 }
             """)
 
-            for row in range(
-                self.page_list.count()
+        for row in range(
+            self.page_list.count()
+        ):
+            item = self.page_list.item(row)
+
+            if (
+                item is None
+                or row >= len(self.image_paths)
             ):
-                item = self.page_list.item(row)
+                continue
 
-                if (
-                    item is None
-                    or row >= len(self.image_paths)
-                ):
-                    continue
+            file_name = Path(
+                self.image_paths[row]
+            ).name
 
+            rect_count = self.get_page_rect_count(
+                row
+            )
+
+            if mode == "compact":
                 item.setText(
-                    Path(
-                        self.image_paths[row]
-                    ).name
+                    (
+                        f"{row + 1:03d}  "
+                        f"{file_name}  "
+                        f"{rect_count}枠"
+                    )
                 )
-
+            else:
+                item.setText(
+                    file_name
+                )
         self.page_list.viewport().update()
 
     def update_page_label(self):
@@ -2004,6 +2192,8 @@ class MainWindow(QMainWindow):
         ] = list(
             self.preview_area.rect_aspect_modes
         )
+
+        self.update_current_page_list_item_text()
 
     def build_project_data(self):
         self.save_current_page_rects()
@@ -2557,6 +2747,7 @@ class MainWindow(QMainWindow):
 
         self.update_crop_preview()
         self.update_page_label()
+        self.apply_page_list_display_mode()
         self.preview_area.update()
 
     def change_page_from_list(self, row):
@@ -2615,7 +2806,7 @@ class MainWindow(QMainWindow):
         self.preview_area.update()
 
         self.status_label.setText(
-            f"検出数: {len(saved_rects)}"
+            f"枠数: {len(saved_rects)}"
         )
 
         self.delete_page_button.setEnabled(
@@ -2779,7 +2970,7 @@ class MainWindow(QMainWindow):
             self.preview_area.set_rects([])
 
             self.page_label.setText("0 / 0")
-            self.status_label.setText("検出数: 0")
+            self.status_label.setText("枠数: 0")
 
             self.clear_crop_preview()
 
@@ -2827,7 +3018,7 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            f"検出数: {len(saved_rects)}"
+            f"枠数: {len(saved_rects)}"
         )
 
         self.delete_page_button.setEnabled(True)
@@ -3114,7 +3305,7 @@ class MainWindow(QMainWindow):
         self.delete_page_button.setEnabled(True)
 
         self.status_label.setText(
-            f"検出数: {len(saved_rects)}"
+            f"枠数: {len(saved_rects)}"
         )
 
         self.update_crop_preview()
@@ -3166,7 +3357,7 @@ class MainWindow(QMainWindow):
         self.preview_area.update()     
 
         self.status_label.setText(
-            f"検出数: {len(saved_rects)}"
+            f"枠数: {len(saved_rects)}"
         ) 
 
         self.update_crop_preview()
@@ -3223,7 +3414,7 @@ class MainWindow(QMainWindow):
         self.preview_area.update()     
 
         self.status_label.setText(
-            f"検出数: {len(saved_rects)}"
+            f"枠数: {len(saved_rects)}"
         )
 
         self.update_crop_preview()
@@ -3407,7 +3598,7 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            "検出数: 0"
+            "枠数: 0"
         )
 
         if hasattr(
