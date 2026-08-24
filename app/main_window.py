@@ -1049,6 +1049,28 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.composite_member_edit_button = QPushButton(
+            "構成領域編集"
+        )
+
+        self.composite_member_edit_button.setMinimumHeight(
+            40
+        )
+
+        self.composite_member_edit_button.setCheckable(
+            True
+        )
+
+        self.composite_member_edit_button.toggled.connect(
+            self.toggle_composite_member_edit_mode
+        )
+
+        self.composite_member_edit_button.setToolTip(
+            self.tr(
+                "複合枠を構成する領域を個別に編集します"
+            )
+        )
+
         self.load_project_button = QPushButton(
             "作業を開く"
         )
@@ -1207,6 +1229,10 @@ class MainWindow(QMainWindow):
 
         edit_layout.addWidget(
             self.composite_create_button
+        )
+
+        edit_layout.addWidget(
+            self.composite_member_edit_button
         )
 
         self.aspect_ratio_combo = QComboBox()
@@ -4163,6 +4189,15 @@ class MainWindow(QMainWindow):
         self,
         enabled,
     ):
+
+        if enabled:
+            if (
+                self.composite_member_edit_button.isChecked()
+            ):
+                self.composite_member_edit_button.setChecked(
+                    False
+                )
+
         self.preview_area.set_composite_create_mode(
             enabled
         )
@@ -4170,6 +4205,31 @@ class MainWindow(QMainWindow):
         if enabled:
             self.status_label.setText(
                 "複合枠作成モード"
+            )
+        else:
+            self.update_current_rect_count_status()
+
+        self.preview_area.setFocus(
+            Qt.FocusReason.OtherFocusReason
+        )
+
+    def toggle_composite_member_edit_mode(
+        self,
+        enabled,
+    ):
+        if enabled:
+            if self.composite_create_button.isChecked():
+                self.composite_create_button.setChecked(
+                    False
+                )
+
+        self.preview_area.set_composite_member_edit_mode(
+            enabled
+        )
+
+        if enabled:
+            self.status_label.setText(
+                "構成領域編集モード"
             )
         else:
             self.update_current_rect_count_status()

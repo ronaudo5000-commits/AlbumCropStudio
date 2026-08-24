@@ -52,6 +52,8 @@ class PhotoCanvas(QWidget):
         self.composite_create_mode = False
         self.composite_create_indexes = []
 
+        self.composite_member_edit_mode = False
+
         self.resizing = False
         self.resize_handle_size = 7
         self.resize_start_rect = None
@@ -426,6 +428,53 @@ class PhotoCanvas(QWidget):
         self.selected_rects.clear()
 
         self.update()
+
+    def set_composite_member_edit_mode(
+        self,
+        enabled,
+    ):
+        self.composite_member_edit_mode = bool(
+            enabled
+        )
+
+        self.dragging = False
+        self.adding_rect = False
+        self.resizing = False
+        self.rotating = False
+
+        self.selected_rect = -1
+        self.selected_rects.clear()
+
+        self.update()
+
+    def normalize_singleton_groups(self):
+        group_counts = {}
+
+        for group_id in self.rect_group_ids:
+            if group_id is None:
+                continue
+
+            group_counts[group_id] = (
+                group_counts.get(
+                    group_id,
+                    0,
+                )
+                + 1
+            )
+
+        for index, group_id in enumerate(
+            self.rect_group_ids
+        ):
+            if group_id is None:
+                continue
+
+            if group_counts.get(
+                group_id,
+                0,
+            ) < 2:
+                self.rect_group_ids[
+                    index
+                ] = None
 
     def next_group_id(self):
         existing_ids = [
@@ -1915,6 +1964,8 @@ class PhotoCanvas(QWidget):
                             delete_index
                         ]
 
+                self.normalize_singleton_groups()
+
                 self.selected_rect = -1
                 self.selected_rects.clear()
                 self.dragging = False
@@ -2168,19 +2219,31 @@ class PhotoCanvas(QWidget):
                         )
 
                     if group_id is not None:
-                        # 複合枠の構成枠をクリックした場合は、
-                        # 同じgroup IDの枠をすべて選択する
-                        self.selected_rects = {
-                            group_index
-                            for group_index, current_group_id
-                            in enumerate(
-                                self.rect_group_ids
-                            )
-                            if current_group_id
-                            == group_id
-                        }
+                        if self.composite_member_edit_mode:
+                            # 構成領域編集モードでは、
+                            # クリックした1領域だけ選択する
+                            self.selected_rects = {
+                                index
+                            }
 
-                        self.selected_rect = index
+                            self.selected_rect = index
+
+                        else:
+                            # 通常時は複合枠全体を選択する
+                            self.selected_rects = {
+                                group_index
+                                for (
+                                    group_index,
+                                    current_group_id,
+                                )
+                                in enumerate(
+                                    self.rect_group_ids
+                                )
+                                if current_group_id
+                                == group_id
+                            }
+
+                            self.selected_rect = index
 
                     elif (
                         index in self.selected_rects
@@ -3965,6 +4028,8 @@ class PhotoCanvas(QWidget):
                         del self.rect_group_ids[
                             delete_index
                         ]
+
+                self.normalize_singleton_groups()
 
                 self.selected_rect = -1
                 self.selected_rects.clear()
