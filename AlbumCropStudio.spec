@@ -5,7 +5,16 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+datas=[
+    (
+        'resources/app_icon.png',
+        'resources',
+    ),
+    (
+        'resources/splash.png',
+        'resources',
+    ),
+],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -22,6 +31,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='AlbumCropStudio',
+    icon='resources/app_icon.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
