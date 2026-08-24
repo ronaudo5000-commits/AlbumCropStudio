@@ -4189,18 +4189,22 @@ class MainWindow(QMainWindow):
             self.save_button.setEnabled(True)
             return
 
-        # 書き出し対象ページの枠数を確認
+        # 書き出し対象ページの
+        # 実際の切り抜き単位数を確認
         total_crops = sum(
-            len(
+            self.count_crop_units(
                 self.page_rects.get(
                     page_index,
                     [],
-                )
+                ),
+                self.page_group_ids.get(
+                    page_index,
+                    [],
+                ),
             )
             for page_index
             in export_page_indexes
         )
-
         if total_crops == 0:
             print(
                 "書き出し対象ページに枠がありません"
@@ -4320,6 +4324,7 @@ class MainWindow(QMainWindow):
             self.image_paths,
             self.page_rects,
             self.page_angles,
+            self.page_group_ids,
             output_dir,
             dpi,
             margin_px,

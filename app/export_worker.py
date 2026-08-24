@@ -17,6 +17,7 @@ class CropExportWorker(QObject):
         image_paths,
         page_rects,
         page_angles,
+        page_group_ids,
         output_dir,
         dpi,
         margin_px,
@@ -40,6 +41,12 @@ class CropExportWorker(QObject):
             page_index: list(angles)
             for page_index, angles
             in page_angles.items()
+        }
+
+        self.page_group_ids = {
+            page_index: list(group_ids)
+            for page_index, group_ids
+            in page_group_ids.items()
         }
 
         self.output_dir = output_dir
@@ -252,6 +259,61 @@ class CropExportWorker(QObject):
             )
         )
 
+    def build_crop_units(
+        self,
+        page_rects,
+        page_group_ids,
+    ):
+        crop_units = []
+        processed_group_ids = set()
+
+        for rect_index in range(
+            len(page_rects)
+        ):
+            group_id = None
+
+            if rect_index < len(
+                page_group_ids
+            ):
+                group_id = page_group_ids[
+                    rect_index
+                ]
+
+            if group_id is None:
+                crop_units.append(
+                    [rect_index]
+                )
+                continue
+
+            if group_id in processed_group_ids:
+                continue
+
+            member_indexes = [
+                member_index
+                for member_index in range(
+                    len(page_rects)
+                )
+                if (
+                    member_index
+                    < len(page_group_ids)
+                    and page_group_ids[
+                        member_index
+                    ]
+                    == group_id
+                )
+            ]
+
+            if member_indexes:
+                crop_units.append(
+                    member_indexes
+                )
+
+            processed_group_ids.add(
+                group_id
+            )
+
+        return crop_units
+
     def export_images(self):
         saved_count = 0
 
@@ -276,8 +338,20 @@ class CropExportWorker(QObject):
                 [],
             )
 
+            page_group_ids = (
+                self.page_group_ids.get(
+                    page_index,
+                    [],
+                )
+            )
+
             if not page_rects:
                 continue
+
+            crop_units = self.build_crop_units(
+                page_rects,
+                page_group_ids,
+            )
 
             try:
                 with Image.open(
@@ -290,129 +364,234 @@ class CropExportWorker(QObject):
                     image_width = image.width
                     image_height = image.height
 
-                    for crop_index, rect in enumerate(
-                        page_rects,
+                    for (
+                        crop_index,
+                        member_indexes,
+                    ) in enumerate(
+                        crop_units,
                         start=1,
                     ):
-                        (
-                            x,
-                            y,
-                            w,
-                            h,
-                        ) = self.validate_crop_rect(
-                            rect,
-                            page_index,
-                            crop_index,
-                        )
+                        prepared_members = []
 
-                        angle = 0.0
+                        for rect_index in member_indexes:
+                            rect = page_rects[
+                                rect_index
+                            ]
 
-                        angle_index = (
-                            crop_index - 1
-                        )
+                            (
+                                x,
+                                y,
+                                w,
+                                h,
+                            ) = self.validate_crop_rect(
+                                rect,
+                                page_index,
+                                rect_index + 1,
+                            )
 
-                        if (
-                            angle_index
-                            < len(page_angles)
-                        ):
+                            angle = 0.0
+
+                            if rect_index < len(
+                                page_angles
+                            ):
+                                try:
+                                    angle = float(
+                                        page_angles[
+                                            rect_index
+                                        ]
+                                    )
+
+                                except (
+                                    TypeError,
+                                    ValueError,
+                                    OverflowError,
+                                ) as e:
+                                    raise ValueError(
+                                        (
+                                            f"ページ "
+                                            f"{page_index + 1}、"
+                                            f"写真 "
+                                            f"{rect_index + 1} の"
+                                            "回転角度が不正です"
+                                        )
+                                    ) from e
+
+                                if not math.isfinite(
+                                    angle
+                                ):
+                                    raise ValueError(
+                                        (
+                                            f"ページ "
+                                            f"{page_index + 1}、"
+                                            f"写真 "
+                                            f"{rect_index + 1} の"
+                                            "回転角度に無効な数値が"
+                                            "含まれています"
+                                        )
+                                    )
+
+                            crop_x = (
+                                x - self.margin_px
+                            )
+
+                            crop_y = (
+                                y - self.margin_px
+                            )
+
+                            crop_w = (
+                                w
+                                + self.margin_px * 2
+                            )
+
+                            crop_h = (
+                                h
+                                + self.margin_px * 2
+                            )
+
                             try:
-                                angle = float(
-                                    page_angles[
-                                        angle_index
-                                    ]
+                                (
+                                    crop_x,
+                                    crop_y,
+                                    crop_w,
+                                    crop_h,
+                                ) = self.clamp_crop_rect(
+                                    crop_x,
+                                    crop_y,
+                                    crop_w,
+                                    crop_h,
+                                    image_width,
+                                    image_height,
                                 )
 
-                            except (
-                                TypeError,
-                                ValueError,
-                                OverflowError,
-                            ) as e:
+                            except ValueError as e:
                                 raise ValueError(
                                     (
-                                        f"ページ {page_index + 1}、"
-                                        f"写真 {crop_index} の"
-                                        "回転角度が不正です"
+                                        f"ページ "
+                                        f"{page_index + 1}、"
+                                        f"写真 "
+                                        f"{rect_index + 1} の"
+                                        "切り抜き範囲が不正です。"
+                                        f"\n詳細: {e}"
                                     )
                                 ) from e
 
-                            if not math.isfinite(
-                                angle
+                            crop = (
+                                self.create_rotated_crop_image(
+                                    image,
+                                    crop_x,
+                                    crop_y,
+                                    crop_w,
+                                    crop_h,
+                                    angle,
+                                )
+                            )
+
+                            if (
+                                crop.width <= 0
+                                or crop.height <= 0
                             ):
                                 raise ValueError(
                                     (
-                                        f"ページ {page_index + 1}、"
-                                        f"写真 {crop_index} の"
-                                        "回転角度に無効な数値が"
-                                        "含まれています"
+                                        f"ページ "
+                                        f"{page_index + 1}、"
+                                        f"写真 "
+                                        f"{rect_index + 1} の"
+                                        "切り抜き結果のサイズが"
+                                        "不正です"
                                     )
                                 )
 
-                        crop_x = (
-                            x - self.margin_px
-                        )
-
-                        crop_y = (
-                            y - self.margin_px
-                        )
-
-                        crop_w = (
-                            w
-                            + self.margin_px * 2
-                        )
-
-                        crop_h = (
-                            h
-                            + self.margin_px * 2
-                        )
-
-                        try:
-                            (
-                                crop_x,
-                                crop_y,
-                                crop_w,
-                                crop_h,
-                            ) = self.clamp_crop_rect(
-                                crop_x,
-                                crop_y,
-                                crop_w,
-                                crop_h,
-                                image_width,
-                                image_height,
+                            prepared_members.append(
+                                {
+                                    "x": crop_x,
+                                    "y": crop_y,
+                                    "w": crop_w,
+                                    "h": crop_h,
+                                    "image": crop,
+                                }
                             )
 
-                        except ValueError as e:
-                            raise ValueError(
+                        if len(prepared_members) == 1:
+                            output_image = (
+                                prepared_members[
+                                    0
+                                ][
+                                    "image"
+                                ]
+                            )
+
+                        else:
+                            left = min(
+                                member["x"]
+                                for member
+                                in prepared_members
+                            )
+
+                            top = min(
+                                member["y"]
+                                for member
+                                in prepared_members
+                            )
+
+                            right = max(
+                                member["x"]
+                                + member["w"]
+                                for member
+                                in prepared_members
+                            )
+
+                            bottom = max(
+                                member["y"]
+                                + member["h"]
+                                for member
+                                in prepared_members
+                            )
+
+                            canvas_width = max(
+                                1,
+                                int(round(
+                                    right - left
+                                )),
+                            )
+
+                            canvas_height = max(
+                                1,
+                                int(round(
+                                    bottom - top
+                                )),
+                            )
+
+                            output_image = Image.new(
+                                "RGB",
                                 (
-                                    f"ページ {page_index + 1}、"
-                                    f"写真 {crop_index} の"
-                                    f"切り抜き範囲が不正です。"
-                                    f"\n詳細: {e}"
-                                )
-                            ) from e
-
-                        crop = (
-                            self.create_rotated_crop_image(
-                                image,
-                                crop_x,
-                                crop_y,
-                                crop_w,
-                                crop_h,
-                                angle,
-                            )
-                        )
-
-                        if (
-                            crop.width <= 0
-                            or crop.height <= 0
-                        ):
-                            raise ValueError(
+                                    canvas_width,
+                                    canvas_height,
+                                ),
                                 (
-                                    f"ページ {page_index + 1}、"
-                                    f"写真 {crop_index} の"
-                                    "切り抜き結果のサイズが"
-                                    "不正です"
-                                )
+                                    255,
+                                    255,
+                                    255,
+                                ),
                             )
+
+                            for member in prepared_members:
+                                paste_x = int(round(
+                                    member["x"]
+                                    - left
+                                ))
+
+                                paste_y = int(round(
+                                    member["y"]
+                                    - top
+                                ))
+
+                                output_image.paste(
+                                    member["image"],
+                                    (
+                                        paste_x,
+                                        paste_y,
+                                    ),
+                                )
 
                         output_path = (
                             self.output_dir
@@ -422,7 +601,7 @@ class CropExportWorker(QObject):
                             )
                         )
 
-                        crop.save(
+                        output_image.save(
                             output_path,
                             "JPEG",
                             quality=self.jpeg_quality,
