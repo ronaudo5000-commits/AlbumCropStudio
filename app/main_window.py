@@ -4690,6 +4690,187 @@ class MainWindow(QMainWindow):
 
         return result
 
+    def build_preview_crop_units(self):
+        rects = self.preview_area.rects
+        group_ids = self.preview_area.rect_group_ids
+
+        units = []
+        seen_group_ids = set()
+
+        for index in range(len(rects)):
+            group_id = None
+
+            if index < len(group_ids):
+                group_id = group_ids[index]
+
+            if group_id is None:
+                units.append(
+                    {
+                        "group_id": None,
+                        "indexes": [index],
+                    }
+                )
+                continue
+
+            if group_id in seen_group_ids:
+                continue
+
+            member_indexes = [
+                member_index
+                for member_index, current_group_id
+                in enumerate(group_ids)
+                if current_group_id == group_id
+            ]
+
+            if not member_indexes:
+                continue
+
+            units.append(
+                {
+                    "group_id": group_id,
+                    "indexes": member_indexes,
+                }
+            )
+
+            seen_group_ids.add(
+                group_id
+            )
+
+        return units
+
+    def create_composite_crop_preview_pixmap(
+        self,
+        member_indexes,
+    ):
+        if not member_indexes:
+            return QPixmap()
+
+        valid_members = []
+
+        for index in member_indexes:
+            if (
+                index < 0
+                or index >= len(
+                    self.preview_area.rects
+                )
+            ):
+                continue
+
+            x, y, w, h = (
+                self.preview_area.rects[index]
+            )
+
+            if w <= 0 or h <= 0:
+                continue
+
+            angle = 0.0
+
+            if index < len(
+                self.preview_area.rect_angles
+            ):
+                angle = (
+                    self.preview_area.rect_angles[
+                        index
+                    ]
+                )
+
+            crop_pixmap = (
+                self.create_rotated_crop_pixmap(
+                    x,
+                    y,
+                    w,
+                    h,
+                    angle,
+                )
+            )
+
+            if crop_pixmap.isNull():
+                continue
+
+            valid_members.append(
+                {
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                    "pixmap": crop_pixmap,
+                }
+            )
+
+        if not valid_members:
+            return QPixmap()
+
+        min_x = min(
+            member["x"]
+            for member in valid_members
+        )
+
+        min_y = min(
+            member["y"]
+            for member in valid_members
+        )
+
+        max_x = max(
+            member["x"] + member["w"]
+            for member in valid_members
+        )
+
+        max_y = max(
+            member["y"] + member["h"]
+            for member in valid_members
+        )
+
+        canvas_width = max(
+            1,
+            int(round(max_x - min_x)),
+        )
+
+        canvas_height = max(
+            1,
+            int(round(max_y - min_y)),
+        )
+
+        result = QPixmap(
+            canvas_width,
+            canvas_height,
+        )
+
+        result.fill(
+            Qt.GlobalColor.white
+        )
+
+        painter = QPainter(
+            result
+        )
+
+        painter.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform,
+            True,
+        )
+
+        for member in valid_members:
+            paste_x = int(
+                round(
+                    member["x"] - min_x
+                )
+            )
+
+            paste_y = int(
+                round(
+                    member["y"] - min_y
+                )
+            )
+
+            painter.drawPixmap(
+                paste_x,
+                paste_y,
+                member["pixmap"],
+            )
+
+        painter.end()
+
+        return result
+
     def clear_crop_preview(self):
         while self.crop_preview_list_layout.count():
             item = self.crop_preview_list_layout.takeAt(0)
@@ -4718,7 +4899,11 @@ class MainWindow(QMainWindow):
 
         # 既存のプレビュー表示を全部削除
         while self.crop_preview_list_layout.count():
-            item = self.crop_preview_list_layout.takeAt(0)
+            item = (
+                self.crop_preview_list_layout.takeAt(
+                    0
+                )
+            )
 
             widget = item.widget()
 
@@ -4730,6 +4915,7 @@ class MainWindow(QMainWindow):
             empty_label = QLabel(
                 "切り抜き結果が\nここに表示されます"
             )
+
             empty_label.setAlignment(
                 Qt.AlignmentFlag.AlignCenter
             )
@@ -4741,45 +4927,87 @@ class MainWindow(QMainWindow):
             self.crop_preview_list_layout.addStretch()
             return
 
-        # すべての枠を順番にプレビュー表示
-        for index, (x, y, w, h) in enumerate(
-            self.preview_area.rects,
+        crop_units = (
+            self.build_preview_crop_units()
+        )
+
+        for unit_number, unit in enumerate(
+            crop_units,
             start=1,
         ):
-            angle = 0.0
+            member_indexes = unit[
+                "indexes"
+            ]
 
-            angle_index = index - 1
+            group_id = unit[
+                "group_id"
+            ]
 
-            if angle_index < len(
-                self.preview_area.rect_angles
-            ):
-                angle = self.preview_area.rect_angles[
-                    angle_index
-                ]
+            if group_id is None:
+                rect_index = (
+                    member_indexes[0]
+                )
 
-            crop_pixmap = self.create_rotated_crop_pixmap(
-                x,
-                y,
-                w,
-                h,
-                angle,
-            )
+                x, y, w, h = (
+                    self.preview_area.rects[
+                        rect_index
+                    ]
+                )
+
+                angle = 0.0
+
+                if rect_index < len(
+                    self.preview_area.rect_angles
+                ):
+                    angle = (
+                        self.preview_area.rect_angles[
+                            rect_index
+                        ]
+                    )
+
+                crop_pixmap = (
+                    self.create_rotated_crop_pixmap(
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                    )
+                )
+
+                title_text = (
+                    f"写真 {unit_number}"
+                )
+
+            else:
+                crop_pixmap = (
+                    self.create_composite_crop_preview_pixmap(
+                        member_indexes
+                    )
+                )
+
+                title_text = (
+                    f"複合枠 G{group_id}"
+                )
 
             if crop_pixmap.isNull():
                 continue
 
             title_label = QLabel(
-                f"写真 {index}"
+                title_text
             )
 
             preview_label = QLabel()
+
             preview_label.setAlignment(
                 Qt.AlignmentFlag.AlignCenter
             )
 
             preview_width = max(
                 80,
-                self.crop_preview_scroll.viewport().width()
+                self.crop_preview_scroll
+                .viewport()
+                .width()
                 - 24,
             )
 

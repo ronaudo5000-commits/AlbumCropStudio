@@ -1337,9 +1337,9 @@ class PhotoCanvas(QWidget):
 
             painter.restore()
 
-            painter.setFont(QFont("Arial", 14))
+            painter.setFont(QFont("Arial", 12))
 
-            label_width = 28
+            label_width = 48
             label_height = 24
 
             rect_center_x = x + w / 2
@@ -1391,8 +1391,36 @@ class PhotoCanvas(QWidget):
                 )
 
                 if group_id is not None:
+                    group_member_indexes = [
+                        member_index
+                        for (
+                            member_index,
+                            current_group_id,
+                        )
+                        in enumerate(
+                            self.rect_group_ids
+                        )
+                        if current_group_id
+                        == group_id
+                    ]
+
+                    try:
+                        member_position = (
+                            group_member_indexes.index(
+                                index
+                            )
+                        )
+                    except ValueError:
+                        member_position = 0
+
+                    member_letter = chr(
+                        ord("A")
+                        + member_position
+                    )
+
                     label_text = (
-                        f"G{group_id}"
+                        f"G{group_id}-"
+                        f"{member_letter}"
                     )
 
             painter.drawText(
