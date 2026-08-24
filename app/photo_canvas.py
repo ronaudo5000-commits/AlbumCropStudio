@@ -17,6 +17,7 @@ class PhotoCanvas(QWidget):
         self.rects = []
         self.rect_angles = []
         self.rect_aspect_modes = []
+        self.rect_group_ids = []
 
         # 単一操作の基準になる枠
         self.selected_rect = -1
@@ -65,6 +66,7 @@ class PhotoCanvas(QWidget):
         self.rects = []
         self.rect_angles = []
         self.rect_aspect_modes = []
+        self.rect_group_ids = []
         self.selected_rect = -1
         self.selected_rects.clear()
 
@@ -74,7 +76,11 @@ class PhotoCanvas(QWidget):
 
         self.update()
 
-    def set_rects(self, rects):
+    def set_rects(
+        self,
+        rects,
+        group_ids=None,
+    ):
         self.rects = rects
 
         # 枠数に合わせて角度情報を用意する
@@ -116,6 +122,36 @@ class PhotoCanvas(QWidget):
                 ]
             )
 
+        # 枠数に合わせて複合枠group IDを用意する
+        if group_ids is None:
+            self.rect_group_ids = [
+                None
+                for _ in self.rects
+            ]
+
+        else:
+            self.rect_group_ids = list(
+                group_ids
+            )
+
+            while (
+                len(self.rect_group_ids)
+                < len(self.rects)
+            ):
+                self.rect_group_ids.append(
+                    None
+                )
+
+            if (
+                len(self.rect_group_ids)
+                > len(self.rects)
+            ):
+                self.rect_group_ids = (
+                    self.rect_group_ids[
+                        :len(self.rects)
+                    ]
+                )
+
         self.selected_rect = -1
         self.selected_rects.clear()
         self.update()
@@ -132,6 +168,9 @@ class PhotoCanvas(QWidget):
                 ),
                 "aspect_modes": list(
                     self.rect_aspect_modes
+                ),
+                "group_ids": list(
+                    self.rect_group_ids
                 ),
             }
         )
@@ -157,6 +196,9 @@ class PhotoCanvas(QWidget):
                 "aspect_modes": list(
                     self.rect_aspect_modes
                 ),
+                "group_ids": list(
+                    self.rect_group_ids
+                ),
             }
         )
 
@@ -180,6 +222,13 @@ class PhotoCanvas(QWidget):
         self.rect_aspect_modes = list(
             state.get(
                 "aspect_modes",
+                [],
+            )
+        )
+
+        self.rect_group_ids = list(
+            state.get(
+                "group_ids",
                 [],
             )
         )
@@ -210,6 +259,24 @@ class PhotoCanvas(QWidget):
                 ]
             )
 
+        while (
+            len(self.rect_group_ids)
+            < len(self.rects)
+        ):
+            self.rect_group_ids.append(
+                None
+            )
+
+        if (
+            len(self.rect_group_ids)
+            > len(self.rects)
+        ):
+            self.rect_group_ids = (
+                self.rect_group_ids[
+                    :len(self.rects)
+                ]
+            )
+
         self.selected_rect = -1
         self.selected_rects.clear()
         self.dragging = False
@@ -235,6 +302,9 @@ class PhotoCanvas(QWidget):
                 ),
                 "aspect_modes": list(
                     self.rect_aspect_modes
+                ),
+                "group_ids": list(
+                    self.rect_group_ids
                 ),
             }
         )
@@ -263,6 +333,13 @@ class PhotoCanvas(QWidget):
             )
         )
 
+        self.rect_group_ids = list(
+            state.get(
+                "group_ids",
+                [],
+            )
+        )
+
         while len(self.rect_angles) < len(self.rects):
             self.rect_angles.append(0.0)
 
@@ -285,6 +362,24 @@ class PhotoCanvas(QWidget):
         ):
             self.rect_aspect_modes = (
                 self.rect_aspect_modes[
+                    :len(self.rects)
+                ]
+            )
+
+        while (
+            len(self.rect_group_ids)
+            < len(self.rects)
+        ):
+            self.rect_group_ids.append(
+                None
+            )
+
+        if (
+            len(self.rect_group_ids)
+            > len(self.rects)
+        ):
+            self.rect_group_ids = (
+                self.rect_group_ids[
                     :len(self.rects)
                 ]
             )
