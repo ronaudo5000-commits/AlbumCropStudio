@@ -9,6 +9,7 @@ class PhotoCanvas(QWidget):
     zoom_changed = Signal(float)
     rects_changed = Signal()
     selected_rect_changed = Signal(int)
+    composite_create_finished = Signal()
 
     def __init__(self):
         super().__init__()
@@ -48,6 +49,9 @@ class PhotoCanvas(QWidget):
         self.add_start_x = 0
         self.add_start_y = 0
 
+        self.composite_create_mode = False
+        self.composite_create_indexes = []
+
         self.resizing = False
         self.resize_handle_size = 7
         self.resize_start_rect = None
@@ -69,6 +73,8 @@ class PhotoCanvas(QWidget):
         self.rect_group_ids = []
         self.selected_rect = -1
         self.selected_rects.clear()
+
+        self.composite_create_indexes.clear()
 
         self.zoom_factor = 1.0
         self.pan_x = 0.0
@@ -399,6 +405,26 @@ class PhotoCanvas(QWidget):
         self.adding_rect = False
         self.selected_rect = -1
         self.selected_rects.clear()
+        self.update()
+
+    def set_composite_create_mode(
+        self,
+        enabled,
+    ):
+        self.composite_create_mode = bool(
+            enabled
+        )
+
+        self.composite_create_indexes.clear()
+
+        self.adding_rect = False
+        self.dragging = False
+        self.resizing = False
+        self.rotating = False
+
+        self.selected_rect = -1
+        self.selected_rects.clear()
+
         self.update()
 
     def next_group_id(self):
@@ -3357,6 +3383,21 @@ class PhotoCanvas(QWidget):
                 return
 
         if (
+            was_adding_rect
+            and self.composite_create_mode
+            and self.selected_rect >= 0
+            and self.selected_rect
+            < len(self.rects)
+        ):
+            if (
+                self.selected_rect
+                not in self.composite_create_indexes
+            ):
+                self.composite_create_indexes.append(
+                    self.selected_rect
+                )
+
+        if (
             was_resizing_rect
             and self.selected_rect >= 0
             and self.selected_rect
@@ -3390,6 +3431,44 @@ class PhotoCanvas(QWidget):
             )
 
     def keyPressEvent(self, event):
+        if (
+            self.composite_create_mode
+            and event.key()
+            in (
+                Qt.Key.Key_Return,
+                Qt.Key.Key_Enter,
+            )
+        ):
+            valid_indexes = [
+                index
+                for index
+                in self.composite_create_indexes
+                if (
+                    0 <= index
+                    < len(self.rects)
+                )
+            ]
+
+            if len(valid_indexes) >= 2:
+                self.selected_rects = set(
+                    valid_indexes
+                )
+
+                self.selected_rect = (
+                    valid_indexes[-1]
+                )
+
+                self.group_selected_rects()
+
+            self.composite_create_indexes.clear()
+
+            self.composite_create_mode = False
+
+            self.composite_create_finished.emit()
+
+            event.accept()
+            return
+
         if (
             event.key() == Qt.Key.Key_G
             and event.modifiers()

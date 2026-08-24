@@ -1020,6 +1020,35 @@ class MainWindow(QMainWindow):
             self.generate_manual_rects
         )
 
+        self.composite_create_button = QPushButton(
+            "複合枠作成"
+        )
+
+        self.composite_create_button.setMinimumHeight(
+            40
+        )
+
+        self.composite_create_button.setCheckable(
+            True
+        )
+
+        self.composite_create_button.toggled.connect(
+            self.toggle_composite_create_mode
+        )
+
+        self.preview_area.composite_create_finished.connect(
+            lambda:
+            self.composite_create_button.setChecked(
+                False
+            )
+        )
+
+        self.composite_create_button.setToolTip(
+            self.tr(
+                "複数の領域を1つの複合切り抜き枠として作成します"
+            )
+        )
+
         self.load_project_button = QPushButton(
             "作業を開く"
         )
@@ -1175,6 +1204,10 @@ class MainWindow(QMainWindow):
         edit_layout.addWidget(self.manual_count_spin)
 
         edit_layout.addWidget(self.generate_rects_button)
+
+        edit_layout.addWidget(
+            self.composite_create_button
+        )
 
         self.aspect_ratio_combo = QComboBox()
 
@@ -4124,6 +4157,25 @@ class MainWindow(QMainWindow):
     def toggle_add_mode(self):
         self.preview_area.set_add_mode(
             self.add_rect_button.isChecked()
+        )
+
+    def toggle_composite_create_mode(
+        self,
+        enabled,
+    ):
+        self.preview_area.set_composite_create_mode(
+            enabled
+        )
+
+        if enabled:
+            self.status_label.setText(
+                "複合枠作成モード"
+            )
+        else:
+            self.update_current_rect_count_status()
+
+        self.preview_area.setFocus(
+            Qt.FocusReason.OtherFocusReason
         )
 
     def save_settings(self):
