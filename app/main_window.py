@@ -3807,11 +3807,15 @@ class MainWindow(QMainWindow):
                 "free"
             )
 
-        self.preview_area.rects = rects
+        self.preview_area.set_rects(
+            rects
+        )
+
         self.preview_area.rect_angles = angles
         self.preview_area.rect_aspect_modes = (
             aspect_modes
         )
+
         self.preview_area.selected_rect = -1
 
         self.detected_rects = list(
@@ -3856,11 +3860,46 @@ class MainWindow(QMainWindow):
             h,
         )
 
-        new_rects = list(self.preview_area.rects)
-        new_rects.append(copied_rect)
+        new_rects = list(
+            self.preview_area.rects
+        )
+        new_rects.append(
+            copied_rect
+        )
 
-        self.preview_area.set_rects(new_rects)
-        self.detected_rects = list(new_rects)
+        new_group_ids = list(
+            self.preview_area.rect_group_ids
+        )
+
+        while (
+            len(new_group_ids)
+            < len(self.preview_area.rects)
+        ):
+            new_group_ids.append(
+                None
+            )
+
+        if (
+            len(new_group_ids)
+            > len(self.preview_area.rects)
+        ):
+            new_group_ids = new_group_ids[
+                :len(self.preview_area.rects)
+            ]
+
+        # コピーされた枠は独立した通常枠として追加
+        new_group_ids.append(
+            None
+        )
+
+        self.preview_area.set_rects(
+            new_rects,
+            group_ids=new_group_ids,
+        )
+
+        self.detected_rects = list(
+            new_rects
+        )
 
         self.save_current_page_rects()
 

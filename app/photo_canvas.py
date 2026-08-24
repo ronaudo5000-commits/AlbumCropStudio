@@ -401,6 +401,103 @@ class PhotoCanvas(QWidget):
         self.selected_rects.clear()
         self.update()
 
+    def next_group_id(self):
+        existing_ids = [
+            group_id
+            for group_id in self.rect_group_ids
+            if isinstance(group_id, int)
+        ]
+
+        if not existing_ids:
+            return 1
+
+        return max(existing_ids) + 1
+
+    def group_selected_rects(self):
+        selected_indexes = sorted(
+            self.selected_rects
+        )
+
+        if len(selected_indexes) < 2:
+            return
+
+        # 枠数に合わせてgroup ID情報を補完する
+        while (
+            len(self.rect_group_ids)
+            < len(self.rects)
+        ):
+            self.rect_group_ids.append(
+                None
+            )
+
+        if (
+            len(self.rect_group_ids)
+            > len(self.rects)
+        ):
+            self.rect_group_ids = (
+                self.rect_group_ids[
+                    :len(self.rects)
+                ]
+            )
+
+        # Phase 1では独立枠同士だけを結合する
+        for index in selected_indexes:
+            if (
+                index < 0
+                or index >= len(self.rects)
+            ):
+                return
+
+            if (
+                self.rect_group_ids[index]
+                is not None
+            ):
+                return
+
+        self.save_undo_state()
+
+        group_id = self.next_group_id()
+
+        for index in selected_indexes:
+            self.rect_group_ids[
+                index
+            ] = group_id
+
+        self.rects_changed.emit()
+        self.update()
+
+    def ungroup_selected_rect(self):
+        if self.selected_rect < 0:
+            return
+
+        if self.selected_rect >= len(
+            self.rect_group_ids
+        ):
+            return
+
+        group_id = self.rect_group_ids[
+            self.selected_rect
+        ]
+
+        if group_id is None:
+            return
+
+        self.save_undo_state()
+
+        for index in range(
+            len(self.rect_group_ids)
+        ):
+            if (
+                self.rect_group_ids[index]
+                == group_id
+            ):
+                self.rect_group_ids[
+                    index
+                ] = None
+
+        self.rects_changed.emit()
+        self.update()
+
     def get_active_aspect_ratio(
         self,
         start_w,
@@ -1205,13 +1302,31 @@ class PhotoCanvas(QWidget):
                 QColor(0, 0, 0)
             )
 
+            label_text = str(
+                index + 1
+            )
+
+            if index < len(
+                self.rect_group_ids
+            ):
+                group_id = (
+                    self.rect_group_ids[
+                        index
+                    ]
+                )
+
+                if group_id is not None:
+                    label_text = (
+                        f"G{group_id}"
+                    )
+
             painter.drawText(
                 label_x,
                 label_y,
                 label_width,
                 label_height,
                 Qt.AlignmentFlag.AlignCenter,
-                str(index + 1),
+                label_text,
             )
 
             if index == self.selected_rect:
@@ -1693,6 +1808,10 @@ class PhotoCanvas(QWidget):
                     copied_mode
                 )
 
+                self.rect_group_ids.append(
+                    None
+                )
+
                 self.selected_rect = (
                     len(self.rects) - 1
                 )
@@ -1760,6 +1879,13 @@ class PhotoCanvas(QWidget):
                         self.rect_aspect_modes
                     ):
                         del self.rect_aspect_modes[
+                            delete_index
+                        ]
+
+                    if delete_index < len(
+                        self.rect_group_ids
+                    ):
+                        del self.rect_group_ids[
                             delete_index
                         ]
 
@@ -2072,6 +2198,11 @@ class PhotoCanvas(QWidget):
         # 作成時の縦横比モードを記録
         self.rect_aspect_modes.append(
             str(self.aspect_ratio_mode)
+        )
+
+        # 新規枠は独立した通常枠として開始
+        self.rect_group_ids.append(
+            None
         )
 
         self.selected_rect = (
@@ -3175,6 +3306,14 @@ class PhotoCanvas(QWidget):
                         self.selected_rect
                     ]
 
+                if (
+                    self.selected_rect
+                    < len(self.rect_group_ids)
+                ):
+                    del self.rect_group_ids[
+                        self.selected_rect
+                    ]
+
                 self.selected_rect = -1
 
                 self.rects_changed.emit()
@@ -3215,6 +3354,29 @@ class PhotoCanvas(QWidget):
             )
 
     def keyPressEvent(self, event):
+        if (
+            event.key() == Qt.Key.Key_G
+            and event.modifiers()
+            == Qt.KeyboardModifier.ControlModifier
+        ):
+            self.group_selected_rects()
+
+            event.accept()
+            return
+
+        if (
+            event.key() == Qt.Key.Key_G
+            and event.modifiers()
+            == (
+                Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.ShiftModifier
+            )
+        ):
+            self.ungroup_selected_rect()
+
+            event.accept()
+            return
+
         if (
             event.key() == Qt.Key.Key_A
             and event.modifiers()
@@ -3354,6 +3516,13 @@ class PhotoCanvas(QWidget):
                         self.rect_aspect_modes
                     ):
                         del self.rect_aspect_modes[
+                            cut_index
+                        ]
+
+                    if cut_index < len(
+                        self.rect_group_ids
+                    ):
+                        del self.rect_group_ids[
                             cut_index
                         ]
 
@@ -3545,6 +3714,10 @@ class PhotoCanvas(QWidget):
                     aspect_mode
                 )
 
+                self.rect_group_ids.append(
+                    None
+                )
+
                 new_indexes.append(
                     len(self.rects) - 1
                 )
@@ -3621,6 +3794,13 @@ class PhotoCanvas(QWidget):
                         self.rect_aspect_modes
                     ):
                         del self.rect_aspect_modes[
+                            delete_index
+                        ]
+
+                    if delete_index < len(
+                        self.rect_group_ids
+                    ):
+                        del self.rect_group_ids[
                             delete_index
                         ]
 
