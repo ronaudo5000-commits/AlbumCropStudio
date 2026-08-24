@@ -418,6 +418,7 @@ class MainWindow(QMainWindow):
         self.page_rects = {}
         self.page_angles = {}
         self.page_aspect_modes = {}
+        self.page_group_ids = {}
         self.deleted_pages_stack = []
 
         self.page_export_enabled = []
@@ -2193,6 +2194,12 @@ class MainWindow(QMainWindow):
             self.preview_area.rect_aspect_modes
         )
 
+        self.page_group_ids[
+            self.current_page_index
+        ] = list(
+            self.preview_area.rect_group_ids
+        )
+
         self.update_current_page_list_item_text()
 
     def build_project_data(self):
@@ -2775,8 +2782,16 @@ class MainWindow(QMainWindow):
             [],
         )
 
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
         self.preview_area.set_rects(
-            saved_rects
+            saved_rects,
+            group_ids=saved_group_ids,
         )
 
         self.detected_rects = list(
@@ -2858,6 +2873,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            deleted_group_ids = list(
+                self.page_group_ids.get(
+                    delete_index,
+                    [],
+                )
+            )
+
             if (
                 delete_index
                 < len(self.page_export_enabled)
@@ -2878,6 +2900,9 @@ class MainWindow(QMainWindow):
                     "angles": deleted_angles,
                     "aspect_modes": (
                         deleted_aspect_modes
+                    ),
+                    "group_ids": (
+                        deleted_group_ids
                     ),
                     "export_enabled": (
                         deleted_export_enabled
@@ -2912,6 +2937,14 @@ class MainWindow(QMainWindow):
                 in self.page_aspect_modes
             ):
                 del self.page_aspect_modes[
+                    delete_index
+                ]
+
+            if (
+                delete_index
+                in self.page_group_ids
+            ):
+                del self.page_group_ids[
                     delete_index
                 ]
 
@@ -2954,6 +2987,25 @@ class MainWindow(QMainWindow):
                 new_page_aspect_modes
             )
 
+            new_page_group_ids = {}
+
+            for (
+                old_index,
+                group_ids,
+            ) in self.page_group_ids.items():
+                if old_index > delete_index:
+                    new_page_group_ids[
+                        old_index - 1
+                    ] = group_ids
+                else:
+                    new_page_group_ids[
+                        old_index
+                    ] = group_ids
+
+            self.page_group_ids = (
+                new_page_group_ids
+            )
+
         self.deleted_pages_stack.append(
             {
                 "type": "group",
@@ -2992,7 +3044,17 @@ class MainWindow(QMainWindow):
             [],
         )
 
-        self.preview_area.set_rects(saved_rects)
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.set_rects(
+            saved_rects,
+            group_ids=saved_group_ids,
+        )
         self.detected_rects = list(saved_rects)
 
         saved_angles = self.page_angles.get(
@@ -3052,6 +3114,11 @@ class MainWindow(QMainWindow):
 
                 restore_aspect_modes = page.get(
                     "aspect_modes",
+                    [],
+                )
+
+                restore_group_ids = page.get(
+                    "group_ids",
                     [],
                 )
 
@@ -3128,6 +3195,31 @@ class MainWindow(QMainWindow):
 
                 self.page_aspect_modes = (
                     new_page_aspect_modes
+                )
+
+                new_page_group_ids = {}
+
+                for (
+                    old_index,
+                    group_ids,
+                ) in self.page_group_ids.items():
+                    if old_index >= restore_index:
+                        new_page_group_ids[
+                            old_index + 1
+                        ] = group_ids
+                    else:
+                        new_page_group_ids[
+                            old_index
+                        ] = group_ids
+
+                new_page_group_ids[
+                    restore_index
+                ] = list(
+                    restore_group_ids
+                )
+
+                self.page_group_ids = (
+                    new_page_group_ids
                 )
 
                 self.page_rects = new_page_rects
@@ -3273,9 +3365,18 @@ class MainWindow(QMainWindow):
             [],
         )
 
-        self.preview_area.set_rects(
-            list(saved_rects)
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
         )
+
+        self.preview_area.set_rects(
+            list(saved_rects),
+            group_ids=saved_group_ids,
+        )
+
         self.detected_rects = list(
             saved_rects
         )
@@ -3331,8 +3432,21 @@ class MainWindow(QMainWindow):
             [],
         )
 
-        self.preview_area.set_rects(saved_rects)
-        self.detected_rects = list(saved_rects)
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.set_rects(
+            saved_rects,
+            group_ids=saved_group_ids,
+        )
+
+        self.detected_rects = list(
+            saved_rects
+        )
 
         saved_angles = self.page_angles.get(
             self.current_page_index,
@@ -3388,8 +3502,21 @@ class MainWindow(QMainWindow):
             [],
         )
 
-        self.preview_area.set_rects(saved_rects)
-        self.detected_rects = list(saved_rects)
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.set_rects(
+            saved_rects,
+            group_ids=saved_group_ids,
+        )
+
+        self.detected_rects = list(
+            saved_rects
+        )
 
         saved_angles = self.page_angles.get(
             self.current_page_index,
