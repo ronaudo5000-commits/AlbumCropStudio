@@ -1311,13 +1311,21 @@ class MainWindow(QMainWindow):
                 [],
             )
 
+            saved_group_ids = (
+                self.page_group_ids.get(
+                    self.current_page_index,
+                    [],
+                )
+            )
+
             saved_angles = self.page_angles.get(
                 self.current_page_index,
                 [],
             )
 
             self.preview_area.set_rects(
-                list(saved_rects)
+                list(saved_rects),
+                group_ids=saved_group_ids,
             )
 
             self.preview_area.rect_angles = list(
@@ -1505,9 +1513,7 @@ class MainWindow(QMainWindow):
         self.save_current_page_rects()
         self.update_crop_preview()
 
-        self.status_label.setText(
-            f"枠数: {len(detected_rects)}"
-        )
+        self.update_current_rect_count_status()
 
         self.preview_area.update()
 
@@ -1944,6 +1950,39 @@ class MainWindow(QMainWindow):
 
         self.project_modified = True
 
+    def count_crop_units(
+        self,
+        rects,
+        group_ids,
+    ):
+        if not rects:
+            return 0
+
+        independent_count = 0
+        grouped_ids = set()
+
+        for index in range(
+            len(rects)
+        ):
+            group_id = None
+
+            if index < len(group_ids):
+                group_id = group_ids[
+                    index
+                ]
+
+            if group_id is None:
+                independent_count += 1
+            else:
+                grouped_ids.add(
+                    group_id
+                )
+
+        return (
+            independent_count
+            + len(grouped_ids)
+        )
+
     def update_current_rect_count_status(
         self,
     ):
@@ -1957,12 +1996,13 @@ class MainWindow(QMainWindow):
             )
             return
 
-        rect_count = len(
-            self.preview_area.rects
+        crop_count = self.count_crop_units(
+            self.preview_area.rects,
+            self.preview_area.rect_group_ids,
         )
 
         self.status_label.setText(
-            f"枠数: {rect_count}"
+            f"枠数: {crop_count}"
         )
 
     def get_page_rect_count(
@@ -1976,15 +2016,24 @@ class MainWindow(QMainWindow):
             return 0
 
         if row == self.current_page_index:
-            return len(
-                self.preview_area.rects
+            return self.count_crop_units(
+                self.preview_area.rects,
+                self.preview_area.rect_group_ids,
             )
 
-        return len(
-            self.page_rects.get(
-                row,
-                [],
-            )
+        rects = self.page_rects.get(
+            row,
+            [],
+        )
+
+        group_ids = self.page_group_ids.get(
+            row,
+            [],
+        )
+
+        return self.count_crop_units(
+            rects,
+            group_ids,
         )
 
     def update_current_page_list_item_text(
@@ -2872,9 +2921,7 @@ class MainWindow(QMainWindow):
 
         self.preview_area.update()
 
-        self.status_label.setText(
-            f"枠数: {len(saved_rects)}"
-        )
+        self.update_current_rect_count_status()
 
         self.delete_page_button.setEnabled(
             True
@@ -3131,9 +3178,7 @@ class MainWindow(QMainWindow):
             self.current_page_index
         )
 
-        self.status_label.setText(
-            f"枠数: {len(saved_rects)}"
-        )
+        self.update_current_rect_count_status()
 
         self.delete_page_button.setEnabled(True)
 
@@ -3457,9 +3502,7 @@ class MainWindow(QMainWindow):
 
         self.delete_page_button.setEnabled(True)
 
-        self.status_label.setText(
-            f"枠数: {len(saved_rects)}"
-        )
+        self.update_current_rect_count_status()
 
         self.update_crop_preview()
         self.update_page_label()
@@ -3522,9 +3565,7 @@ class MainWindow(QMainWindow):
 
         self.preview_area.update()     
 
-        self.status_label.setText(
-            f"枠数: {len(saved_rects)}"
-        ) 
+        self.update_current_rect_count_status()
 
         self.update_crop_preview()
 
@@ -3592,9 +3633,7 @@ class MainWindow(QMainWindow):
 
         self.preview_area.update()     
 
-        self.status_label.setText(
-            f"枠数: {len(saved_rects)}"
-        )
+        self.update_current_rect_count_status()
 
         self.update_crop_preview()
 
@@ -4004,9 +4043,7 @@ class MainWindow(QMainWindow):
         self.preview_area.rects_changed.emit()
         self.preview_area.update()
 
-        self.status_label.setText(
-            f"枠数: {len(rects)}"
-        )
+        self.update_current_rect_count_status()
 
         self.save_current_page_rects()
 
@@ -4082,9 +4119,7 @@ class MainWindow(QMainWindow):
 
         self.save_current_page_rects()
 
-        self.status_label.setText(
-            f"枠数: {len(new_rects)}"
-        )
+        self.update_current_rect_count_status()
 
     def toggle_add_mode(self):
         self.preview_area.set_add_mode(
