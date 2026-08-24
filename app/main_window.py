@@ -2227,6 +2227,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            group_ids = (
+                self.page_group_ids.get(
+                    page_index,
+                    [],
+                )
+            )
+
             if (
                 page_index
                 < len(self.page_export_enabled)
@@ -2251,6 +2258,9 @@ class MainWindow(QMainWindow):
                         str(mode)
                         for mode in aspect_modes
                     ],
+                    "group_ids": list(
+                        group_ids
+                    ),
                     "export_enabled": (
                         export_enabled
                     ),
@@ -2512,6 +2522,7 @@ class MainWindow(QMainWindow):
         self.page_rects = {}
         self.page_angles = {}
         self.page_aspect_modes = {}
+        self.page_group_ids = {}
         self.deleted_pages_stack = []
         self.page_export_enabled = []
 
@@ -2541,6 +2552,11 @@ class MainWindow(QMainWindow):
                 [],
             )
 
+            group_ids = page_data.get(
+                "group_ids",
+                [],
+            )
+
             normalized_aspect_modes = [
                 str(mode)
                 for mode in aspect_modes
@@ -2560,6 +2576,28 @@ class MainWindow(QMainWindow):
             ):
                 normalized_aspect_modes = (
                     normalized_aspect_modes[
+                        :len(rects)
+                    ]
+                )
+
+            normalized_group_ids = list(
+                group_ids
+            )
+
+            while (
+                len(normalized_group_ids)
+                < len(rects)
+            ):
+                normalized_group_ids.append(
+                    None
+                )
+
+            if (
+                len(normalized_group_ids)
+                > len(rects)
+            ):
+                normalized_group_ids = (
+                    normalized_group_ids[
                         :len(rects)
                     ]
                 )
@@ -2596,6 +2634,12 @@ class MainWindow(QMainWindow):
                 page_index
             ] = list(
                 normalized_aspect_modes
+            )
+
+            self.page_group_ids[
+                page_index
+            ] = list(
+                normalized_group_ids
             )
 
             # サムネイルを作成
@@ -2709,13 +2753,21 @@ class MainWindow(QMainWindow):
             [],
         )
 
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
         saved_angles = self.page_angles.get(
             self.current_page_index,
             [],
         )
 
         self.preview_area.set_rects(
-            list(saved_rects)
+            list(saved_rects),
+            group_ids=saved_group_ids,
         )
 
         self.preview_area.rect_angles = list(
