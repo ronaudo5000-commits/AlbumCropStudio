@@ -2130,17 +2130,45 @@ class PhotoCanvas(QWidget):
                         self.selected_rect = index
 
                 else:
-                    # 複数選択済みの枠をクリックした場合は、
-                    # 選択状態を保ったままドラッグできるようにする
-                    if (
+                    group_id = None
+
+                    if index < len(
+                        self.rect_group_ids
+                    ):
+                        group_id = (
+                            self.rect_group_ids[
+                                index
+                            ]
+                        )
+
+                    if group_id is not None:
+                        # 複合枠の構成枠をクリックした場合は、
+                        # 同じgroup IDの枠をすべて選択する
+                        self.selected_rects = {
+                            group_index
+                            for group_index, current_group_id
+                            in enumerate(
+                                self.rect_group_ids
+                            )
+                            if current_group_id
+                            == group_id
+                        }
+
+                        self.selected_rect = index
+
+                    elif (
                         index in self.selected_rects
                         and len(self.selected_rects) > 1
                     ):
+                        # 通常の複数選択済み枠は、
+                        # ドラッグ開始時には選択を維持する
                         self.selected_rect = index
 
                     else:
-                        # それ以外は従来どおり単一選択
-                        self.selected_rects = {index}
+                        # 独立した通常枠は単一選択
+                        self.selected_rects = {
+                            index
+                        }
                         self.selected_rect = index
 
                 if self.selected_rect >= 0:
@@ -3251,6 +3279,14 @@ class PhotoCanvas(QWidget):
             and not drag_moved
             and self.selected_rect >= 0
             and len(self.selected_rects) > 1
+            and (
+                self.selected_rect
+                >= len(self.rect_group_ids)
+                or self.rect_group_ids[
+                    self.selected_rect
+                ]
+                is None
+            )
         ):
             self.selected_rects = {
                 self.selected_rect
@@ -3464,6 +3500,17 @@ class PhotoCanvas(QWidget):
                             ]
                         )
 
+                    group_id = None
+
+                    if cut_index < len(
+                        self.rect_group_ids
+                    ):
+                        group_id = (
+                            self.rect_group_ids[
+                                cut_index
+                            ]
+                        )
+
                     self.copied_rects.append(
                         {
                             "rect": (
@@ -3474,6 +3521,7 @@ class PhotoCanvas(QWidget):
                             ),
                             "angle": angle,
                             "aspect_mode": aspect_mode,
+                            "group_id": group_id,
                             "source_width": (
                                 self.pixmap.width()
                                 if self.pixmap is not None
@@ -3594,6 +3642,16 @@ class PhotoCanvas(QWidget):
                                 copy_index
                             ]
                         )
+                    group_id = None
+
+                    if copy_index < len(
+                        self.rect_group_ids
+                    ):
+                        group_id = (
+                            self.rect_group_ids[
+                                copy_index
+                            ]
+                        )
 
                     self.copied_rects.append(
                         {
@@ -3605,6 +3663,7 @@ class PhotoCanvas(QWidget):
                             ),
                             "angle": angle,
                             "aspect_mode": aspect_mode,
+                            "group_id": group_id,
                             "source_width": (
                                 self.pixmap.width()
                                 if self.pixmap is not None
@@ -3636,6 +3695,8 @@ class PhotoCanvas(QWidget):
 
             new_indexes = []
 
+            group_id_map = {}
+
             for copied in self.copied_rects:
                 x, y, w, h = copied[
                     "rect"
@@ -3649,6 +3710,11 @@ class PhotoCanvas(QWidget):
                 aspect_mode = copied.get(
                     "aspect_mode",
                     "free",
+                )
+
+                source_group_id = copied.get(
+                    "group_id",
+                    None,
                 )
 
                 source_width = copied.get(
@@ -3714,8 +3780,25 @@ class PhotoCanvas(QWidget):
                     aspect_mode
                 )
 
+                new_group_id = None
+
+                if source_group_id is not None:
+                    if (
+                        source_group_id
+                        not in group_id_map
+                    ):
+                        group_id_map[
+                            source_group_id
+                        ] = self.next_group_id()
+
+                    new_group_id = (
+                        group_id_map[
+                            source_group_id
+                        ]
+                    )
+
                 self.rect_group_ids.append(
-                    None
+                    new_group_id
                 )
 
                 new_indexes.append(
