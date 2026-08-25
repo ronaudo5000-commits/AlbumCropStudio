@@ -1,8 +1,18 @@
 import math
 
 from PySide6.QtCore import Qt, Signal, QRectF
-from PySide6.QtGui import QPainter, QPen, QColor, QPixmap, QFont
-from PySide6.QtWidgets import QWidget
+from PySide6.QtGui import (
+    QPainter,
+    QPen,
+    QColor,
+    QPixmap,
+    QFont,
+    QKeyEvent,
+)
+from PySide6.QtWidgets import (
+    QWidget,
+    QMenu,
+)
 
 
 class PhotoCanvas(QWidget):
@@ -1786,11 +1796,324 @@ class PhotoCanvas(QWidget):
             event.accept()
             return
 
+    def select_rect_at_context_position(
+        self,
+        pos,
+    ):
+        if self.pixmap is None:
+            return
+
+        info = self.image_display_info()
+
+        if info is None:
+            return
+
+        (
+            _,
+            x_offset,
+            y_offset,
+            scale_x,
+            scale_y,
+        ) = info
+
+        image_x = (
+            pos.x() - x_offset
+        ) / scale_x
+
+        image_y = (
+            pos.y() - y_offset
+        ) / scale_y
+
+        # 後から作った枠を優先する
+        for index in range(
+            len(self.rects) - 1,
+            -1,
+            -1,
+        ):
+            x, y, w, h = self.rects[
+                index
+            ]
+
+            angle = 0.0
+
+            if index < len(
+                self.rect_angles
+            ):
+                angle = self.rect_angles[
+                    index
+                ]
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+
+            local_x, local_y = (
+                self.rotate_point(
+                    image_x,
+                    image_y,
+                    center_x,
+                    center_y,
+                    -angle,
+                )
+            )
+
+            inside_rect = (
+                x <= local_x <= x + w
+                and
+                y <= local_y <= y + h
+            )
+
+            if not inside_rect:
+                continue
+
+            # すでに複数選択されている枠の
+            # ひとつを右クリックした場合は、
+            # 現在の複数選択を維持する。
+            if (
+                index in self.selected_rects
+                and len(self.selected_rects) > 1
+            ):
+                self.selected_rect = index
+
+                self.selected_rect_changed.emit(
+                    self.selected_rect
+                )
+
+                self.update()
+                return
+
+            group_id = None
+
+            if index < len(
+                self.rect_group_ids
+            ):
+                group_id = (
+                    self.rect_group_ids[
+                        index
+                    ]
+                )
+
+            if (
+                group_id is not None
+                and not self.composite_member_edit_mode
+            ):
+                self.selected_rects = {
+                    group_index
+                    for (
+                        group_index,
+                        current_group_id,
+                    )
+                    in enumerate(
+                        self.rect_group_ids
+                    )
+                    if current_group_id
+                    == group_id
+                }
+            else:
+                self.selected_rects = {
+                    index
+                }
+
+            self.selected_rect = index
+
+            self.selected_rect_changed.emit(
+                self.selected_rect
+            )
+
+            self.update()
+            return
+    def show_context_menu(self, global_pos):
+        menu = QMenu(self)
+
+        has_selection = bool(
+            self.selected_rects
+        ) or (
+            0 <= self.selected_rect
+            < len(self.rects)
+        )
+
+        selected_indexes = set(
+            self.selected_rects
+        )
+
+        if (
+            not selected_indexes
+            and 0 <= self.selected_rect
+            < len(self.rects)
+        ):
+            selected_indexes.add(
+                self.selected_rect
+            )
+
+        can_group = (
+            len(selected_indexes) >= 2
+        )
+
+        can_ungroup = False
+
+        if (
+            0 <= self.selected_rect
+            < len(self.rect_group_ids)
+        ):
+            can_ungroup = (
+                self.rect_group_ids[
+                    self.selected_rect
+                ]
+                is not None
+            )
+
+        undo_action = menu.addAction(
+            "元に戻す\tCtrl+Z"
+        )
+        undo_action.setEnabled(
+            bool(self.undo_stack)
+        )
+
+        redo_action = menu.addAction(
+            "やり直す\tCtrl+Y"
+        )
+        redo_action.setEnabled(
+            bool(self.redo_stack)
+        )
+
+        menu.addSeparator()
+
+        cut_action = menu.addAction(
+            "切り取り\tCtrl+X"
+        )
+        cut_action.setEnabled(
+            has_selection
+        )
+
+        copy_action = menu.addAction(
+            "コピー\tCtrl+C"
+        )
+        copy_action.setEnabled(
+            has_selection
+        )
+
+        paste_action = menu.addAction(
+            "貼り付け\tCtrl+V"
+        )
+        paste_action.setEnabled(
+            bool(self.copied_rects)
+        )
+
+        delete_action = menu.addAction(
+            "削除\tDelete"
+        )
+        delete_action.setEnabled(
+            has_selection
+        )
+
+        menu.addSeparator()
+
+        select_all_action = menu.addAction(
+            "すべて選択\tCtrl+A"
+        )
+        select_all_action.setEnabled(
+            bool(self.rects)
+        )
+
+        menu.addSeparator()
+
+        group_action = menu.addAction(
+            "複合枠にまとめる\tCtrl+G"
+        )
+        group_action.setEnabled(
+            can_group
+        )
+
+        ungroup_action = menu.addAction(
+            "複合枠を解除\tCtrl+Shift+G"
+        )
+        ungroup_action.setEnabled(
+            can_ungroup
+        )
+
+        selected_action = menu.exec(
+            global_pos
+        )
+
+        if selected_action is None:
+            return
+
+        if selected_action == undo_action:
+            self.undo()
+            return
+
+        if selected_action == redo_action:
+            self.redo()
+            return
+
+        if selected_action == cut_action:
+            key_event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_X,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            self.keyPressEvent(key_event)
+            return
+
+        if selected_action == copy_action:
+            key_event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_C,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            self.keyPressEvent(key_event)
+            return
+
+        if selected_action == paste_action:
+            self.paste_copied_rects(
+                offset=30,
+                save_undo=True,
+            )
+            return
+
+        if selected_action == delete_action:
+            key_event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_Delete,
+                Qt.KeyboardModifier.NoModifier,
+            )
+            self.keyPressEvent(key_event)
+            return
+
+        if selected_action == select_all_action:
+            key_event = QKeyEvent(
+                QKeyEvent.Type.KeyPress,
+                Qt.Key.Key_A,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            self.keyPressEvent(key_event)
+            return
+
+        if selected_action == group_action:
+            self.group_selected_rects()
+            return
+
+        if selected_action == ungroup_action:
+            self.ungroup_selected_rect()
+            return
+
     def mousePressEvent(self, event):
         # 中ボタンでパン開始
         if event.button() == Qt.MouseButton.MiddleButton:
             self.panning = True
             self.last_pan_pos = event.position()
+            event.accept()
+            return
+
+        # 右クリックでコンテキストメニュー
+        if event.button() == Qt.MouseButton.RightButton:
+            self.select_rect_at_context_position(
+                event.position()
+            )
+
+            self.show_context_menu(
+                event.globalPosition().toPoint()
+            )
+
             event.accept()
             return
 
