@@ -941,8 +941,42 @@ class MainWindow(QMainWindow):
             self.tr("ファイル")
         )
 
+        edit_menu = self.menuBar().addMenu(
+            self.tr("編集")
+        )
+
         help_menu = self.menuBar().addMenu(
             self.tr("ヘルプ")
+        )
+
+        self.paste_selected_pages_action = QAction(
+            self.tr(
+                "選択した画像へ貼り付け"
+            ),
+            self,
+        )
+
+        self.paste_selected_pages_action.triggered.connect(
+            self.paste_copied_rects_to_selected_pages
+        )
+
+        edit_menu.addAction(
+            self.paste_selected_pages_action
+        )
+
+        self.paste_all_pages_action = QAction(
+            self.tr(
+                "すべての画像へ貼り付け"
+            ),
+            self,
+        )
+
+        self.paste_all_pages_action.triggered.connect(
+            self.paste_copied_rects_to_all_pages
+        )
+
+        edit_menu.addAction(
+            self.paste_all_pages_action
         )
 
         about_action = QAction(
@@ -2279,6 +2313,278 @@ class MainWindow(QMainWindow):
         self.page_label.setText(
             f"{self.current_page_index + 1} / {total}"
         )
+
+    def paste_copied_rects_to_page_rows(
+        self,
+        target_rows,
+    ):
+        if not self.preview_area.copied_rects:
+            self.status_label.setText(
+                "先に切り抜き枠をコピーしてください。"
+            )
+            return 0
+
+        valid_rows = sorted({
+            row
+            for row in target_rows
+            if (
+                0 <= row
+                < len(self.image_paths)
+            )
+        })
+
+        if not valid_rows:
+            self.status_label.setText(
+                "貼り付け先の画像を選択してください。"
+            )
+            return 0
+
+        # 現在ページの未保存状態を先に保持する
+        self.save_current_page_rects()
+
+        original_page_index = (
+            self.current_page_index
+        )
+
+        pasted_page_count = 0
+
+        for row in valid_rows:
+            self.current_page_index = row
+
+            self.load_image(
+                self.image_paths[row]
+            )
+
+            saved_rects = list(
+                self.page_rects.get(
+                    row,
+                    [],
+                )
+            )
+
+            saved_group_ids = list(
+                self.page_group_ids.get(
+                    row,
+                    [],
+                )
+            )
+
+            self.preview_area.set_rects(
+                saved_rects,
+                group_ids=saved_group_ids,
+            )
+
+            saved_angles = list(
+                self.page_angles.get(
+                    row,
+                    [],
+                )
+            )
+
+            self.preview_area.rect_angles = (
+                saved_angles
+            )
+
+            while (
+                len(
+                    self.preview_area.rect_angles
+                )
+                < len(
+                    self.preview_area.rects
+                )
+            ):
+                self.preview_area.rect_angles.append(
+                    0.0
+                )
+
+            if (
+                len(
+                    self.preview_area.rect_angles
+                )
+                > len(
+                    self.preview_area.rects
+                )
+            ):
+                self.preview_area.rect_angles = (
+                    self.preview_area.rect_angles[
+                        :len(
+                            self.preview_area.rects
+                        )
+                    ]
+                )
+
+            self.restore_current_page_aspect_modes()
+
+            pasted = (
+                self.preview_area.paste_copied_rects(
+                    offset=0,
+                    save_undo=False,
+                )
+            )
+
+            if pasted:
+                self.save_current_page_rects()
+                pasted_page_count += 1
+
+        # 元々表示していたページへ戻す
+        self.current_page_index = (
+            original_page_index
+        )
+
+        if (
+            0 <= original_page_index
+            < len(self.image_paths)
+        ):
+            self.load_image(
+                self.image_paths[
+                    original_page_index
+                ]
+            )
+
+            saved_rects = list(
+                self.page_rects.get(
+                    original_page_index,
+                    [],
+                )
+            )
+
+            saved_group_ids = list(
+                self.page_group_ids.get(
+                    original_page_index,
+                    [],
+                )
+            )
+
+            self.preview_area.set_rects(
+                saved_rects,
+                group_ids=saved_group_ids,
+            )
+
+            self.detected_rects = list(
+                saved_rects
+            )
+
+            saved_angles = list(
+                self.page_angles.get(
+                    original_page_index,
+                    [],
+                )
+            )
+
+            self.preview_area.rect_angles = (
+                saved_angles
+            )
+
+            while (
+                len(
+                    self.preview_area.rect_angles
+                )
+                < len(
+                    self.preview_area.rects
+                )
+            ):
+                self.preview_area.rect_angles.append(
+                    0.0
+                )
+
+            if (
+                len(
+                    self.preview_area.rect_angles
+                )
+                > len(
+                    self.preview_area.rects
+                )
+            ):
+                self.preview_area.rect_angles = (
+                    self.preview_area.rect_angles[
+                        :len(
+                            self.preview_area.rects
+                        )
+                    ]
+                )
+
+            self.restore_current_page_aspect_modes()
+
+            self.preview_area.update()
+
+            self.update_crop_preview()
+            self.update_current_rect_count_status()
+            self.update_page_label()
+
+        if pasted_page_count > 0:
+            self.mark_project_modified()
+
+        return pasted_page_count
+
+
+    def paste_copied_rects_to_selected_pages(
+        self,
+    ):
+        selected_items = (
+            self.page_list.selectedItems()
+        )
+
+        if not selected_items:
+            self.status_label.setText(
+                "貼り付け先の画像を選択してください。"
+            )
+            return
+
+        target_rows = [
+            self.page_list.row(item)
+            for item in selected_items
+        ]
+
+        pasted_page_count = (
+            self.paste_copied_rects_to_page_rows(
+                target_rows
+            )
+        )
+
+        if pasted_page_count > 0:
+            self.status_label.setText(
+                f"{pasted_page_count}画像へ"
+                "貼り付けました。"
+            )
+
+    def paste_copied_rects_to_all_pages(
+        self,
+    ):
+        if not self.image_paths:
+            self.status_label.setText(
+                "貼り付け先の画像がありません。"
+            )
+            return
+
+        source_page_index = (
+            self.current_page_index
+        )
+
+        target_rows = [
+            row
+            for row in range(
+                len(self.image_paths)
+            )
+            if row != source_page_index
+        ]
+
+        if not target_rows:
+            self.status_label.setText(
+                "貼り付け先の画像がありません。"
+            )
+            return
+
+        pasted_page_count = (
+            self.paste_copied_rects_to_page_rows(
+                target_rows
+            )
+        )
+
+        if pasted_page_count > 0:
+            self.status_label.setText(
+                f"{pasted_page_count}画像へ"
+                "貼り付けました。"
+            )
 
     def save_current_page_rects(self):
         if self.current_page_index < 0:

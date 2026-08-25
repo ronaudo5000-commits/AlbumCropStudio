@@ -3591,6 +3591,158 @@ class PhotoCanvas(QWidget):
                 self.selected_rect
             )
 
+    def paste_copied_rects(
+        self,
+        offset=30,
+        save_undo=True,
+    ):
+        if not self.copied_rects:
+            return False
+
+        if save_undo:
+            self.save_undo_state()
+
+        new_indexes = []
+
+        group_id_map = {}
+
+        for copied in self.copied_rects:
+            x, y, w, h = copied[
+                "rect"
+            ]
+
+            angle = copied.get(
+                "angle",
+                0.0,
+            )
+
+            aspect_mode = copied.get(
+                "aspect_mode",
+                "free",
+            )
+
+            source_group_id = copied.get(
+                "group_id",
+                None,
+            )
+
+            source_width = copied.get(
+                "source_width",
+                0,
+            )
+
+            source_height = copied.get(
+                "source_height",
+                0,
+            )
+
+            scale_x = 1.0
+            scale_y = 1.0
+
+            if (
+                self.pixmap is not None
+                and source_width > 0
+                and source_height > 0
+            ):
+                scale_x = (
+                    self.pixmap.width()
+                    / source_width
+                )
+
+                scale_y = (
+                    self.pixmap.height()
+                    / source_height
+                )
+
+            new_rect = (
+                int(round(
+                    x * scale_x
+                    + offset
+                )),
+                int(round(
+                    y * scale_y
+                    + offset
+                )),
+                max(
+                    1,
+                    int(round(
+                        w * scale_x
+                    )),
+                ),
+                max(
+                    1,
+                    int(round(
+                        h * scale_y
+                    )),
+                ),
+            )
+
+            self.rects.append(
+                new_rect
+            )
+
+            self.rect_angles.append(
+                angle
+            )
+
+            self.rect_aspect_modes.append(
+                aspect_mode
+            )
+
+            new_group_id = None
+
+            if source_group_id is not None:
+                if (
+                    source_group_id
+                    not in group_id_map
+                ):
+                    group_id_map[
+                        source_group_id
+                    ] = self.next_group_id()
+
+                new_group_id = (
+                    group_id_map[
+                        source_group_id
+                    ]
+                )
+
+            self.rect_group_ids.append(
+                new_group_id
+            )
+
+            new_indexes.append(
+                len(self.rects) - 1
+            )
+
+        self.selected_rects = set(
+            new_indexes
+        )
+
+        if new_indexes:
+            self.selected_rect = (
+                new_indexes[-1]
+            )
+        else:
+            self.selected_rect = -1
+
+        if self.selected_rect >= 0:
+            self.selected_rect_changed.emit(
+                self.selected_rect
+            )
+
+        self.dragging = False
+        self.drag_undo_saved = False
+        self.adding_rect = False
+        self.resizing = False
+        self.rotating = False
+
+        self.rects_changed.emit()
+        self.update()
+
+        return bool(
+            new_indexes
+        )
+
     def keyPressEvent(self, event):
         if (
             self.composite_create_mode
@@ -3925,150 +4077,10 @@ class PhotoCanvas(QWidget):
             and event.modifiers()
             == Qt.KeyboardModifier.ControlModifier
         ):
-            if not self.copied_rects:
-                event.accept()
-                return
-
-            self.save_undo_state()
-
-            offset = 30
-
-            new_indexes = []
-
-            group_id_map = {}
-
-            for copied in self.copied_rects:
-                x, y, w, h = copied[
-                    "rect"
-                ]
-
-                angle = copied.get(
-                    "angle",
-                    0.0,
-                )
-
-                aspect_mode = copied.get(
-                    "aspect_mode",
-                    "free",
-                )
-
-                source_group_id = copied.get(
-                    "group_id",
-                    None,
-                )
-
-                source_width = copied.get(
-                    "source_width",
-                    0,
-                )
-
-                source_height = copied.get(
-                    "source_height",
-                    0,
-                )
-
-                scale_x = 1.0
-                scale_y = 1.0
-
-                if (
-                    self.pixmap is not None
-                    and source_width > 0
-                    and source_height > 0
-                ):
-                    scale_x = (
-                        self.pixmap.width()
-                        / source_width
-                    )
-
-                    scale_y = (
-                        self.pixmap.height()
-                        / source_height
-                    )
-
-                new_rect = (
-                    int(round(
-                        x * scale_x
-                        + offset
-                    )),
-                    int(round(
-                        y * scale_y
-                        + offset
-                    )),
-                    max(
-                        1,
-                        int(round(
-                            w * scale_x
-                        )),
-                    ),
-                    max(
-                        1,
-                        int(round(
-                            h * scale_y
-                        )),
-                    ),
-                )
-
-                self.rects.append(
-                    new_rect
-                )
-
-                self.rect_angles.append(
-                    angle
-                )
-
-                self.rect_aspect_modes.append(
-                    aspect_mode
-                )
-
-                new_group_id = None
-
-                if source_group_id is not None:
-                    if (
-                        source_group_id
-                        not in group_id_map
-                    ):
-                        group_id_map[
-                            source_group_id
-                        ] = self.next_group_id()
-
-                    new_group_id = (
-                        group_id_map[
-                            source_group_id
-                        ]
-                    )
-
-                self.rect_group_ids.append(
-                    new_group_id
-                )
-
-                new_indexes.append(
-                    len(self.rects) - 1
-                )
-
-            self.selected_rects = set(
-                new_indexes
+            self.paste_copied_rects(
+                offset=30,
+                save_undo=True,
             )
-
-            if new_indexes:
-                self.selected_rect = (
-                    new_indexes[-1]
-                )
-            else:
-                self.selected_rect = -1
-
-            if self.selected_rect >= 0:
-                self.selected_rect_changed.emit(
-                    self.selected_rect
-                )
-
-            self.dragging = False
-            self.drag_undo_saved = False
-            self.adding_rect = False
-            self.resizing = False
-            self.rotating = False
-
-            self.rects_changed.emit()
-            self.update()
 
             event.accept()
             return
