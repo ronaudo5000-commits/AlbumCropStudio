@@ -537,7 +537,8 @@ class MainWindow(QMainWindow):
         )
 
         self.delete_page_button = QPushButton("🗑 ページを削除")
-        self.delete_page_button.setMinimumHeight(36)
+        self.delete_page_button.setFixedHeight(32)
+        self.delete_page_button.setMinimumWidth(120)
         self.delete_page_button.setEnabled(False)
 
         self.delete_page_button.clicked.connect(
@@ -552,7 +553,9 @@ class MainWindow(QMainWindow):
             self.page_list
         )
         page_list_layout.addWidget(
-            self.delete_page_button
+            self.delete_page_button,
+            0,
+            Qt.AlignmentFlag.AlignLeft,
         )
 
         page_list_container = QWidget()
@@ -641,6 +644,8 @@ class MainWindow(QMainWindow):
         self.crop_preview_label.setAlignment(
             Qt.AlignmentFlag.AlignCenter
         )
+
+        self.crop_preview_list_layout.addStretch()
 
         self.crop_preview_list_layout.addWidget(
             self.crop_preview_label
@@ -841,7 +846,12 @@ class MainWindow(QMainWindow):
         settings_layout.addStretch()
 
         settings_box.setLayout(settings_layout)
-        main_layout.addWidget(settings_box)
+
+        main_layout.addWidget(
+            settings_box,
+            0,
+            Qt.AlignmentFlag.AlignLeft,
+        )
 
         self.open_button = QPushButton("画像を開く")
         self.open_button.setMinimumHeight(40)
@@ -1035,6 +1045,29 @@ class MainWindow(QMainWindow):
         self.next_button.setMinimumHeight(40)
         self.next_button.clicked.connect(self.show_next_page)
 
+        # ページ移動操作をキャンバス直下へ配置
+        self.page_label.setMinimumWidth(70)
+
+        zoom_layout.insertWidget(
+            0,
+            self.next_button,
+        )
+
+        zoom_layout.insertWidget(
+            0,
+            self.page_label,
+        )
+
+        zoom_layout.insertWidget(
+            0,
+            self.prev_button,
+        )
+
+        zoom_layout.insertSpacing(
+            3,
+            16,
+        )
+
         self.detect_button = QPushButton(
             "写真を自動検出"
         )
@@ -1135,6 +1168,33 @@ class MainWindow(QMainWindow):
 
         self.save_button = QPushButton("切り抜き")
         self.save_button.setMinimumHeight(40)
+
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                font-weight: 600;
+                padding-left: 18px;
+                padding-right: 18px;
+                background-color: #2f80ed;
+                color: white;
+                border: 1px solid #2f80ed;
+                border-radius: 4px;
+            }
+
+            QPushButton:hover {
+                background-color: #246fce;
+            }
+
+            QPushButton:pressed {
+                background-color: #1f5faf;
+            }
+
+            QPushButton:disabled {
+                background-color: #a9bfdc;
+                border-color: #a9bfdc;
+                color: #f5f5f5;
+            }
+        """)
+
         self.save_button.clicked.connect(
             self.save_crops
         )
@@ -1245,6 +1305,11 @@ class MainWindow(QMainWindow):
         file_group = QGroupBox("ファイル")
         file_layout = QHBoxLayout()
 
+        file_layout.setContentsMargins(
+            8, 8, 8, 8
+        )
+        file_layout.setSpacing(6)
+
         file_layout.addWidget(self.open_button)
         file_layout.addWidget(self.load_project_button)
         file_layout.addWidget(self.save_project_button)
@@ -1257,13 +1322,44 @@ class MainWindow(QMainWindow):
         edit_group = QGroupBox("切り抜き編集")
         edit_layout = QHBoxLayout()
 
-        edit_layout.addWidget(self.detect_button)
-        edit_layout.addWidget(self.manual_count_label)
+        edit_layout.setContentsMargins(
+            8, 8, 8, 8
+        )
+        edit_layout.setSpacing(6)
 
-        self.manual_count_spin.setFixedWidth(90)
-        edit_layout.addWidget(self.manual_count_spin)
+        edit_layout.addWidget(
+            self.detect_button
+        )
 
-        edit_layout.addWidget(self.generate_rects_button)
+        edit_layout.addSpacing(8)
+
+        count_layout = QHBoxLayout()
+        count_layout.setContentsMargins(
+            0, 0, 0, 0
+        )
+        count_layout.setSpacing(4)
+
+        count_layout.addWidget(
+            self.manual_count_label
+        )
+
+        self.manual_count_spin.setFixedWidth(
+            90
+        )
+
+        count_layout.addWidget(
+            self.manual_count_spin
+        )
+
+        edit_layout.addLayout(
+            count_layout
+        )
+
+        edit_layout.addWidget(
+            self.generate_rects_button
+        )
+
+        edit_layout.addSpacing(10)
 
         edit_layout.addWidget(
             self.composite_create_button
@@ -1272,6 +1368,8 @@ class MainWindow(QMainWindow):
         edit_layout.addWidget(
             self.composite_member_edit_button
         )
+
+        edit_layout.addSpacing(10)
 
         self.aspect_ratio_combo = QComboBox()
 
@@ -1334,24 +1432,14 @@ class MainWindow(QMainWindow):
 
         edit_group.setLayout(edit_layout)
 
-
-        # ページ操作
-        page_group = QGroupBox("ページ")
-        page_layout = QHBoxLayout()
-
-        page_layout.addWidget(self.prev_button)
-
-        self.page_label.setMinimumWidth(70)
-        page_layout.addWidget(self.page_label)
-
-        page_layout.addWidget(self.next_button)
-
-        page_group.setLayout(page_layout)
-
-
         # 出力
         export_group = QGroupBox("出力")
         export_layout = QHBoxLayout()
+
+        export_layout.setContentsMargins(
+            8, 8, 8, 8
+        )
+        export_layout.setSpacing(6)
 
         export_layout.addWidget(self.save_button)
 
@@ -1360,23 +1448,48 @@ class MainWindow(QMainWindow):
 
         # グループ全体
         controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(10)
+        controls_layout.setContentsMargins(
+            0, 0, 0, 0
+        )
 
-        controls_layout.addWidget(file_group, 4)
-        controls_layout.addWidget(edit_group, 3)
-        controls_layout.addWidget(page_group, 2)
+        controls_layout.addWidget(file_group, 3)
+        controls_layout.addWidget(edit_group, 5)
         controls_layout.addWidget(export_group, 1)
 
         main_layout.addLayout(controls_layout)
 
         self.status_label = QLabel("枠数: 0")
+        self.status_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft
+            | Qt.AlignmentFlag.AlignVCenter
+        )
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)
+        self.progress_bar.setMaximumWidth(260)
 
-        main_layout.addWidget(self.progress_bar)
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(self.status_label)
+        status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(
+            4, 0, 4, 0
+        )
+        status_layout.setSpacing(12)
+
+        status_layout.addWidget(
+            self.status_label
+        )
+
+        status_layout.addWidget(
+            self.progress_bar
+        )
+
+        status_layout.addStretch()
+
+        main_layout.addLayout(
+            status_layout
+        )
 
         self.apply_page_list_display_mode()        
 
@@ -1509,7 +1622,7 @@ class MainWindow(QMainWindow):
         )
 
         self.detect_button.setText(
-            self.tr("写真を検出")
+            self.tr("写真を自動検出")
             if enabled
             else self.tr("検出中…")
         )
@@ -5197,6 +5310,8 @@ class MainWindow(QMainWindow):
             Qt.AlignmentFlag.AlignCenter
         )
 
+        self.crop_preview_list_layout.addStretch()
+
         self.crop_preview_list_layout.addWidget(
             empty_label
         )
@@ -5229,6 +5344,8 @@ class MainWindow(QMainWindow):
             empty_label.setAlignment(
                 Qt.AlignmentFlag.AlignCenter
             )
+
+            self.crop_preview_list_layout.addStretch()
 
             self.crop_preview_list_layout.addWidget(
                 empty_label
@@ -5307,6 +5424,16 @@ class MainWindow(QMainWindow):
                 title_text
             )
 
+            title_font = title_label.font()
+            title_font.setBold(True)
+            title_label.setFont(
+                title_font
+            )
+
+            title_label.setContentsMargins(
+                2, 0, 0, 0
+            )
+
             preview_label = QLabel()
 
             preview_label.setAlignment(
@@ -5338,6 +5465,10 @@ class MainWindow(QMainWindow):
 
             self.crop_preview_list_layout.addWidget(
                 preview_label
+            )
+
+            self.crop_preview_list_layout.addSpacing(
+                12
             )
 
         self.crop_preview_list_layout.addStretch()
