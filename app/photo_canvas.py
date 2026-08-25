@@ -63,6 +63,14 @@ class PhotoCanvas(QWidget):
         self.rotating = False
         self.rotation_handle_below = False
 
+        # 回転操作開始時の状態
+        self.rotation_start_pointer_angle = None
+        self.rotation_start_rect_angle = 0.0
+
+        # 回転感度
+        self.rotation_sensitivity = 0.30
+        self.rotation_fine_sensitivity = 0.10
+
         self.setMinimumHeight(400)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -2056,6 +2064,31 @@ class PhotoCanvas(QWidget):
                     )
                 )
 
+                # ---------------------------------
+                # 回転開始時の状態を保存
+                # ---------------------------------
+                center_x = x + w / 2
+                center_y = y + h / 2
+
+                start_dx = (
+                    image_x - center_x
+                )
+
+                start_dy = (
+                    image_y - center_y
+                )
+
+                self.rotation_start_pointer_angle = (
+                    math.degrees(
+                        math.atan2(
+                            start_dy,
+                            start_dx,
+                        )
+                    )
+                )
+
+                self.rotation_start_rect_angle = angle
+
                 self.dragging = False
                 self.adding_rect = False
                 self.resizing = False
@@ -2411,10 +2444,47 @@ class PhotoCanvas(QWidget):
                 math.atan2(dy, dx)
             )
 
-            if self.rotation_handle_below:
-                angle = pointer_angle - 90.0
+            if (
+                self.rotation_start_pointer_angle
+                is None
+            ):
+                self.rotation_start_pointer_angle = (
+                    pointer_angle
+                )
+
+            # ---------------------------------
+            # 回転開始位置からの角度差
+            # ---------------------------------
+            angle_delta = (
+                pointer_angle
+                - self.rotation_start_pointer_angle
+            )
+
+            # -180～180度の最短方向へ補正
+            angle_delta = (
+                (angle_delta + 180.0)
+                % 360.0
+            ) - 180.0
+
+            # Shift押下中はさらに細かく回転
+            shift_pressed = bool(
+                event.modifiers()
+                & Qt.KeyboardModifier.ShiftModifier
+            )
+
+            if shift_pressed:
+                sensitivity = (
+                    self.rotation_fine_sensitivity
+                )
             else:
-                angle = pointer_angle + 90.0
+                sensitivity = (
+                    self.rotation_sensitivity
+                )
+
+            angle = (
+                self.rotation_start_rect_angle
+                + angle_delta * sensitivity
+            )
 
             # -180～180度に収める
             angle = (
