@@ -1035,27 +1035,31 @@ class MainWindow(QMainWindow):
         self.next_button.setMinimumHeight(40)
         self.next_button.clicked.connect(self.show_next_page)
 
-        self.detect_button = QPushButton("写真を検出")
+        self.detect_button = QPushButton(
+            "写真を自動検出"
+        )
         self.detect_button.setMinimumHeight(40)
         self.detect_button.clicked.connect(
             self.detect_photos
         )
 
-        self.manual_count_label = QLabel("写真枚数")
+        self.manual_count_label = QLabel("枠数")
 
         self.manual_count_spin = QSpinBox()
         self.manual_count_spin.setRange(1, 100)
         self.manual_count_spin.setValue(4)
         self.manual_count_spin.setMinimumHeight(40)
 
-        self.generate_rects_button = QPushButton("枠を生成")
+        self.generate_rects_button = QPushButton(
+            "枠を自動配置"
+        )
         self.generate_rects_button.setMinimumHeight(40)
         self.generate_rects_button.clicked.connect(
             self.generate_manual_rects
         )
 
         self.composite_create_button = QPushButton(
-            "複合枠作成"
+            "複合切り抜き"
         )
 
         self.composite_create_button.setMinimumHeight(
@@ -1084,7 +1088,7 @@ class MainWindow(QMainWindow):
         )
 
         self.composite_member_edit_button = QPushButton(
-            "構成領域編集"
+            "複合枠を編集"
         )
 
         self.composite_member_edit_button.setMinimumHeight(
@@ -1249,8 +1253,8 @@ class MainWindow(QMainWindow):
         file_group.setLayout(file_layout)
 
 
-        # 写真編集
-        edit_group = QGroupBox("写真編集")
+        # 切り抜き編集
+        edit_group = QGroupBox("切り抜き編集")
         edit_layout = QHBoxLayout()
 
         edit_layout.addWidget(self.detect_button)
@@ -1272,12 +1276,12 @@ class MainWindow(QMainWindow):
         self.aspect_ratio_combo = QComboBox()
 
         self.aspect_ratio_combo.addItem(
-            self.tr("自由変形"),
+            self.tr("自由"),
             "free",
         )
 
         self.aspect_ratio_combo.addItem(
-            self.tr("縦横比を固定"),
+            self.tr("現在の比率"),
             "current",
         )
 
