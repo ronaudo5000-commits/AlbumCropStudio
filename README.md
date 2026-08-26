@@ -1,6 +1,6 @@
 # AlbumCrop Studio
 
-**写真を切り出し、記録を未来へつなぐ**
+「資料」を「資源」に そして「資産」へ
 
 AlbumCrop Studio is a desktop application for detecting and cropping
 individual photographs from scanned album pages.

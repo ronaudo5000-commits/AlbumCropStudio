@@ -116,16 +116,21 @@ def main():
                 app_icon
             )
 
-        window.show()
-
-        # スプラッシュを少しだけ表示してから閉じる
         if splash is not None:
-            QTimer.singleShot(
-                700,
-                lambda: splash.finish(
+
+            def show_main_window():
+                window.show()
+                splash.finish(
                     window
-                ),
+                )
+
+            QTimer.singleShot(
+                2000,
+                show_main_window,
             )
+
+        else:
+            window.show()
 
         sys.exit(
             app.exec()

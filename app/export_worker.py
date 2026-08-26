@@ -1,4 +1,5 @@
 import math
+import time
 
 from PIL import Image
 
@@ -207,6 +208,7 @@ class CropExportWorker(QObject):
         h,
         angle,
     ):
+        # 回転していない場合は従来どおり切り抜く
         if abs(angle) < 0.001:
             left = int(x)
             top = int(y)
@@ -222,40 +224,114 @@ class CropExportWorker(QObject):
                 )
             )
 
+        # 最終的に切り抜く範囲
+        left = int(x)
+        top = int(y)
+        right = int(x + w)
+        bottom = int(y + h)
+
+        # 回転中心
         center_x = x + w / 2
         center_y = y + h / 2
 
-        rotated = image.rotate(
+        angle_rad = math.radians(angle)
+
+        cos_a = abs(math.cos(angle_rad))
+        sin_a = abs(math.sin(angle_rad))
+
+        # 最終切り抜き範囲が回転中心から
+        # どこまで離れているかを求める
+        max_dx = max(
+            abs(left - center_x),
+            abs(right - center_x),
+        )
+        max_dy = max(
+            abs(top - center_y),
+            abs(bottom - center_y),
+        )
+
+        # 回転後の切り抜きに必要となる
+        # 元画像側の最小領域を計算
+        source_half_w = (
+            max_dx * cos_a
+            + max_dy * sin_a
+        )
+        source_half_h = (
+            max_dx * sin_a
+            + max_dy * cos_a
+        )
+
+        # BICUBIC補間が周囲の画素を参照するため、
+        # 数ピクセル余裕を持たせる
+        interpolation_padding = 3
+
+        source_left = (
+            math.floor(
+                center_x - source_half_w
+            )
+            - interpolation_padding
+        )
+        source_top = (
+            math.floor(
+                center_y - source_half_h
+            )
+            - interpolation_padding
+        )
+        source_right = (
+            math.ceil(
+                center_x + source_half_w
+            )
+            + interpolation_padding
+        )
+        source_bottom = (
+            math.ceil(
+                center_y + source_half_h
+            )
+            + interpolation_padding
+        )
+
+        # 必要な領域だけを元画像から取り出す
+        local_image = image.crop(
+            (
+                source_left,
+                source_top,
+                source_right,
+                source_bottom,
+            )
+        )
+
+        # 元画像上の回転中心を
+        # 局所画像上の座標へ変換
+        local_center_x = (
+            center_x - source_left
+        )
+        local_center_y = (
+            center_y - source_top
+        )
+
+        # 局所画像だけを回転
+        rotated_local = local_image.rotate(
             angle,
             resample=Image.Resampling.BICUBIC,
             center=(
-                center_x,
-                center_y,
+                local_center_x,
+                local_center_y,
             ),
         )
 
-        left = int(
-            round(center_x - w / 2)
-        )
+        # 元画像上の最終切り抜き位置を
+        # 局所画像上の座標へ変換
+        local_left = left - source_left
+        local_top = top - source_top
+        local_right = right - source_left
+        local_bottom = bottom - source_top
 
-        top = int(
-            round(center_y - h / 2)
-        )
-
-        right = int(
-            round(center_x + w / 2)
-        )
-
-        bottom = int(
-            round(center_y + h / 2)
-        )
-
-        return rotated.crop(
+        return rotated_local.crop(
             (
-                left,
-                top,
-                right,
-                bottom,
+                local_left,
+                local_top,
+                local_right,
+                local_bottom,
             )
         )
 
@@ -316,6 +392,7 @@ class CropExportWorker(QObject):
 
     def export_images(self):
         saved_count = 0
+        timing_results = []
 
         for page_index, image_path in enumerate(
             self.image_paths
@@ -475,6 +552,8 @@ class CropExportWorker(QObject):
                                     )
                                 ) from e
 
+                            start_time = time.perf_counter()
+
                             crop = (
                                 self.create_rotated_crop_image(
                                     image,
@@ -483,6 +562,20 @@ class CropExportWorker(QObject):
                                     crop_w,
                                     crop_h,
                                     angle,
+                                )
+                            )
+
+                            elapsed_time = (
+                                time.perf_counter()
+                                - start_time
+                            )
+
+                            timing_results.append(
+                                (
+                                    page_index + 1,
+                                    rect_index + 1,
+                                    angle,
+                                    elapsed_time,
                                 )
                             )
 
@@ -638,6 +731,61 @@ class CropExportWorker(QObject):
                         f"詳細: {e}"
                     )
                 ) from e
+
+        if timing_results:
+            total_time = sum(
+                result[3]
+                for result in timing_results
+            )
+
+            average_time = (
+                total_time
+                / len(timing_results)
+            )
+
+            timing_path = (
+                self.output_dir
+                / "crop_timing.txt"
+            )
+
+            with open(
+                timing_path,
+                "w",
+                encoding="utf-8",
+            ) as timing_file:
+                for (
+                    page_number,
+                    photo_number,
+                    angle,
+                    elapsed_time,
+                ) in timing_results:
+                    timing_file.write(
+                        f"page={page_number} "
+                        f"photo={photo_number} "
+                        f"angle={angle:.2f} "
+                        f"time={elapsed_time:.6f}s\n"
+                    )
+
+                timing_file.write(
+                    "\n"
+                )
+
+                timing_file.write(
+                    f"count="
+                    f"{len(timing_results)}\n"
+                )
+
+                timing_file.write(
+                    f"total="
+                    f"{total_time:.6f}s\n"
+                )
+
+                timing_file.write(
+                    f"average="
+                    f"{average_time:.6f}s\n"
+                )
+
+        return saved_count
 
         return saved_count
 

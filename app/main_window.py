@@ -5,6 +5,8 @@ from PIL import Image
 import pymupdf
 import traceback
 
+import time
+
 from PySide6.QtCore import (
     Qt,
     QSize,
