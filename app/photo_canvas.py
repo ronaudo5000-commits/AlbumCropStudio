@@ -1,6 +1,11 @@
 import math
 
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QRectF,
+    QTimer,
+)
 from PySide6.QtGui import (
     QPainter,
     QPen,
@@ -48,6 +53,26 @@ class PhotoCanvas(QWidget):
 
         self.panning = False
         self.last_pan_pos = None
+
+        self.space_pressed = False
+        self.space_pan_dragging = False
+
+        # 選択枠の動く点線
+        self.selection_dash_offset = 0.0
+
+        self.selection_dash_timer = QTimer(
+            self
+        )
+
+        self.selection_dash_timer.setInterval(
+            200
+        )
+
+        self.selection_dash_timer.timeout.connect(
+            self.advance_selection_dash
+        )
+
+        self.selection_dash_timer.start()
 
         self.dragging = False
         self.drag_undo_saved = False
@@ -1286,6 +1311,17 @@ class PhotoCanvas(QWidget):
             "place_below": place_below,
         }
 
+    def advance_selection_dash(self):
+        if not self.selected_rects:
+            return
+
+        self.selection_dash_offset += 1.0
+
+        if self.selection_dash_offset >= 14.0:
+            self.selection_dash_offset = 0.0
+
+        self.update()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(245, 245, 245))
@@ -1312,13 +1348,34 @@ class PhotoCanvas(QWidget):
         )
 
         for index, (x, y, w, h) in enumerate(self.rects):
-            if index in self.selected_rects:
-                pen = QPen(QColor(255, 200, 0))
-            else:
-                pen = QPen(QColor(255, 0, 0))
+            is_selected = (
+                index in self.selected_rects
+            )
 
-            pen.setWidthF(2.0)
-            painter.setPen(pen)
+            if is_selected:
+                pen = QPen(
+                    QColor(
+                        255,
+                        200,
+                        0,
+                    )
+                )
+            else:
+                pen = QPen(
+                    QColor(
+                        255,
+                        0,
+                        0,
+                    )
+                )
+
+            pen.setWidthF(
+                2.0
+            )
+
+            painter.setPen(
+                pen
+            )
 
             angle = 0.0
 
@@ -1344,14 +1401,52 @@ class PhotoCanvas(QWidget):
                 angle
             )
 
-            painter.drawRect(
-                QRectF(
-                    -screen_w / 2,
-                    -screen_h / 2,
-                    screen_w,
-                    screen_h,
-                )
+            rect_to_draw = QRectF(
+                -screen_w / 2,
+                -screen_h / 2,
+                screen_w,
+                screen_h,
             )
+
+            painter.drawRect(
+                rect_to_draw
+            )
+
+            if is_selected:
+                animated_pen = QPen(
+                    QColor(
+                        30,
+                        30,
+                        30,
+                    )
+                )
+
+                animated_pen.setWidthF(
+                    1.5
+                )
+
+                animated_pen.setStyle(
+                    Qt.PenStyle.CustomDashLine
+                )
+
+                animated_pen.setDashPattern(
+                    [
+                        5.0,
+                        4.0,
+                    ]
+                )
+
+                animated_pen.setDashOffset(
+                    self.selection_dash_offset
+                )
+
+                painter.setPen(
+                    animated_pen
+                )
+
+                painter.drawRect(
+                    rect_to_draw
+                )
 
             painter.restore()
 
@@ -2097,10 +2192,35 @@ class PhotoCanvas(QWidget):
             return
 
     def mousePressEvent(self, event):
-        # 中ボタンでパン開始
-        if event.button() == Qt.MouseButton.MiddleButton:
+        # ---------------------------------
+        # パン開始
+        # 中ボタン または Space + 左ドラッグ
+        # ---------------------------------
+        middle_pan = (
+            event.button()
+            == Qt.MouseButton.MiddleButton
+        )
+
+        space_left_pan = (
+            self.space_pressed
+            and event.button()
+            == Qt.MouseButton.LeftButton
+        )
+
+        if middle_pan or space_left_pan:
             self.panning = True
-            self.last_pan_pos = event.position()
+            self.last_pan_pos = (
+                event.position()
+            )
+
+            self.space_pan_dragging = (
+                space_left_pan
+            )
+
+            self.setCursor(
+                Qt.CursorShape.ClosedHandCursor
+            )
+
             event.accept()
             return
 
@@ -3759,10 +3879,32 @@ class PhotoCanvas(QWidget):
         self.update()
 
     def mouseReleaseEvent(self, event):
-        # 中ボタンでパン終了
-        if event.button() == Qt.MouseButton.MiddleButton:
+        # ---------------------------------
+        # パン終了
+        # ---------------------------------
+        middle_pan_end = (
+            event.button()
+            == Qt.MouseButton.MiddleButton
+        )
+
+        space_pan_end = (
+            self.space_pan_dragging
+            and event.button()
+            == Qt.MouseButton.LeftButton
+        )
+
+        if middle_pan_end or space_pan_end:
             self.panning = False
             self.last_pan_pos = None
+            self.space_pan_dragging = False
+
+            if self.space_pressed:
+                self.setCursor(
+                    Qt.CursorShape.OpenHandCursor
+                )
+            else:
+                self.unsetCursor()
+
             event.accept()
             return
 
@@ -4066,7 +4208,42 @@ class PhotoCanvas(QWidget):
             new_indexes
         )
 
+    def keyReleaseEvent(self, event):
+        # ---------------------------------
+        # Spaceキー：代替パン操作終了
+        # ---------------------------------
+        if event.key() == Qt.Key.Key_Space:
+            self.space_pressed = False
+
+            if self.space_pan_dragging:
+                self.panning = False
+                self.last_pan_pos = None
+                self.space_pan_dragging = False
+
+            self.unsetCursor()
+
+            event.accept()
+            return
+
+        super().keyReleaseEvent(
+            event
+        )
+
     def keyPressEvent(self, event):
+        # ---------------------------------
+        # Spaceキー：代替パン操作
+        # ---------------------------------
+        if event.key() == Qt.Key.Key_Space:
+            self.space_pressed = True
+
+            if not self.panning:
+                self.setCursor(
+                    Qt.CursorShape.OpenHandCursor
+                )
+
+            event.accept()
+            return
+
         if (
             self.composite_create_mode
             and event.key()
