@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     Qt,
+    QElapsedTimer,
     QTimer,
 )
 
@@ -75,6 +76,7 @@ def main():
             app.setWindowIcon(
                 app_icon
             )
+
         else:
             app_icon = QIcon()
 
@@ -82,6 +84,7 @@ def main():
         # 起動スプラッシュ
         # ---------------------------------
         splash = None
+        splash_timer = QElapsedTimer()
 
         if splash_path.exists():
             splash_pixmap = QPixmap(
@@ -104,6 +107,17 @@ def main():
 
                 splash.show()
 
+                splash_timer.start()
+
+                splash.showMessage(
+                    "設定を読み込んでいます…",
+                    (
+                        Qt.AlignmentFlag.AlignLeft
+                        | Qt.AlignmentFlag.AlignBottom
+                    ),
+                    Qt.GlobalColor.white,
+                )
+
                 app.processEvents()
 
         # ---------------------------------
@@ -117,15 +131,67 @@ def main():
             )
 
         if splash is not None:
+            minimum_splash_time = 3000
+
+            elapsed_time = (
+                splash_timer.elapsed()
+            )
+
+            def show_splash_message(
+                message,
+            ):
+                splash.showMessage(
+                    message,
+                    (
+                        Qt.AlignmentFlag.AlignLeft
+                        | Qt.AlignmentFlag.AlignBottom
+                    ),
+                    Qt.GlobalColor.white,
+                )
 
             def show_main_window():
                 window.show()
+
                 splash.finish(
                     window
                 )
 
             QTimer.singleShot(
-                2000,
+                max(
+                    0,
+                    750 - elapsed_time,
+                ),
+                lambda: show_splash_message(
+                    "画面を準備しています…"
+                ),
+            )
+
+            QTimer.singleShot(
+                max(
+                    0,
+                    1500 - elapsed_time,
+                ),
+                lambda: show_splash_message(
+                    "コンポーネントを初期化しています…"
+                ),
+            )
+
+            QTimer.singleShot(
+                max(
+                    0,
+                    2250 - elapsed_time,
+                ),
+                lambda: show_splash_message(
+                    "起動を完了しています…"
+                ),
+            )
+
+            QTimer.singleShot(
+                max(
+                    0,
+                    minimum_splash_time
+                    - elapsed_time,
+                ),
                 show_main_window,
             )
 

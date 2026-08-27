@@ -44,6 +44,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QComboBox,
+    QDialog,
+    QGraphicsScene,
+    QGraphicsView,
 )
 
 from core.photo_detector import detect_photos
@@ -60,6 +63,265 @@ from app.settings_dialog import SettingsDialog
 
 from app.export_worker import CropExportWorker
 from app.detection_worker import DetectionWorker
+
+class ClickablePreviewLabel(QLabel):
+    def __init__(
+        self,
+        pixmap,
+        title,
+        click_callback,
+        parent=None,
+    ):
+        super().__init__(parent)
+
+        self.source_pixmap = pixmap
+        self.preview_title = title
+        self.click_callback = click_callback
+
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+
+        self.setToolTip(
+            "クリックすると拡大表示します"
+        )
+
+    def mousePressEvent(
+        self,
+        event,
+    ):
+        if (
+            event.button()
+            == Qt.MouseButton.LeftButton
+        ):
+            if self.click_callback is not None:
+                self.click_callback(
+                    self.source_pixmap,
+                    self.preview_title,
+                )
+
+            event.accept()
+            return
+
+        super().mousePressEvent(
+            event
+        )
+
+
+class CropPreviewGraphicsView(QGraphicsView):
+    def __init__(
+        self,
+        pixmap,
+        parent=None,
+    ):
+        super().__init__(parent)
+
+        self.source_pixmap = pixmap
+
+        self.preview_scene = QGraphicsScene(
+            self
+        )
+
+        self.setScene(
+            self.preview_scene
+        )
+
+        self.pixmap_item = (
+            self.preview_scene.addPixmap(
+                self.source_pixmap
+            )
+        )
+
+        self.preview_scene.setSceneRect(
+            self.pixmap_item.boundingRect()
+        )
+
+        self.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform,
+            True,
+        )
+
+        self.setDragMode(
+            QGraphicsView.DragMode.ScrollHandDrag
+        )
+
+        self.setTransformationAnchor(
+            QGraphicsView.ViewportAnchor.AnchorUnderMouse
+        )
+
+        self.setResizeAnchor(
+            QGraphicsView.ViewportAnchor.AnchorViewCenter
+        )
+
+        self.setBackgroundBrush(
+            QColor(
+                40,
+                40,
+                40,
+            )
+        )
+
+        self.zoom_factor = 1.20
+
+    def fit_image(self):
+        if self.source_pixmap.isNull():
+            return
+
+        self.resetTransform()
+
+        self.fitInView(
+            self.pixmap_item,
+            Qt.AspectRatioMode.KeepAspectRatio,
+        )
+
+    def zoom_in(self):
+        self.scale(
+            self.zoom_factor,
+            self.zoom_factor,
+        )
+
+    def zoom_out(self):
+        inverse_factor = (
+            1.0
+            / self.zoom_factor
+        )
+
+        self.scale(
+            inverse_factor,
+            inverse_factor,
+        )
+
+    def wheelEvent(
+        self,
+        event,
+    ):
+        if event.angleDelta().y() > 0:
+            self.zoom_in()
+        else:
+            self.zoom_out()
+
+        event.accept()
+
+    def showEvent(
+        self,
+        event,
+    ):
+        super().showEvent(
+            event
+        )
+
+        self.fit_image()
+
+
+class CropPreviewDialog(QDialog):
+    def __init__(
+        self,
+        pixmap,
+        title,
+        parent=None,
+    ):
+        super().__init__(parent)
+
+        self.setWindowTitle(
+            f"切り抜きプレビュー - {title}"
+        )
+
+        self.resize(
+            1000,
+            750,
+        )
+
+        self.viewer = (
+            CropPreviewGraphicsView(
+                pixmap,
+                self,
+            )
+        )
+
+        self.zoom_out_button = QPushButton(
+            "−"
+        )
+
+        self.zoom_in_button = QPushButton(
+            "+"
+        )
+
+        self.fit_button = QPushButton(
+            "全体表示"
+        )
+
+        self.close_button = QPushButton(
+            "閉じる"
+        )
+
+        self.zoom_out_button.setFixedWidth(
+            44
+        )
+
+        self.zoom_in_button.setFixedWidth(
+            44
+        )
+
+        self.zoom_out_button.setToolTip(
+            "画像を縮小します"
+        )
+
+        self.zoom_in_button.setToolTip(
+            "画像を拡大します"
+        )
+
+        self.fit_button.setToolTip(
+            "画像全体が収まる表示に戻します"
+        )
+
+        self.zoom_out_button.clicked.connect(
+            self.viewer.zoom_out
+        )
+
+        self.zoom_in_button.clicked.connect(
+            self.viewer.zoom_in
+        )
+
+        self.fit_button.clicked.connect(
+            self.viewer.fit_image
+        )
+
+        self.close_button.clicked.connect(
+            self.accept
+        )
+
+        button_layout = QHBoxLayout()
+
+        button_layout.addWidget(
+            self.zoom_out_button
+        )
+
+        button_layout.addWidget(
+            self.zoom_in_button
+        )
+
+        button_layout.addWidget(
+            self.fit_button
+        )
+
+        button_layout.addStretch()
+
+        button_layout.addWidget(
+            self.close_button
+        )
+
+        main_layout = QVBoxLayout(
+            self
+        )
+
+        main_layout.addWidget(
+            self.viewer,
+            1,
+        )
+
+        main_layout.addLayout(
+            button_layout
+        )
 
 class PageListWidget(QListWidget):
     def __init__(self, parent=None):
@@ -5320,6 +5582,22 @@ class MainWindow(QMainWindow):
 
         self.crop_preview_list_layout.addStretch()
 
+    def open_crop_preview_viewer(
+        self,
+        pixmap,
+        title,
+    ):
+        if pixmap.isNull():
+            return
+
+        dialog = CropPreviewDialog(
+            pixmap,
+            title,
+            self,
+        )
+
+        dialog.exec()
+
     def update_crop_preview(self):
         if self.current_pixmap is None:
             return
@@ -5428,15 +5706,25 @@ class MainWindow(QMainWindow):
 
             title_font = title_label.font()
             title_font.setBold(True)
+
             title_label.setFont(
                 title_font
             )
 
             title_label.setContentsMargins(
-                2, 0, 0, 0
+                2,
+                0,
+                0,
+                0,
             )
 
-            preview_label = QLabel()
+            preview_label = (
+                ClickablePreviewLabel(
+                    crop_pixmap,
+                    title_text,
+                    self.open_crop_preview_viewer,
+                )
+            )
 
             preview_label.setAlignment(
                 Qt.AlignmentFlag.AlignCenter
