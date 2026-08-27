@@ -9,7 +9,11 @@ from PySide6.QtCore import (
 )
 
 class CropExportWorker(QObject):
-    progress = Signal(int)
+    progress = Signal(
+        int,
+        int,
+        int,
+    )
     finished = Signal(int)
     failed = Signal(str)
 
@@ -715,7 +719,9 @@ class CropExportWorker(QObject):
                         )
 
                         self.progress.emit(
-                            progress_value
+                            progress_value,
+                            saved_count,
+                            self.total_crops,
                         )
 
             except Exception as e:

@@ -2035,8 +2035,24 @@ class MainWindow(QMainWindow):
 
         self.apply_page_list_display_mode()        
 
-    def update_export_progress(self, value):
-        self.progress_bar.setValue(value)
+    def update_export_progress(
+        self,
+        value,
+        saved_count,
+        total_crops,
+    ):
+        self.progress_bar.setValue(
+            value
+        )
+
+        self.status_label.setText(
+            (
+                "✂️ 切り抜き中: "
+                f"{saved_count} / "
+                f"{total_crops}枚"
+            )
+        )
+
         QApplication.processEvents()
 
     def export_finished(self, saved_count):
@@ -5362,6 +5378,13 @@ class MainWindow(QMainWindow):
 
             self.save_button.setEnabled(True)
             return
+
+        self.status_label.setText(
+            (
+                "✂️ 切り抜き中: "
+                f"0 / {total_crops}枚"
+            )
+        )
 
         output_dir_text = (
             QFileDialog.getExistingDirectory(
