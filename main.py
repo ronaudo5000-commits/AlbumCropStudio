@@ -17,6 +17,7 @@ from PySide6.QtGui import (
 
 from PySide6.QtWidgets import (
     QApplication,
+    QLabel,
     QSplashScreen,
 )
 
@@ -84,8 +85,8 @@ def main():
         # 起動スプラッシュ
         # ---------------------------------
         splash = None
+        splash_message_label = None
         splash_timer = QElapsedTimer()
-
         if splash_path.exists():
             splash_pixmap = QPixmap(
                 str(splash_path)
@@ -107,16 +108,41 @@ def main():
 
                 splash.show()
 
-                splash_timer.start()
-
-                splash.showMessage(
-                    "設定を読み込んでいます…",
-                    (
-                        Qt.AlignmentFlag.AlignLeft
-                        | Qt.AlignmentFlag.AlignBottom
-                    ),
-                    Qt.GlobalColor.white,
+                splash_message_label = QLabel(
+                    splash
                 )
+
+                splash_message_label.setText(
+                    "設定を読み込んでいます…"
+                )
+
+                splash_message_label.setAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
+
+                splash_message_label.setStyleSheet(
+                    """
+                    QLabel {
+                        color: white;
+                        background: transparent;
+                        font-size: 15px;
+                    }
+                    """
+                )
+
+                splash_message_label.setGeometry(
+                    0,
+                    int(
+                        splash_pixmap.height()
+                        * 0.68
+                    ),
+                    splash_pixmap.width(),
+                    36,
+                )
+
+                splash_message_label.show()
+
+                splash_timer.start()
 
                 app.processEvents()
 
@@ -140,14 +166,13 @@ def main():
             def show_splash_message(
                 message,
             ):
-                splash.showMessage(
-                    message,
-                    (
-                        Qt.AlignmentFlag.AlignLeft
-                        | Qt.AlignmentFlag.AlignBottom
-                    ),
-                    Qt.GlobalColor.white,
-                )
+                if (
+                    splash_message_label
+                    is not None
+                ):
+                    splash_message_label.setText(
+                        message
+                    )
 
             def show_main_window():
                 window.show()

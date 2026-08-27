@@ -334,6 +334,16 @@ class PageListWidget(QListWidget):
         self.check_callback = None
         self.rect_count_callback = None
 
+        self.hover_control = None
+
+        self.setMouseTracking(
+            True
+        )
+
+        self.viewport().setMouseTracking(
+            True
+        )
+
     def paintEvent(self, event):
         super().paintEvent(event)
 
@@ -386,14 +396,46 @@ class PageListWidget(QListWidget):
                 QColor(80, 80, 80)
             )
 
+            check_hovered = (
+                self.hover_control
+                == ("check", row)
+            )
+
             if checked:
+                if check_hovered:
+                    check_color = QColor(
+                        80,
+                        190,
+                        240,
+                    )
+                else:
+                    check_color = QColor(
+                        60,
+                        170,
+                        220,
+                    )
+
                 painter.setBrush(
-                    QColor(60, 170, 220)
+                    check_color
                 )
+
             else:
-                painter.setBrush(
-                    QColor(255, 255, 255)
-                )
+                if check_hovered:
+                    painter.setBrush(
+                        QColor(
+                            225,
+                            240,
+                            250,
+                        )
+                    )
+                else:
+                    painter.setBrush(
+                        QColor(
+                            255,
+                            255,
+                            255,
+                        )
+                    )
 
             painter.drawRect(
                 check_x,
@@ -430,12 +472,30 @@ class PageListWidget(QListWidget):
                 + margin
             )
 
+            delete_hovered = (
+                self.hover_control
+                == ("delete", row)
+            )
+
+            if delete_hovered:
+                delete_color = QColor(
+                    240,
+                    80,
+                    80,
+                )
+            else:
+                delete_color = QColor(
+                    220,
+                    60,
+                    60,
+                )
+
             painter.fillRect(
                 delete_x,
                 delete_y,
                 size,
                 size,
-                QColor(220, 60, 60),
+                delete_color,
             )
 
             painter.setPen(
@@ -523,24 +583,32 @@ class PageListWidget(QListWidget):
 
                 painter.restore()
 
-    def mousePressEvent(self, event):
+    def mouseMoveEvent(self, event):
         pos = event.position()
 
-        item = self.itemAt(
-            pos.toPoint()
-        )
+        size = self.control_size
+        margin = self.control_margin
 
-        if item is not None:
-            row = self.row(
-                item
+        new_hover_control = None
+
+        for row in range(
+            self.count()
+        ):
+            item = self.item(
+                row
             )
+
+            if item is None:
+                continue
 
             item_rect = self.visualItemRect(
                 item
             )
 
-            size = self.control_size
-            margin = self.control_margin
+            if not item_rect.intersects(
+                self.viewport().rect()
+            ):
+                continue
 
             check_x = (
                 item_rect.left()
@@ -563,8 +631,155 @@ class PageListWidget(QListWidget):
                 + margin
             )
 
+            if (
+                check_x
+                <= pos.x()
+                <= check_x + size
+                and check_y
+                <= pos.y()
+                <= check_y + size
+            ):
+                new_hover_control = (
+                    "check",
+                    row,
+                )
+
+                break
+
+            if (
+                delete_x
+                <= pos.x()
+                <= delete_x + size
+                and delete_y
+                <= pos.y()
+                <= delete_y + size
+            ):
+                new_hover_control = (
+                    "delete",
+                    row,
+                )
+
+                break
+
+        if (
+            new_hover_control
+            != self.hover_control
+        ):
+            self.hover_control = (
+                new_hover_control
+            )
+
+            self.viewport().update()
+
+        if self.hover_control is not None:
+            self.viewport().setCursor(
+                Qt.CursorShape.PointingHandCursor
+            )
+        else:
+            self.viewport().unsetCursor()
+
+        super().mouseMoveEvent(
+            event
+        )
+
+    def leaveEvent(self, event):
+        if self.hover_control is not None:
+            self.hover_control = None
+            self.viewport().update()
+
+        self.viewport().unsetCursor()
+
+        super().leaveEvent(
+            event
+        )
+
+    def mousePressEvent(self, event):
+        pos = event.position()
+
+        size = self.control_size
+        margin = self.control_margin
+
+        # ---------------------------------
+        # ページ削除ボタン
+        #
+        # itemAt() に依存せず、
+        # 描画している各ページの×領域を
+        # 直接調べる
+        # ---------------------------------
+        for row in range(
+            self.count()
+        ):
+            item = self.item(
+                row
+            )
+
+            if item is None:
+                continue
+
+            item_rect = self.visualItemRect(
+                item
+            )
+
+            if not item_rect.intersects(
+                self.viewport().rect()
+            ):
+                continue
+
+            delete_x = (
+                self.viewport().width()
+                - size
+                - margin
+            )
+
+            delete_y = (
+                item_rect.top()
+                + margin
+            )
+
+            if (
+                delete_x
+                <= pos.x()
+                <= delete_x + size
+                and delete_y
+                <= pos.y()
+                <= delete_y + size
+            ):
+                if self.delete_callback is not None:
+                    self.delete_callback(
+                        row
+                    )
+
+                event.accept()
+                return
+
+        # ---------------------------------
+        # 通常の項目判定
+        # ---------------------------------
+        item = self.itemAt(
+            pos.toPoint()
+        )
+
+        if item is not None:
+            row = self.row(
+                item
+            )
+
+            item_rect = self.visualItemRect(
+                item
+            )
+
+            check_x = (
+                item_rect.left()
+                + margin
+            )
+
+            check_y = (
+                item_rect.top()
+                + margin
+            )
+
             # ---------------------------------
-            # チェック欄
+            # 書き出し対象チェック
             # ---------------------------------
             if (
                 check_x
@@ -594,26 +809,8 @@ class PageListWidget(QListWidget):
                     )
 
                 self.viewport().update()
-                return
 
-            # ---------------------------------
-            # 削除ボタン
-            # ---------------------------------
-            if (
-                delete_x
-                <= pos.x()
-                <= delete_x + size
-                and delete_y
-                <= pos.y()
-                <= delete_y + size
-            ):
-                self.setCurrentItem(
-                    item
-                )
-
-                if self.delete_callback is not None:
-                    self.delete_callback()
-
+                event.accept()
                 return
 
         super().mousePressEvent(
@@ -800,22 +997,103 @@ class MainWindow(QMainWindow):
             self.apply_page_list_display_mode
         )
 
-        self.delete_page_button = QPushButton("🗑 ページを削除")
-        self.delete_page_button.setFixedHeight(32)
-        self.delete_page_button.setMinimumWidth(120)
-        self.delete_page_button.setEnabled(False)
+        # ---------------------------------
+        # 書き出し対象の一括操作
+        # ---------------------------------
+        export_target_label = QLabel(
+            "書き出し対象"
+        )
+
+        self.export_all_on_button = QPushButton(
+            "すべて"
+        )
+
+        self.export_all_off_button = QPushButton(
+            "なし"
+        )
+
+        self.export_all_on_button.setFixedHeight(
+            30
+        )
+
+        self.export_all_off_button.setFixedHeight(
+            30
+        )
+
+        self.export_all_on_button.setToolTip(
+            "すべてのページを書き出し対象にします"
+        )
+
+        self.export_all_off_button.setToolTip(
+            "すべてのページを書き出し対象から外します"
+        )
+
+        self.export_all_on_button.clicked.connect(
+            lambda:
+            self.set_all_page_export_enabled(
+                True
+            )
+        )
+
+        self.export_all_off_button.clicked.connect(
+            lambda:
+            self.set_all_page_export_enabled(
+                False
+            )
+        )
+
+        export_check_layout = QHBoxLayout()
+
+        export_check_layout.setSpacing(
+            6
+        )
+
+        export_check_layout.addWidget(
+            self.export_all_on_button
+        )
+
+        export_check_layout.addWidget(
+            self.export_all_off_button
+        )
+
+        self.delete_page_button = QPushButton(
+            "🗑 ページを削除"
+        )
+
+        self.delete_page_button.setFixedHeight(
+            32
+        )
+
+        self.delete_page_button.setMinimumWidth(
+            120
+        )
+
+        self.delete_page_button.setEnabled(
+            False
+        )
 
         self.delete_page_button.clicked.connect(
             self.delete_current_page
         )
 
         page_list_layout = QVBoxLayout()
+
         page_list_layout.addWidget(
             self.page_list_display_combo
         )
+
+        page_list_layout.addWidget(
+            export_target_label
+        )
+
+        page_list_layout.addLayout(
+            export_check_layout
+        )
+
         page_list_layout.addWidget(
             self.page_list
         )
+
         page_list_layout.addWidget(
             self.delete_page_button,
             0,
@@ -2424,6 +2702,36 @@ class MainWindow(QMainWindow):
 
         self.project_modified = True
 
+    def set_all_page_export_enabled(
+        self,
+        enabled,
+    ):
+        enabled = bool(
+            enabled
+        )
+
+        for row in range(
+            len(self.page_export_enabled)
+        ):
+            self.page_export_enabled[
+                row
+            ] = enabled
+
+            item = self.page_list.item(
+                row
+            )
+
+            if item is not None:
+                item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    enabled,
+                )
+
+        self.page_list.viewport().update()
+
+        if self.page_export_enabled:
+            self.project_modified = True
+
     def count_crop_units(
         self,
         rects,
@@ -3676,19 +3984,42 @@ class MainWindow(QMainWindow):
         self.update_crop_preview()
         self.update_page_label()
 
-    def delete_current_page(self):
-        selected_items = self.page_list.selectedItems()
+    def delete_current_page(
+        self,
+        row=None,
+    ):
+        if isinstance(row, bool):
+            row = None
 
-        if not selected_items:
-            return
+        if row is not None:
+            if (
+                row < 0
+                or row >= len(self.image_paths)
+            ):
+                return
 
-        selected_rows = sorted(
-            [
-                self.page_list.row(item)
-                for item in selected_items
-            ],
-            reverse=True,
-        )
+            selected_rows = [
+                row
+            ]
+
+        else:
+            selected_items = (
+                self.page_list.selectedItems()
+            )
+
+            if not selected_items:
+                return
+
+            selected_rows = sorted(
+                [
+                    self.page_list.row(
+                        item
+                    )
+                    for item
+                    in selected_items
+                ],
+                reverse=True,
+            )
 
         self.save_current_page_rects()
 
@@ -4953,13 +5284,22 @@ class MainWindow(QMainWindow):
         self.save_current_page_rects()
 
         if not self.image_paths:
-            print("画像が読み込まれていません")
+            print(
+                "画像が読み込まれていません"
+            )
 
             self.status_label.setText(
                 "画像が読み込まれていません"
             )
 
-            self.save_button.setEnabled(True)
+            self.save_button.setEnabled(
+                True
+            )
+
+            self.save_button.setText(
+                self.tr("切り抜き")
+            )
+
             return
 
         export_page_indexes = {
@@ -4985,7 +5325,14 @@ class MainWindow(QMainWindow):
                 "書き出し対象のページがありません"
             )
 
-            self.save_button.setEnabled(True)
+            self.save_button.setEnabled(
+                True
+            )
+
+            self.save_button.setText(
+                self.tr("切り抜き")
+            )
+
             return
 
         # 書き出し対象ページの

@@ -110,6 +110,15 @@ class PhotoCanvas(QWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
+    def enterEvent(self, event):
+        self.setFocus(
+            Qt.FocusReason.MouseFocusReason
+        )
+
+        super().enterEvent(
+            event
+        )
+
     def set_image(self, pixmap):
         self.pixmap = pixmap
         self.rects = []
@@ -4213,6 +4222,10 @@ class PhotoCanvas(QWidget):
         # Spaceキー：代替パン操作終了
         # ---------------------------------
         if event.key() == Qt.Key.Key_Space:
+            if event.isAutoRepeat():
+                event.accept()
+                return
+
             self.space_pressed = False
 
             if self.space_pan_dragging:
@@ -4234,6 +4247,10 @@ class PhotoCanvas(QWidget):
         # Spaceキー：代替パン操作
         # ---------------------------------
         if event.key() == Qt.Key.Key_Space:
+            if event.isAutoRepeat():
+                event.accept()
+                return
+
             self.space_pressed = True
 
             if not self.panning:
