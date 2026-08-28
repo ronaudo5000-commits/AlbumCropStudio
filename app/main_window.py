@@ -5594,7 +5594,10 @@ class MainWindow(QMainWindow):
 
             return
 
-        export_page_indexes = {
+        # ---------------------------------
+        # エディション別の書き出し対象
+        # ---------------------------------
+        checked_page_indexes = {
             page_index
             for page_index in range(
                 len(self.image_paths)
@@ -5607,6 +5610,50 @@ class MainWindow(QMainWindow):
                 ]
             )
         }
+
+        if is_multi_page_export_enabled():
+            # Internal版:
+            # チェックされた複数ページを書き出す
+            export_page_indexes = (
+                checked_page_indexes
+            )
+
+        else:
+            # Free版:
+            # 1回につき1ページだけ書き出す
+            if len(checked_page_indexes) > 1:
+                QMessageBox.information(
+                    self,
+                    "Free版の書き出しについて",
+                    (
+                        "AlbumCrop Studio Freeでは、"
+                        "一度に書き出せるのは"
+                        "1ページずつです。\n\n"
+                        "書き出したいページを"
+                        "1ページだけチェックしてから、"
+                        "もう一度「切り抜き」を"
+                        "実行してください。"
+                    ),
+                )
+
+                self.status_label.setText(
+                    "書き出し対象を1ページだけ"
+                    "選択してください"
+                )
+
+                self.save_button.setEnabled(
+                    True
+                )
+
+                self.save_button.setText(
+                    self.tr("切り抜き")
+                )
+
+                return
+
+            export_page_indexes = (
+                checked_page_indexes
+            )
 
         if not export_page_indexes:
             print(
