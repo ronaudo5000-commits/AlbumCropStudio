@@ -30,6 +30,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QToolButton,
+    QButtonGroup,
     QSpinBox,
     QVBoxLayout,
     QHBoxLayout,
@@ -1011,25 +1013,239 @@ class MainWindow(QMainWindow):
             self.change_page_from_list
         )
 
-        self.page_list_display_combo = QComboBox()
+        # ---------------------------------
+        # ページ一覧の表示モード切り替え
+        # ---------------------------------
+        self.page_list_display_mode = "thumbnail"
 
-        self.page_list_display_combo.addItem(
-            "サムネイル",
-            "thumbnail",
+        self.thumbnail_view_button = QToolButton()
+        self.compact_view_button = QToolButton()
+
+        self.thumbnail_view_button.setCheckable(
+            True
         )
 
-        self.page_list_display_combo.addItem(
-            "コンパクト",
-            "compact",
+        self.compact_view_button.setCheckable(
+            True
         )
 
-        self.page_list_display_combo.setToolTip(
-            "左側のページ一覧の表示方法を切り替えます"
+        self.thumbnail_view_button.setChecked(
+            True
         )
 
-        self.page_list_display_combo.currentIndexChanged.connect(
-            self.apply_page_list_display_mode
+        self.thumbnail_view_button.setFixedSize(
+            38,
+            30,
         )
+
+        self.compact_view_button.setFixedSize(
+            38,
+            30,
+        )
+
+        self.thumbnail_view_button.setToolTip(
+            "サムネイル表示"
+        )
+
+        self.compact_view_button.setToolTip(
+            "コンパクト表示"
+        )
+
+        self.thumbnail_view_button.setStyleSheet("""
+            QToolButton {
+                border: 1px solid #4a4a4a;
+                border-right: 0px;
+                border-top-left-radius: 5px;
+                border-bottom-left-radius: 5px;
+                border-top-right-radius: 0px;
+                border-bottom-right-radius: 0px;
+                background-color: #1f1f1f;
+            }
+
+            QToolButton:hover {
+                background-color: #333333;
+            }
+
+            QToolButton:checked {
+                background-color: #4a4a4a;
+                border-color: #6a6a6a;
+            }
+        """)
+
+        self.compact_view_button.setStyleSheet("""
+            QToolButton {
+                border: 1px solid #4a4a4a;
+                border-top-left-radius: 0px;
+                border-bottom-left-radius: 0px;
+                border-top-right-radius: 5px;
+                border-bottom-right-radius: 5px;
+                background-color: #1f1f1f;
+            }
+
+            QToolButton:hover {
+                background-color: #333333;
+            }
+
+            QToolButton:checked {
+                background-color: #4a4a4a;
+                border-color: #6a6a6a;
+            }
+        """)
+
+        # サムネイル表示アイコン
+        thumbnail_pixmap = QPixmap(
+            24,
+            20,
+        )
+
+        thumbnail_pixmap.fill(
+            Qt.GlobalColor.transparent
+        )
+
+        thumbnail_painter = QPainter(
+            thumbnail_pixmap
+        )
+
+        thumbnail_painter.setPen(
+            QPen(
+                QColor(255, 255, 255),
+                2,
+            )
+        )
+
+        thumbnail_painter.drawRect(
+            2,
+            2,
+            8,
+            6,
+        )
+
+        thumbnail_painter.drawRect(
+            14,
+            2,
+            8,
+            6,
+        )
+
+        thumbnail_painter.drawRect(
+            2,
+            12,
+            8,
+            6,
+        )
+
+        thumbnail_painter.drawRect(
+            14,
+            12,
+            8,
+            6,
+        )
+
+        thumbnail_painter.end()
+
+        self.thumbnail_view_button.setIcon(
+            QIcon(
+                thumbnail_pixmap
+            )
+        )
+
+        # コンパクト表示アイコン
+        compact_pixmap = QPixmap(
+            24,
+            20,
+        )
+
+        compact_pixmap.fill(
+            Qt.GlobalColor.transparent
+        )
+
+        compact_painter = QPainter(
+            compact_pixmap
+        )
+
+        compact_painter.setPen(
+            QPen(
+                QColor(255, 255, 255),
+                2,
+            )
+        )
+
+        compact_painter.drawLine(
+            3,
+            4,
+            21,
+            4,
+        )
+
+        compact_painter.drawLine(
+            3,
+            10,
+            21,
+            10,
+        )
+
+        compact_painter.drawLine(
+            3,
+            16,
+            21,
+            16,
+        )
+
+        compact_painter.end()
+
+        self.compact_view_button.setIcon(
+            QIcon(
+                compact_pixmap
+            )
+        )
+
+        self.page_list_display_button_group = (
+            QButtonGroup(
+                self
+            )
+        )
+
+        self.page_list_display_button_group.setExclusive(
+            True
+        )
+
+        self.page_list_display_button_group.addButton(
+            self.thumbnail_view_button
+        )
+
+        self.page_list_display_button_group.addButton(
+            self.compact_view_button
+        )
+
+        self.thumbnail_view_button.clicked.connect(
+            lambda:
+            self.set_page_list_display_mode(
+                "thumbnail"
+            )
+        )
+
+        self.compact_view_button.clicked.connect(
+            lambda:
+            self.set_page_list_display_mode(
+                "compact"
+            )
+        )
+
+        page_list_display_layout = QHBoxLayout()
+
+        page_list_display_layout.setSpacing(
+            0
+        )
+
+        page_list_display_layout.addWidget(
+            self.thumbnail_view_button
+        )
+
+        page_list_display_layout.addWidget(
+            self.compact_view_button
+        )
+
+        page_list_display_layout.addStretch()
 
         # ---------------------------------
         # 書き出し対象の一括操作
@@ -1122,8 +1338,8 @@ class MainWindow(QMainWindow):
 
         page_list_layout = QVBoxLayout()
 
-        page_list_layout.addWidget(
-            self.page_list_display_combo
+        page_list_layout.addLayout(
+            page_list_display_layout
         )
 
         page_list_layout.addWidget(
@@ -3087,9 +3303,7 @@ class MainWindow(QMainWindow):
             row
         )
 
-        mode = (
-            self.page_list_display_combo.currentData()
-        )
+        mode = self.page_list_display_mode
 
         if mode == "compact":
             item.setText(
@@ -3109,8 +3323,30 @@ class MainWindow(QMainWindow):
         self.page_list.viewport().update()
         self.update_current_rect_count_status()
 
+    def set_page_list_display_mode(
+        self,
+        mode,
+    ):
+        if mode not in (
+            "thumbnail",
+            "compact",
+        ):
+            return
+
+        self.page_list_display_mode = mode
+
+        self.thumbnail_view_button.setChecked(
+            mode == "thumbnail"
+        )
+
+        self.compact_view_button.setChecked(
+            mode == "compact"
+        )
+
+        self.apply_page_list_display_mode()
+
     def apply_page_list_display_mode(self):
-        mode = self.page_list_display_combo.currentData()
+        mode = self.page_list_display_mode
 
         available_width = max(
             108,
