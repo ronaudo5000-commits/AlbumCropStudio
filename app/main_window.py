@@ -2486,9 +2486,28 @@ class MainWindow(QMainWindow):
                     f"キャッシュ削除失敗: {e}"
                 )
 
+    def show_free_page_limit_message(self):
+        max_pages = get_max_pages()
+
+        if max_pages is None:
+            return
+
+        QMessageBox.information(
+            self,
+            "Free版のページ数制限",
+            (
+                "AlbumCrop Studio Freeでは、"
+                f"一度に読み込めるのは"
+                f"最大{max_pages}ページまでです。\n\n"
+                "上限を超えるページは"
+                "読み込みませんでした。"
+            ),
+        )
+
     def convert_pdf_to_images(
         self,
         pdf_path,
+        max_pages=None,
     ):
         converted_paths = []
 
@@ -2501,8 +2520,26 @@ class MainWindow(QMainWindow):
                 pdf_path
             ).stem
 
-            for page_index in range(
+            total_page_count = (
                 document.page_count
+            )
+
+            page_count = total_page_count
+
+            if max_pages is not None:
+                page_count = min(
+                    page_count,
+                    max_pages,
+                )
+
+            was_limited = (
+                max_pages is not None
+                and total_page_count
+                > max_pages
+            )
+
+            for page_index in range(
+                page_count
             ):
                 page = document.load_page(
                     page_index
@@ -2522,11 +2559,21 @@ class MainWindow(QMainWindow):
                     )
                 )
 
-                success = pixmap.save(str(output_path))
+                success = pixmap.save(
+                    str(output_path)
+                )
 
-                print(f"保存先: {output_path}")
-                print(f"保存成功: {success}")
-                print(f"存在確認: {output_path.exists()}")
+                print(
+                    f"保存先: {output_path}"
+                )
+
+                print(
+                    f"保存成功: {success}"
+                )
+
+                print(
+                    f"存在確認: {output_path.exists()}"
+                )
 
                 converted_paths.append(
                     str(output_path)
@@ -2548,9 +2595,9 @@ class MainWindow(QMainWindow):
                 ),
             )
 
-            return []
+            return [], False
 
-        return converted_paths
+        return converted_paths, was_limited
 
     def open_image(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
@@ -2571,7 +2618,25 @@ class MainWindow(QMainWindow):
 
         image_file_paths = []
 
+        max_pages = get_max_pages()
+
+        limit_was_reached = False
+
         for file_path in file_paths:
+            remaining_slots = None
+
+            if max_pages is not None:
+                remaining_slots = max(
+                    0,
+                    max_pages
+                    - len(self.image_paths)
+                    - len(image_file_paths),
+                )
+
+                if remaining_slots <= 0:
+                    limit_was_reached = True
+                    break
+
             suffix = Path(
                 file_path
             ).suffix.lower()
@@ -2583,17 +2648,28 @@ class MainWindow(QMainWindow):
 
                 QApplication.processEvents()
 
-                converted_paths = (
-                    self.convert_pdf_to_images(
-                        file_path
-                    )
+                (
+                    converted_paths,
+                    pdf_was_limited,
+                ) = self.convert_pdf_to_images(
+                    file_path,
+                    max_pages=remaining_slots,
                 )
 
                 image_file_paths.extend(
                     converted_paths
                 )
 
+                if pdf_was_limited:
+                    limit_was_reached = True
+
             else:
+                if file_path in self.image_paths:
+                    continue
+
+                if file_path in image_file_paths:
+                    continue
+
                 image_file_paths.append(
                     file_path
                 )
@@ -2601,6 +2677,9 @@ class MainWindow(QMainWindow):
         self.add_images(
             image_file_paths
         )
+
+        if limit_was_reached:
+            self.show_free_page_limit_message()
 
     def add_images(self, file_paths):
         if not file_paths:
@@ -2761,13 +2840,33 @@ class MainWindow(QMainWindow):
 
         image_file_paths = []
 
+        max_pages = get_max_pages()
+
+        limit_was_reached = False
+
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
 
             if not file_path:
                 continue
 
-            suffix = Path(file_path).suffix.lower()
+            remaining_slots = None
+
+            if max_pages is not None:
+                remaining_slots = max(
+                    0,
+                    max_pages
+                    - len(self.image_paths)
+                    - len(image_file_paths),
+                )
+
+                if remaining_slots <= 0:
+                    limit_was_reached = True
+                    break
+
+            suffix = Path(
+                file_path
+            ).suffix.lower()
 
             if suffix == ".pdf":
                 self.status_label.setText(
@@ -2776,22 +2875,44 @@ class MainWindow(QMainWindow):
 
                 QApplication.processEvents()
 
-                converted_paths = self.convert_pdf_to_images(
+                (
+                    converted_paths,
+                    pdf_was_limited,
+                ) = self.convert_pdf_to_images(
+                    file_path,
+                    max_pages=remaining_slots,
+                )
+
+                image_file_paths.extend(
+                    converted_paths
+                )
+
+                if pdf_was_limited:
+                    limit_was_reached = True
+
+            else:
+                if file_path in self.image_paths:
+                    continue
+
+                if file_path in image_file_paths:
+                    continue
+
+                image_file_paths.append(
                     file_path
                 )
 
-                image_file_paths.extend(converted_paths)
+        if image_file_paths:
+            self.add_images(
+                image_file_paths
+            )
 
-            else:
-                image_file_paths.append(file_path)
+            event.acceptProposedAction()
 
-        if not image_file_paths:
+        else:
             event.ignore()
-            return
 
-        self.add_images(image_file_paths)
-
-        event.acceptProposedAction()
+        if limit_was_reached:
+            self.show_free_page_limit_message()
 
     def set_page_export_enabled(
         self,
