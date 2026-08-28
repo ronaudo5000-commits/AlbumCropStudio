@@ -1090,6 +1090,16 @@ class MainWindow(QMainWindow):
             self.export_all_off_button
         )
 
+        # Free版では一括書き出し操作を表示しない
+        if not is_multi_page_export_enabled():
+            self.export_all_on_button.setVisible(
+                False
+            )
+
+            self.export_all_off_button.setVisible(
+                False
+            )
+
         self.delete_page_button = QPushButton(
             "🗑 ページを削除"
         )
