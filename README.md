@@ -9,11 +9,12 @@ It is designed not only as a photo-cropping tool, but also as a starting
 point for organizing, preserving, and sharing historical photographic
 records.
 
-> This project is currently in beta.
+This repository contains **AlbumCrop Studio Free**, the free edition of
+AlbumCrop Studio.
 
 ## Current Version
 
-`0.10.0-beta.4`
+`0.10.0`
 
 ## Features
 
@@ -23,32 +24,32 @@ records.
 - Select multiple crop frames
 - Select all crop frames on the current page with Ctrl+A
 - Move and delete multiple selected crop frames together
-- Copy, cut, and paste multiple crop frames while preserving their relative
-  layout
-- Copy or move crop-frame layouts between different pages during the same
-  session
-- Scale pasted crop-frame layouts proportionally when the source and
-  destination page dimensions differ
+- Copy, cut, and paste multiple crop frames while preserving their relative layout
+- Copy or move crop-frame layouts between different pages during the same session
+- Scale pasted crop-frame layouts proportionally when the source and destination page dimensions differ
 - Move, resize, copy, rotate, and delete individual crop frames
 - Set an aspect-ratio mode for each crop frame
 - Use free resizing, preserve the current ratio, or select a preset ratio
 - Choose from 16:9, 9:16, 4:3, 3:2, and 1:1 presets
-- Preserve per-frame aspect-ratio settings across page changes, undo and redo,
-  project saving and loading, and export
+- Preserve per-frame aspect-ratio settings across page changes, undo and redo, project saving and loading, and export
 - Hold Shift while resizing to temporarily preserve the frame's current ratio
-- Use compact resize handles with a reduced hit area for easier work with
-  closely spaced crop frames
+- Use compact resize handles with a reduced hit area for easier work with closely spaced crop frames
 - Undo and redo editing operations
 - Work with multiple pages
 - Switch the page list between thumbnail and compact display modes
 - Select which pages should be included in export
+- Enable or disable all pages for export at once
 - Save and reopen project files
 - Preserve page export selections in project files
 - Configure output DPI
 - Configure crop margins in millimeters
 - Configure JPEG quality
 - Preview cropped photographs fitted to the available preview-pane width
+- Click a crop preview to open a larger viewer
+- Zoom and pan inside the enlarged crop-preview viewer
+- Pan the main canvas with the middle mouse button or Space + left drag
 - Export selected pages as JPEG files
+- Show both percentage and processed/total crop counts during export
 - Preserve original page numbers in exported filenames
 - Preserve crop frames after export
 - Confirm before overwriting existing files
@@ -56,12 +57,19 @@ records.
 
 ## Supported Platforms
 
+### Officially Supported
+
 - Windows 10
 - Windows 11
+
+AlbumCrop Studio Free is primarily developed and tested on Windows 11.
+
+### Planned
+
 - macOS
 
-The current beta version is primarily developed and tested on Windows 11.
-macOS support is planned, but may require additional testing.
+macOS support is planned, but it has not yet received the same level of
+testing as the Windows version.
 
 ## Technology Stack
 
@@ -114,25 +122,18 @@ python main.py
 1. Open an image or PDF document.
 2. Run automatic photo detection, or create crop frames manually.
 3. Adjust the position, size, and rotation of each frame.
-4. Choose free resizing, preserve the frame's current ratio, or select a
-   preset aspect ratio for each frame.
-5. Hold Shift while resizing when you want to temporarily preserve the
-   frame's current ratio.
-6. Use Ctrl-click to select multiple crop frames, or Ctrl+A to select all crop
-   frames on the current page.
-7. Use Ctrl+C to copy or Ctrl+X to cut selected crop frames, then Ctrl+V to
-   paste them while preserving their relative layout. Crop-frame layouts can
-   also be copied or moved to another page during the same application
-   session. When page dimensions differ, pasted frames are scaled
-   proportionally to match the destination page.
-8. Switch the page list between thumbnail and compact modes when working with
-   many pages.
-9. Check cropped results in the preview pane, which fits previews to the
-   available pane width.
-10. Select the pages that should be included in export.
-11. Configure DPI, margin, and JPEG quality from the main window or Settings.
-12. Choose an output folder.
-13. Export the cropped photographs.
+4. Choose free resizing, preserve the frame's current ratio, or select a preset aspect ratio for each frame.
+5. Hold Shift while resizing when you want to temporarily preserve the frame's current ratio.
+6. Use Ctrl-click to select multiple crop frames, or Ctrl+A to select all crop frames on the current page.
+7. Use Ctrl+C to copy or Ctrl+X to cut selected crop frames, then Ctrl+V to paste them while preserving their relative layout.
+8. Copy or move crop-frame layouts to another page when needed.
+9. Switch the page list between thumbnail and compact modes when working with many pages.
+10. Check cropped results in the preview pane.
+11. Click a crop preview when you need a larger zoomable view.
+12. Select the pages that should be included in export.
+13. Configure DPI, margin, and JPEG quality from the main window or Settings.
+14. Choose an output folder.
+15. Export the cropped photographs.
 
 ## Project Files
 
@@ -155,18 +156,16 @@ information are opened in free-resize mode.
 Keep the original image and PDF files available in their original locations
 when reopening a project.
 
-## Beta Notice
-
-This is a beta release intended for testing and evaluation.
+## Important Notes
 
 Before processing important or irreplaceable archival material:
 
 - Keep the original files unchanged
 - Create backups
 - Test the output with sample files
-- Check all exported photographs manually
+- Check exported photographs manually when accuracy is important
 
-The detection result may require manual adjustment depending on the album
+Automatic detection may require manual adjustment depending on the album
 layout, image quality, background, shadows, decorations, or damaged pages.
 
 ## Known Limitations
@@ -178,7 +177,7 @@ layout, image quality, background, shadows, decorations, or damaged pages.
 - Only a limited number of recently viewed pages are cached in memory
 - macOS has not yet received the same level of testing as Windows 11
 - The interface is currently primarily intended for Japanese-language use
-- Advanced metadata and geolocation features are not included in this beta
+- Advanced metadata and geolocation features are not included in AlbumCrop Studio Free
 
 ## Development Philosophy
 

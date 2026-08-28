@@ -884,6 +884,10 @@ class MainWindow(QMainWindow):
 
         self.page_export_enabled = []
 
+        # コピーした枠のコピー元ページを保持する
+        self.copied_rects_source_page_index = -1
+        self.copied_rects_source_image_path = None
+
         self.pdf_temp_dir = (
             Path.home()
             / ".albumcrop_studio"
@@ -1104,6 +1108,10 @@ class MainWindow(QMainWindow):
         page_list_container.setLayout(page_list_layout)
 
         self.preview_area = PhotoCanvas()
+
+        self.preview_area.copied_rects_changed.connect(
+            self.record_copied_rects_source_page
+        )
 
         self.preview_area.zoom_changed.connect(
             self.on_zoom_changed
@@ -3008,6 +3016,26 @@ class MainWindow(QMainWindow):
                 )
         self.page_list.viewport().update()
 
+    def record_copied_rects_source_page(self):
+        if (
+            self.current_page_index < 0
+            or self.current_page_index
+            >= len(self.image_paths)
+        ):
+            self.copied_rects_source_page_index = -1
+            self.copied_rects_source_image_path = None
+            return
+
+        self.copied_rects_source_page_index = (
+            self.current_page_index
+        )
+
+        self.copied_rects_source_image_path = (
+            self.image_paths[
+                self.current_page_index
+            ]
+        )
+
     def update_page_label(self):
         total = len(self.image_paths)
 
@@ -3261,9 +3289,48 @@ class MainWindow(QMainWindow):
             )
             return
 
-        source_page_index = (
-            self.current_page_index
+        if not self.preview_area.copied_rects:
+            self.status_label.setText(
+                "先に切り抜き枠をコピーしてください。"
+            )
+            return
+
+        source_page_index = -1
+
+        # まず、コピー時のページ番号と画像パスの両方が
+        # 現在も一致しているか確認する
+        saved_source_index = (
+            self.copied_rects_source_page_index
         )
+
+        saved_source_path = (
+            self.copied_rects_source_image_path
+        )
+
+        if (
+            0 <= saved_source_index
+            < len(self.image_paths)
+            and saved_source_path is not None
+            and self.image_paths[
+                saved_source_index
+            ] == saved_source_path
+        ):
+            source_page_index = (
+                saved_source_index
+            )
+
+        # コピー後にページ削除などで番号が変わった場合は、
+        # 画像パスからコピー元を探し直す
+        elif (
+            saved_source_path is not None
+            and saved_source_path
+            in self.image_paths
+        ):
+            source_page_index = (
+                self.image_paths.index(
+                    saved_source_path
+                )
+            )
 
         target_rows = [
             row

@@ -25,6 +25,7 @@ class PhotoCanvas(QWidget):
     rects_changed = Signal()
     selected_rect_changed = Signal(int)
     composite_create_finished = Signal()
+    copied_rects_changed = Signal()
 
     def __init__(self):
         super().__init__()
@@ -4585,6 +4586,8 @@ class PhotoCanvas(QWidget):
                             ),
                         }
                     )
+
+                self.copied_rects_changed.emit()
 
             event.accept()
             return
