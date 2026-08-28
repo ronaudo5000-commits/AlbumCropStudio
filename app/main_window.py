@@ -61,6 +61,14 @@ from app.about_dialog import AboutDialog
 from app.config import Config
 from app.settings_dialog import SettingsDialog
 
+from app.edition import (
+    CURRENT_EDITION,
+    get_max_pages,
+    is_free_edition,
+    is_internal_edition,
+    is_multi_page_export_enabled,
+)
+
 from app.export_worker import CropExportWorker
 from app.detection_worker import DetectionWorker
 
@@ -816,6 +824,28 @@ class PageListWidget(QListWidget):
         super().mousePressEvent(
             event
         )
+
+    def wheelEvent(self, event):
+        scrollbar = self.verticalScrollBar()
+
+        angle_delta = event.angleDelta().y()
+        pixel_delta = event.pixelDelta().y()
+
+        if pixel_delta:
+            scroll_amount = pixel_delta
+        elif angle_delta:
+            scroll_amount = int(
+                angle_delta / 120 * 45
+            )
+        else:
+            super().wheelEvent(event)
+            return
+
+        scrollbar.setValue(
+            scrollbar.value() - scroll_amount
+        )
+
+        event.accept()
 
     def resizeEvent(self, event):
         super().resizeEvent(
