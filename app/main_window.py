@@ -2611,21 +2611,76 @@ class MainWindow(QMainWindow):
 
         was_empty = len(self.image_paths) == 0
 
+        # ---------------------------------
+        # Free版のページ数制限
+        # ---------------------------------
+        max_pages = get_max_pages()
+
+        available_slots = None
+
+        if max_pages is not None:
+            available_slots = max(
+                0,
+                max_pages - len(self.image_paths),
+            )
+
+            if available_slots <= 0:
+                QMessageBox.information(
+                    self,
+                    "Free版のページ数制限",
+                    (
+                        f"AlbumCrop Studio Freeでは、"
+                        f"一度に読み込めるのは"
+                        f"最大{max_pages}ページまでです。\n\n"
+                        "追加するには、現在のページを"
+                        "削除してから読み込んでください。"
+                    ),
+                )
+                return
+
         new_file_paths = []
+        skipped_by_limit = 0
 
         for file_path in file_paths:
-            if file_path not in self.image_paths:
-                self.image_paths.append(
-                    file_path
-                )
+            if file_path in self.image_paths:
+                continue
 
-                self.page_export_enabled.append(
-                    True
-                )
+            if (
+                available_slots is not None
+                and len(new_file_paths)
+                >= available_slots
+            ):
+                skipped_by_limit += 1
+                continue
 
-                new_file_paths.append(
-                    file_path
-                )
+            self.image_paths.append(
+                file_path
+            )
+
+            self.page_export_enabled.append(
+                True
+            )
+
+            new_file_paths.append(
+                file_path
+            )
+
+        if (
+            max_pages is not None
+            and skipped_by_limit > 0
+        ):
+            QMessageBox.information(
+                self,
+                "Free版のページ数制限",
+                (
+                    f"AlbumCrop Studio Freeでは、"
+                    f"一度に読み込めるのは"
+                    f"最大{max_pages}ページまでです。\n\n"
+                    f"{len(new_file_paths)}ページを追加し、"
+                    f"{skipped_by_limit}ページは"
+                    "読み込みませんでした。"
+                ),
+            )
 
         if was_empty and self.image_paths:
             self.current_page_index = 0
@@ -2684,14 +2739,17 @@ class MainWindow(QMainWindow):
             self.page_list.setCurrentRow(0)
 
             self.load_image(
-                self.image_paths[self.current_page_index]
+                self.image_paths[
+                    self.current_page_index
+                ]
             )
 
         self.delete_page_button.setEnabled(
             len(self.image_paths) > 0
         )
 
-        self.project_modified = True
+        if new_file_paths:
+            self.project_modified = True
 
         self.update_page_label()
         self.apply_page_list_display_mode()
