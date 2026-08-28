@@ -16,6 +16,22 @@ AlbumCrop Studio.
 
 `0.10.0`
 
+## Free Edition Limits
+
+AlbumCrop Studio Free is intended for individual and small-scale archival
+workflows.
+
+The Free edition has the following limits:
+
+- Up to **5 pages** can be loaded at one time
+- PDF pages are counted individually toward the 5-page limit
+- Project files containing more than 5 pages cannot be opened in the Free edition
+- Export is limited to **one selected page at a time**
+- All crop frames on that selected page can be exported together
+
+Crop-frame editing, automatic detection, project saving, and the other
+core editing features remain available within these limits.
+
 ## Features
 
 - Load image files and PDF documents
@@ -35,10 +51,9 @@ AlbumCrop Studio.
 - Hold Shift while resizing to temporarily preserve the frame's current ratio
 - Use compact resize handles with a reduced hit area for easier work with closely spaced crop frames
 - Undo and redo editing operations
-- Work with multiple pages
+- Work with multiple pages within the Free edition's 5-page limit
 - Switch the page list between thumbnail and compact display modes
-- Select which pages should be included in export
-- Enable or disable all pages for export at once
+- Select one page as the export target
 - Save and reopen project files
 - Preserve page export selections in project files
 - Configure output DPI
@@ -48,7 +63,7 @@ AlbumCrop Studio.
 - Click a crop preview to open a larger viewer
 - Zoom and pan inside the enlarged crop-preview viewer
 - Pan the main canvas with the middle mouse button or Space + left drag
-- Export selected pages as JPEG files
+- Export all crop frames from one selected page as JPEG files
 - Show both percentage and processed/total crop counts during export
 - Preserve original page numbers in exported filenames
 - Preserve crop frames after export
@@ -127,13 +142,14 @@ python main.py
 6. Use Ctrl-click to select multiple crop frames, or Ctrl+A to select all crop frames on the current page.
 7. Use Ctrl+C to copy or Ctrl+X to cut selected crop frames, then Ctrl+V to paste them while preserving their relative layout.
 8. Copy or move crop-frame layouts to another page when needed.
-9. Switch the page list between thumbnail and compact modes when working with many pages.
+9. Switch the page list between thumbnail and compact modes when working with multiple pages.
 10. Check cropped results in the preview pane.
 11. Click a crop preview when you need a larger zoomable view.
-12. Select the pages that should be included in export.
+12. Check one page in the page list as the export target.
 13. Configure DPI, margin, and JPEG quality from the main window or Settings.
 14. Choose an output folder.
-15. Export the cropped photographs.
+15. Export all crop frames from the selected page.
+16. To export another page, select that page as the export target and run export again.
 
 ## Project Files
 
@@ -153,6 +169,12 @@ Aspect-ratio modes are stored separately for each crop frame. Projects created
 before this feature was added remain compatible; frames without saved ratio
 information are opened in free-resize mode.
 
+AlbumCrop Studio Free can open projects containing up to 5 pages.
+
+Projects containing more than 5 pages are not opened in the Free edition in
+order to avoid unintentionally loading or overwriting only part of a larger
+project.
+
 Keep the original image and PDF files available in their original locations
 when reopening a project.
 
@@ -170,6 +192,8 @@ layout, image quality, background, shadows, decorations, or damaged pages.
 
 ## Known Limitations
 
+- The Free edition can load up to 5 pages at one time
+- The Free edition exports one selected page at a time
 - Automatic detection may not identify every photograph correctly
 - Overlapping photographs may require manual frame creation
 - Decorative borders and page backgrounds may affect detection

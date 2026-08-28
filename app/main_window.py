@@ -3873,7 +3873,39 @@ class MainWindow(QMainWindow):
                 "❌ プロジェクトに画像がありません"
             )
             return
-        
+
+        # ---------------------------------
+        # Free版のプロジェクトページ数制限
+        # ---------------------------------
+        max_pages = get_max_pages()
+
+        if (
+            max_pages is not None
+            and len(pages) > max_pages
+        ):
+            QMessageBox.information(
+                self,
+                "Free版のページ数制限",
+                (
+                    "このプロジェクトには"
+                    f"{len(pages)}ページ含まれています。\n\n"
+                    "AlbumCrop Studio Freeで"
+                    "開けるプロジェクトは"
+                    f"最大{max_pages}ページまでです。\n\n"
+                    "プロジェクトの内容を保護するため、"
+                    "読み込みを中止しました。"
+                ),
+            )
+
+            self.status_label.setText(
+                (
+                    "プロジェクトを開けません: "
+                    f"{len(pages)}ページ"
+                )
+            )
+
+            return
+
         # 元画像がすべて存在するか確認
         missing_files = []
 
