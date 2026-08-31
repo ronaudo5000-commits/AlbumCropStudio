@@ -173,6 +173,25 @@ class CropPreviewGraphicsView(QGraphicsView):
 
         self.zoom_factor = 1.20
 
+    def set_pixmap(
+        self,
+        pixmap,
+    ):
+        if pixmap is None or pixmap.isNull():
+            return
+
+        self.source_pixmap = pixmap
+
+        self.pixmap_item.setPixmap(
+            self.source_pixmap
+        )
+
+        self.preview_scene.setSceneRect(
+            self.pixmap_item.boundingRect()
+        )
+
+        self.fit_image()
+
     def fit_image(self):
         if self.source_pixmap.isNull():
             return
@@ -226,14 +245,33 @@ class CropPreviewGraphicsView(QGraphicsView):
 class CropPreviewDialog(QDialog):
     def __init__(
         self,
-        pixmap,
-        title,
+        preview_items,
+        current_index=0,
         parent=None,
     ):
         super().__init__(parent)
 
-        self.setWindowTitle(
-            f"切り抜きプレビュー - {title}"
+        self.preview_items = list(
+            preview_items
+        )
+
+        self.current_index = current_index
+
+        if not self.preview_items:
+            return
+
+        self.current_index = max(
+            0,
+            min(
+                self.current_index,
+                len(self.preview_items) - 1,
+            ),
+        )
+
+        current_item = (
+            self.preview_items[
+                self.current_index
+            ]
         )
 
         self.resize(
@@ -243,7 +281,7 @@ class CropPreviewDialog(QDialog):
 
         self.viewer = (
             CropPreviewGraphicsView(
-                pixmap,
+                current_item["pixmap"],
                 self,
             )
         )
@@ -260,6 +298,16 @@ class CropPreviewDialog(QDialog):
             "全体表示"
         )
 
+        self.previous_button = QPushButton(
+            "◀ 前へ"
+        )
+
+        self.position_label = QLabel()
+
+        self.next_button = QPushButton(
+            "次へ ▶"
+        )
+
         self.close_button = QPushButton(
             "閉じる"
         )
@@ -270,6 +318,22 @@ class CropPreviewDialog(QDialog):
 
         self.zoom_in_button.setFixedWidth(
             44
+        )
+
+        self.previous_button.setMinimumWidth(
+            80
+        )
+
+        self.next_button.setMinimumWidth(
+            80
+        )
+
+        self.position_label.setMinimumWidth(
+            60
+        )
+
+        self.position_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
         )
 
         self.zoom_out_button.setToolTip(
@@ -284,6 +348,14 @@ class CropPreviewDialog(QDialog):
             "画像全体が収まる表示に戻します"
         )
 
+        self.previous_button.setToolTip(
+            "前の切り抜きプレビューへ移動します"
+        )
+
+        self.next_button.setToolTip(
+            "次の切り抜きプレビューへ移動します"
+        )
+
         self.zoom_out_button.clicked.connect(
             self.viewer.zoom_out
         )
@@ -294,6 +366,14 @@ class CropPreviewDialog(QDialog):
 
         self.fit_button.clicked.connect(
             self.viewer.fit_image
+        )
+
+        self.previous_button.clicked.connect(
+            self.show_previous_preview
+        )
+
+        self.next_button.clicked.connect(
+            self.show_next_preview
         )
 
         self.close_button.clicked.connect(
@@ -317,6 +397,20 @@ class CropPreviewDialog(QDialog):
         button_layout.addStretch()
 
         button_layout.addWidget(
+            self.previous_button
+        )
+
+        button_layout.addWidget(
+            self.position_label
+        )
+
+        button_layout.addWidget(
+            self.next_button
+        )
+
+        button_layout.addStretch()
+
+        button_layout.addWidget(
             self.close_button
         )
 
@@ -331,6 +425,87 @@ class CropPreviewDialog(QDialog):
 
         main_layout.addLayout(
             button_layout
+        )
+
+        self.update_preview_display()
+
+    def update_preview_display(self):
+        if not self.preview_items:
+            return
+
+        current_item = (
+            self.preview_items[
+                self.current_index
+            ]
+        )
+
+        pixmap = current_item[
+            "pixmap"
+        ]
+
+        title = current_item[
+            "title"
+        ]
+
+        self.setWindowTitle(
+            f"切り抜きプレビュー - {title}"
+        )
+
+        self.viewer.set_pixmap(
+            pixmap
+        )
+
+        self.position_label.setText(
+            (
+                f"{self.current_index + 1}"
+                f" / {len(self.preview_items)}"
+            )
+        )
+
+        self.previous_button.setEnabled(
+            self.current_index > 0
+        )
+
+        self.next_button.setEnabled(
+            self.current_index
+            < len(self.preview_items) - 1
+        )
+
+    def show_previous_preview(self):
+        if self.current_index <= 0:
+            return
+
+        self.current_index -= 1
+
+        self.update_preview_display()
+
+    def show_next_preview(self):
+        if (
+            self.current_index
+            >= len(self.preview_items) - 1
+        ):
+            return
+
+        self.current_index += 1
+
+        self.update_preview_display()
+
+    def keyPressEvent(
+        self,
+        event,
+    ):
+        if event.key() == Qt.Key.Key_Left:
+            self.show_previous_preview()
+            event.accept()
+            return
+
+        if event.key() == Qt.Key.Key_Right:
+            self.show_next_preview()
+            event.accept()
+            return
+
+        super().keyPressEvent(
+            event
         )
 
 class PageListWidget(QListWidget):
@@ -6557,13 +6732,35 @@ class MainWindow(QMainWindow):
         self,
         pixmap,
         title,
+        preview_index=None,
     ):
         if pixmap.isNull():
             return
 
+        preview_items = getattr(
+            self,
+            "crop_preview_items",
+            [],
+        )
+
+        if (
+            preview_index is None
+            or not preview_items
+            or preview_index < 0
+            or preview_index >= len(preview_items)
+        ):
+            preview_items = [
+                {
+                    "pixmap": pixmap,
+                    "title": title,
+                }
+            ]
+
+            preview_index = 0
+
         dialog = CropPreviewDialog(
-            pixmap,
-            title,
+            preview_items,
+            preview_index,
             self,
         )
 
@@ -6572,6 +6769,9 @@ class MainWindow(QMainWindow):
     def update_crop_preview(self):
         if self.current_pixmap is None:
             return
+
+        # 拡大プレビュー用の一覧を作り直す
+        self.crop_preview_items = []
 
         # 既存のプレビュー表示を全部削除
         while self.crop_preview_list_layout.count():
@@ -6671,6 +6871,17 @@ class MainWindow(QMainWindow):
             if crop_pixmap.isNull():
                 continue
 
+            preview_index = len(
+                self.crop_preview_items
+            )
+
+            self.crop_preview_items.append(
+                {
+                    "pixmap": crop_pixmap,
+                    "title": title_text,
+                }
+            )
+
             title_label = QLabel(
                 title_text
             )
@@ -6693,7 +6904,16 @@ class MainWindow(QMainWindow):
                 ClickablePreviewLabel(
                     crop_pixmap,
                     title_text,
-                    self.open_crop_preview_viewer,
+                    (
+                        lambda clicked_pixmap,
+                        clicked_title,
+                        index=preview_index:
+                        self.open_crop_preview_viewer(
+                            clicked_pixmap,
+                            clicked_title,
+                            index,
+                        )
+                    ),
                 )
             )
 
