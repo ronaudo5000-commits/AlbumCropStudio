@@ -1087,6 +1087,7 @@ class MainWindow(QMainWindow):
         self.page_angles = {}
         self.page_aspect_modes = {}
         self.page_group_ids = {}
+        self.page_mosaic_rects = {}
         self.deleted_pages_stack = []
 
         self.page_export_enabled = []
@@ -2097,6 +2098,35 @@ class MainWindow(QMainWindow):
             self.generate_manual_rects
         )
 
+        self.mosaic_create_button = QPushButton(
+            "モザイク枠"
+        )
+
+        self.mosaic_create_button.setMinimumHeight(
+            40
+        )
+
+        self.mosaic_create_button.setCheckable(
+            True
+        )
+
+        self.mosaic_create_button.toggled.connect(
+            self.toggle_mosaic_create_mode
+        )
+
+        self.preview_area.mosaic_create_finished.connect(
+            lambda:
+            self.mosaic_create_button.setChecked(
+                False
+            )
+        )
+
+        self.mosaic_create_button.setToolTip(
+            self.tr(
+                "個人情報などを隠すためのモザイク範囲を作成します"
+            )
+        )
+
         self.composite_create_button = QPushButton(
             "複合切り抜き"
         )
@@ -2363,6 +2393,12 @@ class MainWindow(QMainWindow):
 
         edit_layout.addWidget(
             self.generate_rects_button
+        )
+
+        edit_layout.addSpacing(10)
+
+        edit_layout.addWidget(
+            self.mosaic_create_button
         )
 
         edit_layout.addSpacing(10)
@@ -4364,6 +4400,13 @@ class MainWindow(QMainWindow):
             self.preview_area.rect_group_ids
         )
 
+        self.page_mosaic_rects[
+            self.current_page_index
+        ] = [
+            tuple(rect)
+            for rect in self.preview_area.mosaic_rects
+        ]
+
         self.update_current_page_list_item_text()
 
     def build_project_data(self):
@@ -4398,6 +4441,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            mosaic_rects = (
+                self.page_mosaic_rects.get(
+                    page_index,
+                    [],
+                )
+            )
+
             if (
                 page_index
                 < len(self.page_export_enabled)
@@ -4425,6 +4475,10 @@ class MainWindow(QMainWindow):
                     "group_ids": list(
                         group_ids
                     ),
+                    "mosaic_rects": [
+                        list(rect)
+                        for rect in mosaic_rects
+                    ],
                     "export_enabled": (
                         export_enabled
                     ),
@@ -4432,7 +4486,7 @@ class MainWindow(QMainWindow):
             )
 
         project_data = {
-            "version": 1,
+            "version": 2,
             "current_page_index": self.current_page_index,
             "pages": pages,
             "settings": {
@@ -4482,6 +4536,37 @@ class MainWindow(QMainWindow):
                     :len(self.preview_area.rects)
                 ]
             )
+
+    def restore_current_page_mosaic_rects(
+        self,
+    ):
+        if self.current_page_index < 0:
+            self.preview_area.mosaic_rects = []
+            self.preview_area.selected_mosaic_rect = -1
+            return
+
+        saved_mosaic_rects = (
+            self.page_mosaic_rects.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.mosaic_rects = [
+            tuple(rect)
+            for rect in saved_mosaic_rects
+        ]
+
+        self.preview_area.selected_mosaic_rect = -1
+        self.preview_area.adding_mosaic_rect = False
+        self.preview_area.mosaic_dragging = False
+        self.preview_area.mosaic_drag_undo_saved = False
+        self.preview_area.mosaic_resizing = False
+        self.preview_area.mosaic_resize_handle = None
+        self.preview_area.mosaic_resize_start_rect = None
+        self.preview_area.mosaic_resize_undo_saved = False
+
+        self.preview_area.update()
     
     def save_project(self):
         project_data = self.build_project_data()
@@ -4719,6 +4804,7 @@ class MainWindow(QMainWindow):
         self.page_angles = {}
         self.page_aspect_modes = {}
         self.page_group_ids = {}
+        self.page_mosaic_rects = {}
         self.deleted_pages_stack = []
         self.page_export_enabled = []
 
@@ -4750,6 +4836,11 @@ class MainWindow(QMainWindow):
 
             group_ids = page_data.get(
                 "group_ids",
+                [],
+            )
+
+            mosaic_rects = page_data.get(
+                "mosaic_rects",
                 [],
             )
 
@@ -4837,6 +4928,14 @@ class MainWindow(QMainWindow):
             ] = list(
                 normalized_group_ids
             )
+
+            self.page_mosaic_rects[
+                page_index
+            ] = [
+                tuple(rect)
+                for rect in mosaic_rects
+                if len(rect) >= 4
+            ]
 
             # サムネイルを作成
             item_name = Path(
@@ -4980,6 +5079,7 @@ class MainWindow(QMainWindow):
             )
 
         self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
 
         self.detected_rects = list(
             saved_rects
@@ -5065,6 +5165,7 @@ class MainWindow(QMainWindow):
             )
 
         self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
 
         self.preview_area.update()
 
@@ -5149,6 +5250,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            deleted_mosaic_rects = list(
+                self.page_mosaic_rects.get(
+                    delete_index,
+                    [],
+                )
+            )
+
             if (
                 delete_index
                 < len(self.page_export_enabled)
@@ -5172,6 +5280,9 @@ class MainWindow(QMainWindow):
                     ),
                     "group_ids": (
                         deleted_group_ids
+                    ),
+                    "mosaic_rects": (
+                        deleted_mosaic_rects
                     ),
                     "export_enabled": (
                         deleted_export_enabled
@@ -5275,6 +5386,33 @@ class MainWindow(QMainWindow):
                 new_page_group_ids
             )
 
+            if (
+                delete_index
+                in self.page_mosaic_rects
+            ):
+                del self.page_mosaic_rects[
+                    delete_index
+                ]
+
+            new_page_mosaic_rects = {}
+
+            for (
+                old_index,
+                mosaic_rects,
+            ) in self.page_mosaic_rects.items():
+                if old_index > delete_index:
+                    new_page_mosaic_rects[
+                        old_index - 1
+                    ] = mosaic_rects
+                else:
+                    new_page_mosaic_rects[
+                        old_index
+                    ] = mosaic_rects
+
+            self.page_mosaic_rects = (
+                new_page_mosaic_rects
+            )
+
         self.deleted_pages_stack.append(
             {
                 "type": "group",
@@ -5341,6 +5479,7 @@ class MainWindow(QMainWindow):
             self.preview_area.rect_angles.append(0.0)
 
         self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
 
         self.preview_area.update()
 
@@ -5386,6 +5525,11 @@ class MainWindow(QMainWindow):
 
                 restore_group_ids = page.get(
                     "group_ids",
+                    [],
+                )
+
+                restore_mosaic_rects = page.get(
+                    "mosaic_rects",
                     [],
                 )
 
@@ -5487,6 +5631,32 @@ class MainWindow(QMainWindow):
 
                 self.page_group_ids = (
                     new_page_group_ids
+                )
+
+                new_page_mosaic_rects = {}
+
+                for (
+                    old_index,
+                    mosaic_rects,
+                ) in self.page_mosaic_rects.items():
+                    if old_index >= restore_index:
+                        new_page_mosaic_rects[
+                            old_index + 1
+                        ] = mosaic_rects
+                    else:
+                        new_page_mosaic_rects[
+                            old_index
+                        ] = mosaic_rects
+
+                new_page_mosaic_rects[
+                    restore_index
+                ] = [
+                    tuple(rect)
+                    for rect in restore_mosaic_rects
+                ]
+
+                self.page_mosaic_rects = (
+                    new_page_mosaic_rects
                 )
 
                 self.page_rects = new_page_rects
@@ -5663,6 +5833,7 @@ class MainWindow(QMainWindow):
             self.preview_area.rect_angles.append(0.0)
 
         self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
 
         self.preview_area.update()
 
@@ -5732,8 +5903,9 @@ class MainWindow(QMainWindow):
             )
 
         self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
 
-        self.preview_area.update()     
+        self.preview_area.update()   
 
         self.update_current_rect_count_status()
 
@@ -5800,8 +5972,9 @@ class MainWindow(QMainWindow):
             )
 
         self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
 
-        self.preview_area.update()     
+        self.preview_area.update()    
 
         self.update_current_rect_count_status()
 
@@ -6296,6 +6469,40 @@ class MainWindow(QMainWindow):
             self.add_rect_button.isChecked()
         )
 
+    def toggle_mosaic_create_mode(
+        self,
+        enabled,
+    ):
+        if enabled:
+            if (
+                self.composite_create_button.isChecked()
+            ):
+                self.composite_create_button.setChecked(
+                    False
+                )
+
+            if (
+                self.composite_member_edit_button.isChecked()
+            ):
+                self.composite_member_edit_button.setChecked(
+                    False
+                )
+
+            self.status_label.setText(
+                "モザイク枠作成モード"
+            )
+
+        self.preview_area.set_mosaic_create_mode(
+            enabled
+        )
+
+        if not enabled:
+            self.update_current_rect_count_status()
+
+        self.preview_area.setFocus(
+            Qt.FocusReason.OtherFocusReason
+        )
+
     def toggle_composite_create_mode(
         self,
         enabled,
@@ -6618,6 +6825,7 @@ class MainWindow(QMainWindow):
             self.page_rects,
             self.page_angles,
             self.page_group_ids,
+            self.page_mosaic_rects,
             output_dir,
             dpi,
             margin_px,
@@ -6789,6 +6997,116 @@ class MainWindow(QMainWindow):
 
         super().keyPressEvent(event)
 
+    def create_mosaic_preview_source_pixmap(
+        self,
+    ):
+        if self.current_pixmap is None:
+            return QPixmap()
+
+        result = self.current_pixmap.copy()
+
+        mosaic_rects = (
+            self.preview_area.mosaic_rects
+        )
+
+        if not mosaic_rects:
+            return result
+
+        painter = QPainter(
+            result
+        )
+
+        block_size = 20
+
+        for rect in mosaic_rects:
+            if (
+                not isinstance(
+                    rect,
+                    (list, tuple),
+                )
+                or len(rect) != 4
+            ):
+                continue
+
+            x, y, w, h = rect
+
+            left = max(
+                0,
+                int(round(x)),
+            )
+
+            top = max(
+                0,
+                int(round(y)),
+            )
+
+            right = min(
+                result.width(),
+                int(round(x + w)),
+            )
+
+            bottom = min(
+                result.height(),
+                int(round(y + h)),
+            )
+
+            if (
+                right <= left
+                or bottom <= top
+            ):
+                continue
+
+            region_width = (
+                right - left
+            )
+
+            region_height = (
+                bottom - top
+            )
+
+            mosaic_region = (
+                self.current_pixmap.copy(
+                    left,
+                    top,
+                    region_width,
+                    region_height,
+                )
+            )
+
+            reduced_width = max(
+                1,
+                region_width // block_size,
+            )
+
+            reduced_height = max(
+                1,
+                region_height // block_size,
+            )
+
+            reduced = mosaic_region.scaled(
+                reduced_width,
+                reduced_height,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+            pixelated = reduced.scaled(
+                region_width,
+                region_height,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
+
+            painter.drawPixmap(
+                left,
+                top,
+                pixelated,
+            )
+
+        painter.end()
+
+        return result
+
     def create_rotated_crop_pixmap(
         self,
         x,
@@ -6796,14 +7114,20 @@ class MainWindow(QMainWindow):
         w,
         h,
         angle,
+        source_pixmap=None,
     ):
-        if self.current_pixmap is None:
+        if source_pixmap is None:
+            source_pixmap = (
+                self.current_pixmap
+            )
+
+        if source_pixmap is None:
             return QPixmap()
 
         # 回転していない枠は、
         # 従来どおりそのまま切り抜く
         if abs(angle) < 0.001:
-            return self.current_pixmap.copy(
+            return source_pixmap.copy(
                 int(x),
                 int(y),
                 int(w),
@@ -6864,7 +7188,7 @@ class MainWindow(QMainWindow):
         painter.drawPixmap(
             0,
             0,
-            self.current_pixmap,
+            source_pixmap,
         )
 
         painter.end()
@@ -6922,6 +7246,7 @@ class MainWindow(QMainWindow):
     def create_composite_crop_preview_pixmap(
         self,
         member_indexes,
+        source_pixmap=None,
     ):
         if not member_indexes:
             return QPixmap()
@@ -6962,6 +7287,7 @@ class MainWindow(QMainWindow):
                     w,
                     h,
                     angle,
+                    source_pixmap,
                 )
             )
 
@@ -7157,6 +7483,10 @@ class MainWindow(QMainWindow):
             self.build_preview_crop_units()
         )
 
+        preview_source_pixmap = (
+            self.create_mosaic_preview_source_pixmap()
+        )
+
         for unit_number, unit in enumerate(
             crop_units,
             start=1,
@@ -7198,6 +7528,7 @@ class MainWindow(QMainWindow):
                         w,
                         h,
                         angle,
+                        preview_source_pixmap,
                     )
                 )
 
@@ -7208,7 +7539,8 @@ class MainWindow(QMainWindow):
             else:
                 crop_pixmap = (
                     self.create_composite_crop_preview_pixmap(
-                        member_indexes
+                        member_indexes,
+                        preview_source_pixmap,
                     )
                 )
 

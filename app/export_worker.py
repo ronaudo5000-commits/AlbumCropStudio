@@ -23,6 +23,7 @@ class CropExportWorker(QObject):
         page_rects,
         page_angles,
         page_group_ids,
+        page_mosaic_rects,
         output_dir,
         dpi,
         margin_px,
@@ -52,6 +53,15 @@ class CropExportWorker(QObject):
             page_index: list(group_ids)
             for page_index, group_ids
             in page_group_ids.items()
+        }
+
+        self.page_mosaic_rects = {
+            page_index: [
+                tuple(rect)
+                for rect in mosaic_rects
+            ]
+            for page_index, mosaic_rects
+            in page_mosaic_rects.items()
         }
 
         self.output_dir = output_dir
@@ -202,6 +212,137 @@ class CropExportWorker(QObject):
             right - left,
             bottom - top,
         )
+
+    def apply_mosaic_rects(
+        self,
+        image,
+        mosaic_rects,
+    ):
+        if not mosaic_rects:
+            return image
+
+        image_width = image.width
+        image_height = image.height
+
+        for rect in mosaic_rects:
+            if (
+                not isinstance(
+                    rect,
+                    (list, tuple),
+                )
+                or len(rect) != 4
+            ):
+                continue
+
+            try:
+                x, y, w, h = (
+                    float(value)
+                    for value in rect
+                )
+
+            except (
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
+                continue
+
+            if not all(
+                math.isfinite(value)
+                for value in (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+            ):
+                continue
+
+            if w <= 0 or h <= 0:
+                continue
+
+            left = max(
+                0,
+                int(round(x)),
+            )
+
+            top = max(
+                0,
+                int(round(y)),
+            )
+
+            right = min(
+                image_width,
+                int(round(x + w)),
+            )
+
+            bottom = min(
+                image_height,
+                int(round(y + h)),
+            )
+
+            if (
+                right <= left
+                or bottom <= top
+            ):
+                continue
+
+            mosaic_region = image.crop(
+                (
+                    left,
+                    top,
+                    right,
+                    bottom,
+                )
+            )
+
+            region_width = (
+                right - left
+            )
+
+            region_height = (
+                bottom - top
+            )
+
+            # モザイク1ブロックを
+            # おおよそ20px程度にする
+            block_size = 20
+
+            reduced_width = max(
+                1,
+                region_width // block_size,
+            )
+
+            reduced_height = max(
+                1,
+                region_height // block_size,
+            )
+
+            reduced = mosaic_region.resize(
+                (
+                    reduced_width,
+                    reduced_height,
+                ),
+                Image.Resampling.BOX,
+            )
+
+            pixelated = reduced.resize(
+                (
+                    region_width,
+                    region_height,
+                ),
+                Image.Resampling.NEAREST,
+            )
+
+            image.paste(
+                pixelated,
+                (
+                    left,
+                    top,
+                ),
+            )
+
+        return image
 
     def create_rotated_crop_image(
         self,
@@ -426,6 +567,13 @@ class CropExportWorker(QObject):
                 )
             )
 
+            page_mosaic_rects = (
+                self.page_mosaic_rects.get(
+                    page_index,
+                    [],
+                )
+            )
+
             if not page_rects:
                 continue
 
@@ -444,6 +592,11 @@ class CropExportWorker(QObject):
 
                     image_width = image.width
                     image_height = image.height
+
+                    image = self.apply_mosaic_rects(
+                        image,
+                        page_mosaic_rects,
+                    )
 
                     for (
                         crop_index,

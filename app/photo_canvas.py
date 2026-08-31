@@ -26,6 +26,7 @@ class PhotoCanvas(QWidget):
     selected_rect_changed = Signal(int)
     composite_create_finished = Signal()
     copied_rects_changed = Signal()
+    mosaic_create_finished = Signal()
 
     def __init__(self):
         super().__init__()
@@ -35,6 +36,27 @@ class PhotoCanvas(QWidget):
         self.rect_angles = []
         self.rect_aspect_modes = []
         self.rect_group_ids = []
+
+        # モザイク枠は通常の切り抜き枠とは
+        # 独立して管理する
+        self.mosaic_rects = []
+        self.mosaic_create_mode = False
+        self.adding_mosaic_rect = False
+        self.mosaic_add_start_x = 0
+        self.mosaic_add_start_y = 0
+
+        # 選択中のモザイク枠
+        self.selected_mosaic_rect = -1
+
+        # モザイク枠のドラッグ移動
+        self.mosaic_dragging = False
+        self.mosaic_drag_undo_saved = False
+
+        # モザイク枠のリサイズ
+        self.mosaic_resizing = False
+        self.mosaic_resize_handle = None
+        self.mosaic_resize_start_rect = None
+        self.mosaic_resize_undo_saved = False
 
         # 単一操作の基準になる枠
         self.selected_rect = -1
@@ -133,6 +155,15 @@ class PhotoCanvas(QWidget):
         self.rect_angles = []
         self.rect_aspect_modes = []
         self.rect_group_ids = []
+
+        self.mosaic_rects = []
+        self.adding_mosaic_rect = False
+        self.selected_mosaic_rect = -1
+        self.mosaic_dragging = False
+        self.mosaic_resizing = False
+        self.mosaic_resize_handle = None
+        self.mosaic_resize_start_rect = None
+
         self.selected_rect = -1
         self.selected_rects.clear()
 
@@ -240,6 +271,10 @@ class PhotoCanvas(QWidget):
                 "group_ids": list(
                     self.rect_group_ids
                 ),
+                "mosaic_rects": [
+                    tuple(rect)
+                    for rect in self.mosaic_rects
+                ],
             }
         )
 
@@ -271,6 +306,10 @@ class PhotoCanvas(QWidget):
                 "group_ids": list(
                     self.rect_group_ids
                 ),
+                "mosaic_rects": [
+                    tuple(rect)
+                    for rect in self.mosaic_rects
+                ],
             }
         )
 
@@ -305,6 +344,14 @@ class PhotoCanvas(QWidget):
             )
         )
 
+        self.mosaic_rects = [
+            tuple(rect)
+            for rect in state.get(
+                "mosaic_rects",
+                [],
+            )
+        ]
+
         while len(self.rect_angles) < len(self.rects):
             self.rect_angles.append(0.0)
 
@@ -356,6 +403,15 @@ class PhotoCanvas(QWidget):
         self.resizing = False
         self.rotating = False
 
+        self.selected_mosaic_rect = -1
+        self.adding_mosaic_rect = False
+        self.mosaic_dragging = False
+        self.mosaic_drag_undo_saved = False
+        self.mosaic_resizing = False
+        self.mosaic_resize_handle = None
+        self.mosaic_resize_start_rect = None
+        self.mosaic_resize_undo_saved = False
+
         self.rects_changed.emit()
         self.update()
 
@@ -382,6 +438,10 @@ class PhotoCanvas(QWidget):
                 "group_ids": list(
                     self.rect_group_ids
                 ),
+                "mosaic_rects": [
+                    tuple(rect)
+                    for rect in self.mosaic_rects
+                ],
             }
         )
 
@@ -416,6 +476,14 @@ class PhotoCanvas(QWidget):
             )
         )
 
+        self.mosaic_rects = [
+            tuple(rect)
+            for rect in state.get(
+                "mosaic_rects",
+                [],
+            )
+        ]
+
         while len(self.rect_angles) < len(self.rects):
             self.rect_angles.append(0.0)
 
@@ -467,6 +535,15 @@ class PhotoCanvas(QWidget):
         self.resizing = False
         self.rotating = False
 
+        self.selected_mosaic_rect = -1
+        self.adding_mosaic_rect = False
+        self.mosaic_dragging = False
+        self.mosaic_drag_undo_saved = False
+        self.mosaic_resizing = False
+        self.mosaic_resize_handle = None
+        self.mosaic_resize_start_rect = None
+        self.mosaic_resize_undo_saved = False
+
         self.rects_changed.emit()
         self.update()
 
@@ -477,6 +554,27 @@ class PhotoCanvas(QWidget):
         self.selected_rects.clear()
         self.update()
 
+    def set_mosaic_create_mode(
+        self,
+        enabled,
+    ):
+        self.mosaic_create_mode = bool(
+            enabled
+        )
+
+        self.adding_mosaic_rect = False
+        self.mosaic_dragging = False
+        self.mosaic_resizing = False
+        self.mosaic_resize_handle = None
+        self.mosaic_resize_start_rect = None
+
+        if enabled:
+            self.selected_rect = -1
+            self.selected_rects.clear()
+            self.selected_mosaic_rect = -1
+
+        self.update()
+        
     def set_composite_create_mode(
         self,
         enabled,
@@ -1371,6 +1469,191 @@ class PhotoCanvas(QWidget):
             int(y_offset),
             scaled_pixmap,
         )
+
+        # ---------------------------------
+        # モザイク枠
+        # ---------------------------------
+        for mosaic_index, (
+            x,
+            y,
+            w,
+            h,
+        ) in enumerate(
+            self.mosaic_rects
+        ):
+            screen_x = (
+                x_offset + x * scale_x
+            )
+
+            screen_y = (
+                y_offset + y * scale_y
+            )
+
+            screen_w = (
+                w * scale_x
+            )
+
+            screen_h = (
+                h * scale_y
+            )
+
+            mosaic_rect = QRectF(
+                screen_x,
+                screen_y,
+                screen_w,
+                screen_h,
+            )
+
+            is_selected_mosaic = (
+                mosaic_index
+                == self.selected_mosaic_rect
+            )
+
+            if is_selected_mosaic:
+                fill_color = QColor(
+                    170,
+                    90,
+                    220,
+                    85,
+                )
+
+                border_color = QColor(
+                    255,
+                    200,
+                    0,
+                )
+            else:
+                fill_color = QColor(
+                    150,
+                    70,
+                    200,
+                    55,
+                )
+
+                border_color = QColor(
+                    150,
+                    70,
+                    200,
+                )
+
+            painter.fillRect(
+                mosaic_rect,
+                fill_color,
+            )
+
+            mosaic_pen = QPen(
+                border_color
+            )
+
+            if is_selected_mosaic:
+                mosaic_pen.setWidthF(
+                    3.0
+                )
+            else:
+                mosaic_pen.setWidthF(
+                    2.0
+                )
+
+            mosaic_pen.setStyle(
+                Qt.PenStyle.DashLine
+            )
+
+            painter.setPen(
+                mosaic_pen
+            )
+
+            painter.drawRect(
+                mosaic_rect
+            )
+
+            label_rect = QRectF(
+                screen_x,
+                screen_y,
+                72,
+                24,
+            )
+
+            if is_selected_mosaic:
+                label_color = QColor(
+                    255,
+                    200,
+                    0,
+                    230,
+                )
+
+                label_text_color = QColor(
+                    0,
+                    0,
+                    0,
+                )
+            else:
+                label_color = QColor(
+                    150,
+                    70,
+                    200,
+                    220,
+                )
+
+                label_text_color = QColor(
+                    255,
+                    255,
+                    255,
+                )
+
+            painter.fillRect(
+                label_rect,
+                label_color,
+            )
+
+            painter.setPen(
+                label_text_color
+            )
+
+            painter.drawText(
+                label_rect,
+                Qt.AlignmentFlag.AlignCenter,
+                "モザイク",
+            )
+
+            if is_selected_mosaic:
+                mosaic_handle_size = 8
+
+                for (
+                    handle_x,
+                    handle_y,
+                ) in self.resize_handles(
+                    x,
+                    y,
+                    w,
+                    h,
+                ).values():
+                    handle_screen_x = (
+                        x_offset
+                        + handle_x * scale_x
+                    )
+
+                    handle_screen_y = (
+                        y_offset
+                        + handle_y * scale_y
+                    )
+
+                    painter.fillRect(
+                        int(
+                            handle_screen_x
+                            - mosaic_handle_size / 2
+                        ),
+                        int(
+                            handle_screen_y
+                            - mosaic_handle_size / 2
+                        ),
+                        mosaic_handle_size,
+                        mosaic_handle_size,
+                        QColor(
+                            255,
+                            200,
+                            0,
+                        ),
+                    )
 
         for index, (x, y, w, h) in enumerate(self.rects):
             is_selected = (
@@ -2311,6 +2594,125 @@ class PhotoCanvas(QWidget):
         ) / scale_y
 
         # -------------------------------------------------
+        # モザイク枠作成
+        # -------------------------------------------------
+        if self.mosaic_create_mode:
+            if (
+                image_x < 0
+                or image_y < 0
+                or image_x > self.pixmap.width()
+                or image_y > self.pixmap.height()
+            ):
+                return
+
+            self.save_undo_state()
+
+            self.adding_mosaic_rect = True
+            self.mosaic_dragging = False
+
+            self.mosaic_add_start_x = (
+                image_x
+            )
+
+            self.mosaic_add_start_y = (
+                image_y
+            )
+
+            self.mosaic_rects.append(
+                (
+                    int(image_x),
+                    int(image_y),
+                    1,
+                    1,
+                )
+            )
+
+            self.selected_mosaic_rect = (
+                len(self.mosaic_rects) - 1
+            )
+
+            self.selected_rect = -1
+            self.selected_rects.clear()
+
+            self.update()
+            return
+
+        # -------------------------------------------------
+        # 選択中のモザイク枠の
+        # リサイズハンドルを判定
+        # -------------------------------------------------
+        if (
+            self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+        ):
+            x, y, w, h = (
+                self.mosaic_rects[
+                    self.selected_mosaic_rect
+                ]
+            )
+
+            mosaic_handle_hit_size = 10
+
+            for (
+                handle_name,
+                (
+                    handle_x,
+                    handle_y,
+                ),
+            ) in self.resize_handles(
+                x,
+                y,
+                w,
+                h,
+            ).items():
+                handle_screen_x = (
+                    x_offset
+                    + handle_x * scale_x
+                )
+
+                handle_screen_y = (
+                    y_offset
+                    + handle_y * scale_y
+                )
+
+                if (
+                    handle_screen_x
+                    - mosaic_handle_hit_size
+                    <= pos.x()
+                    <= handle_screen_x
+                    + mosaic_handle_hit_size
+                    and
+                    handle_screen_y
+                    - mosaic_handle_hit_size
+                    <= pos.y()
+                    <= handle_screen_y
+                    + mosaic_handle_hit_size
+                ):
+                    self.mosaic_resizing = True
+                    self.mosaic_resize_undo_saved = False
+
+                    self.mosaic_resize_handle = (
+                        handle_name
+                    )
+
+                    self.mosaic_resize_start_rect = (
+                        tuple(
+                            self.mosaic_rects[
+                                self.selected_mosaic_rect
+                            ]
+                        )
+                    )
+
+                    self.mosaic_dragging = False
+                    self.dragging = False
+                    self.resizing = False
+                    self.rotating = False
+
+                    event.accept()
+                    return
+
+        # -------------------------------------------------
         # 1. 選択中の枠に表示している操作部品を判定
         # -------------------------------------------------
         if (
@@ -2699,6 +3101,68 @@ class PhotoCanvas(QWidget):
                     return
 
         # -------------------------------------------------
+        # モザイク枠をクリックしたか判定
+        # 後から作ったモザイク枠を優先する
+        # -------------------------------------------------
+        mosaic_hit_index = -1
+
+        for mosaic_index in range(
+            len(self.mosaic_rects) - 1,
+            -1,
+            -1,
+        ):
+            x, y, w, h = (
+                self.mosaic_rects[
+                    mosaic_index
+                ]
+            )
+
+            if (
+                x <= image_x <= x + w
+                and
+                y <= image_y <= y + h
+            ):
+                mosaic_hit_index = (
+                    mosaic_index
+                )
+                break
+
+        if mosaic_hit_index >= 0:
+            self.selected_mosaic_rect = (
+                mosaic_hit_index
+            )
+
+            self.selected_rect = -1
+            self.selected_rects.clear()
+
+            self.mosaic_dragging = True
+            self.mosaic_drag_undo_saved = False
+
+            self.mosaic_resizing = False
+            self.mosaic_resize_handle = None
+            self.mosaic_resize_start_rect = None
+            self.mosaic_resize_undo_saved = False
+
+            self.dragging = False
+            self.resizing = False
+            self.rotating = False
+
+            self.last_image_x = (
+                image_x
+            )
+
+            self.last_image_y = (
+                image_y
+            )
+
+            self.update()
+            return
+
+        # モザイク以外をクリックした場合は
+        # モザイク選択を解除する
+        self.selected_mosaic_rect = -1
+
+        # -------------------------------------------------
         # 4. 既存の枠をクリックしたか判定
         #    後から作った枠を優先する
         # -------------------------------------------------
@@ -2902,7 +3366,385 @@ class PhotoCanvas(QWidget):
 
             self.update()
             return
-        
+
+        if self.adding_mosaic_rect:
+            if not self.mosaic_rects:
+                return
+
+            info = self.image_display_info()
+
+            if info is None:
+                return
+
+            (
+                _,
+                x_offset,
+                y_offset,
+                scale_x,
+                scale_y,
+            ) = info
+
+            pos = event.position()
+
+            image_x = (
+                pos.x() - x_offset
+            ) / scale_x
+
+            image_y = (
+                pos.y() - y_offset
+            ) / scale_y
+
+            image_x = max(
+                0,
+                min(
+                    image_x,
+                    self.pixmap.width(),
+                ),
+            )
+
+            image_y = max(
+                0,
+                min(
+                    image_y,
+                    self.pixmap.height(),
+                ),
+            )
+
+            x = min(
+                self.mosaic_add_start_x,
+                image_x,
+            )
+
+            y = min(
+                self.mosaic_add_start_y,
+                image_y,
+            )
+
+            w = abs(
+                image_x
+                - self.mosaic_add_start_x
+            )
+
+            h = abs(
+                image_y
+                - self.mosaic_add_start_y
+            )
+
+            self.mosaic_rects[-1] = (
+                int(x),
+                int(y),
+                int(w),
+                int(h),
+            )
+
+            self.update()
+            return
+
+        if (
+            self.mosaic_resizing
+            and self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+            and self.mosaic_resize_start_rect
+            is not None
+        ):
+            info = self.image_display_info()
+
+            if info is None:
+                return
+
+            (
+                _,
+                x_offset,
+                y_offset,
+                scale_x,
+                scale_y,
+            ) = info
+
+            pos = event.position()
+
+            image_x = (
+                pos.x() - x_offset
+            ) / scale_x
+
+            image_y = (
+                pos.y() - y_offset
+            ) / scale_y
+
+            image_x = max(
+                0,
+                min(
+                    image_x,
+                    self.pixmap.width(),
+                ),
+            )
+
+            image_y = max(
+                0,
+                min(
+                    image_y,
+                    self.pixmap.height(),
+                ),
+            )
+
+            (
+                start_x,
+                start_y,
+                start_w,
+                start_h,
+            ) = self.mosaic_resize_start_rect
+
+            left = start_x
+            top = start_y
+            right = start_x + start_w
+            bottom = start_y + start_h
+
+            handle_name = (
+                self.mosaic_resize_handle
+            )
+
+            if handle_name in (
+                "top_left",
+                "left",
+                "bottom_left",
+            ):
+                left = image_x
+
+            if handle_name in (
+                "top_right",
+                "right",
+                "bottom_right",
+            ):
+                right = image_x
+
+            if handle_name in (
+                "top_left",
+                "top",
+                "top_right",
+            ):
+                top = image_y
+
+            if handle_name in (
+                "bottom_left",
+                "bottom",
+                "bottom_right",
+            ):
+                bottom = image_y
+
+            minimum_size = 20
+
+            if (
+                right - left
+                < minimum_size
+            ):
+                if handle_name in (
+                    "top_left",
+                    "left",
+                    "bottom_left",
+                ):
+                    left = (
+                        right
+                        - minimum_size
+                    )
+                else:
+                    right = (
+                        left
+                        + minimum_size
+                    )
+
+            if (
+                bottom - top
+                < minimum_size
+            ):
+                if handle_name in (
+                    "top_left",
+                    "top",
+                    "top_right",
+                ):
+                    top = (
+                        bottom
+                        - minimum_size
+                    )
+                else:
+                    bottom = (
+                        top
+                        + minimum_size
+                    )
+
+            left = max(
+                0,
+                left,
+            )
+
+            top = max(
+                0,
+                top,
+            )
+
+            right = min(
+                self.pixmap.width(),
+                right,
+            )
+
+            bottom = min(
+                self.pixmap.height(),
+                bottom,
+            )
+
+            if (
+                right - left
+                < minimum_size
+                or bottom - top
+                < minimum_size
+            ):
+                return
+
+            new_mosaic_rect = (
+                int(left),
+                int(top),
+                int(
+                    right - left
+                ),
+                int(
+                    bottom - top
+                ),
+            )
+
+            if (
+                new_mosaic_rect
+                != self.mosaic_rects[
+                    self.selected_mosaic_rect
+                ]
+            ):
+                if not self.mosaic_resize_undo_saved:
+                    self.save_undo_state()
+                    self.mosaic_resize_undo_saved = True
+
+                self.mosaic_rects[
+                    self.selected_mosaic_rect
+                ] = new_mosaic_rect
+
+                self.update()
+
+            return
+
+        if (
+            self.mosaic_dragging
+            and self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+        ):
+            info = self.image_display_info()
+
+            if info is None:
+                return
+
+            (
+                _,
+                x_offset,
+                y_offset,
+                scale_x,
+                scale_y,
+            ) = info
+
+            pos = event.position()
+
+            image_x = (
+                pos.x() - x_offset
+            ) / scale_x
+
+            image_y = (
+                pos.y() - y_offset
+            ) / scale_y
+
+            dx = (
+                image_x - self.last_image_x
+            )
+
+            dy = (
+                image_y - self.last_image_y
+            )
+
+            move_x = int(dx)
+            move_y = int(dy)
+
+            if (
+                move_x != 0
+                or move_y != 0
+            ):
+                x, y, w, h = (
+                    self.mosaic_rects[
+                        self.selected_mosaic_rect
+                    ]
+                )
+
+                new_x = (
+                    x + move_x
+                )
+
+                new_y = (
+                    y + move_y
+                )
+
+                max_x = max(
+                    0,
+                    self.pixmap.width() - w,
+                )
+
+                max_y = max(
+                    0,
+                    self.pixmap.height() - h,
+                )
+
+                new_x = max(
+                    0,
+                    min(
+                        new_x,
+                        max_x,
+                    ),
+                )
+
+                new_y = max(
+                    0,
+                    min(
+                        new_y,
+                        max_y,
+                    ),
+                )
+
+                new_mosaic_rect = (
+                    int(new_x),
+                    int(new_y),
+                    w,
+                    h,
+                )
+
+                if (
+                    new_mosaic_rect
+                    != self.mosaic_rects[
+                        self.selected_mosaic_rect
+                    ]
+                ):
+                    if not self.mosaic_drag_undo_saved:
+                        self.save_undo_state()
+                        self.mosaic_drag_undo_saved = True
+
+                    self.mosaic_rects[
+                        self.selected_mosaic_rect
+                    ] = new_mosaic_rect
+
+                    self.update()
+
+                self.last_image_x = (
+                    image_x
+                )
+
+                self.last_image_y = (
+                    image_y
+                )
+
+            return
+
         # 回転ハンドルをドラッグ中
         if self.rotating and self.selected_rect >= 0:
             info = self.image_display_info()
@@ -3929,6 +4771,94 @@ class PhotoCanvas(QWidget):
 
     def mouseReleaseEvent(self, event):
         # ---------------------------------
+        # モザイク枠作成終了
+        # ---------------------------------
+        if (
+            self.adding_mosaic_rect
+            and event.button()
+            == Qt.MouseButton.LeftButton
+        ):
+            self.adding_mosaic_rect = False
+
+            mosaic_created = False
+
+            if self.mosaic_rects:
+                x, y, w, h = (
+                    self.mosaic_rects[-1]
+                )
+
+                minimum_size = 20
+
+                if (
+                    w < minimum_size
+                    or h < minimum_size
+                ):
+                    self.mosaic_rects.pop()
+                    self.selected_mosaic_rect = -1
+                else:
+                    mosaic_created = True
+
+            self.mosaic_create_mode = False
+
+            self.mosaic_create_finished.emit()
+
+            if mosaic_created:
+                self.rects_changed.emit()
+
+            self.update()
+
+            event.accept()
+            return
+
+        # ---------------------------------
+        # モザイク枠リサイズ終了
+        # ---------------------------------
+        if (
+            self.mosaic_resizing
+            and event.button()
+            == Qt.MouseButton.LeftButton
+        ):
+            resize_changed = (
+                self.mosaic_resize_undo_saved
+            )
+
+            self.mosaic_resizing = False
+            self.mosaic_resize_handle = None
+            self.mosaic_resize_start_rect = None
+            self.mosaic_resize_undo_saved = False
+
+            if resize_changed:
+                self.rects_changed.emit()
+
+            self.update()
+
+            event.accept()
+            return
+
+        # ---------------------------------
+        # モザイク枠移動終了
+        # ---------------------------------
+        if (
+            self.mosaic_dragging
+            and event.button()
+            == Qt.MouseButton.LeftButton
+        ):
+            move_changed = (
+                self.mosaic_drag_undo_saved
+            )
+
+            self.mosaic_dragging = False
+            self.mosaic_drag_undo_saved = False
+
+            if move_changed:
+                self.rects_changed.emit()
+
+            self.update()
+
+            event.accept()
+            return
+
+        # ---------------------------------
         # パン終了
         # ---------------------------------
         middle_pan_end = (
@@ -4640,6 +5570,32 @@ class PhotoCanvas(QWidget):
                 offset=30,
                 save_undo=True,
             )
+
+            event.accept()
+            return
+
+        if (
+            event.key() == Qt.Key.Key_Delete
+            and self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+        ):
+            self.save_undo_state()
+
+            del self.mosaic_rects[
+                self.selected_mosaic_rect
+            ]
+
+            self.selected_mosaic_rect = -1
+            self.mosaic_dragging = False
+            self.mosaic_drag_undo_saved = False
+            self.mosaic_resizing = False
+            self.mosaic_resize_handle = None
+            self.mosaic_resize_start_rect = None
+            self.mosaic_resize_undo_saved = False
+
+            self.rects_changed.emit()
+            self.update()
 
             event.accept()
             return
