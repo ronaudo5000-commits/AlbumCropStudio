@@ -47,6 +47,13 @@ class PhotoCanvas(QWidget):
 
         self.undo_stack = []
         self.redo_stack = []
+
+        # MainWindow側の複数ページUndo / Redo
+        self.external_undo_callback = None
+        self.external_undo_available_callback = None
+        self.external_redo_callback = None
+        self.external_redo_available_callback = None
+
         self.zoom_factor = 1.0
         
         self.pan_x = 0.0
@@ -242,6 +249,10 @@ class PhotoCanvas(QWidget):
         self.redo_stack.clear()
 
     def undo(self):
+        if self.external_undo_callback is not None:
+            if self.external_undo_callback():
+                return
+
         if not self.undo_stack:
             return
 
@@ -349,6 +360,10 @@ class PhotoCanvas(QWidget):
         self.update()
 
     def redo(self):
+        if self.external_redo_callback is not None:
+            if self.external_redo_callback():
+                return
+
         if not self.redo_stack:
             return
 
@@ -2066,18 +2081,42 @@ class PhotoCanvas(QWidget):
                 is not None
             )
 
+        external_undo_available = False
+
+        if (
+            self.external_undo_available_callback
+            is not None
+        ):
+            external_undo_available = bool(
+                self.external_undo_available_callback()
+            )
+
+        external_redo_available = False
+
+        if (
+            self.external_redo_available_callback
+            is not None
+        ):
+            external_redo_available = bool(
+                self.external_redo_available_callback()
+            )
+
         undo_action = menu.addAction(
             "元に戻す\tCtrl+Z"
         )
+
         undo_action.setEnabled(
             bool(self.undo_stack)
+            or external_undo_available
         )
 
         redo_action = menu.addAction(
             "やり直す\tCtrl+Y"
         )
+
         redo_action.setEnabled(
             bool(self.redo_stack)
+            or external_redo_available
         )
 
         menu.addSeparator()

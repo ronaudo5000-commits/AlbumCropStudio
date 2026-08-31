@@ -1091,6 +1091,11 @@ class MainWindow(QMainWindow):
 
         self.page_export_enabled = []
 
+        # 複数ページへの一括貼り付けUndo / Redo
+        self.bulk_paste_undo_state = None
+        self.bulk_paste_redo_state = None
+        self.bulk_paste_in_progress = False
+
         # コピーした枠のコピー元ページを保持する
         self.copied_rects_source_page_index = -1
         self.copied_rects_source_image_path = None
@@ -1540,6 +1545,22 @@ class MainWindow(QMainWindow):
 
         self.preview_area = PhotoCanvas()
 
+        self.preview_area.external_undo_callback = (
+            self.undo_bulk_paste_if_available
+        )
+
+        self.preview_area.external_undo_available_callback = (
+            self.has_bulk_paste_undo
+        )
+
+        self.preview_area.external_redo_callback = (
+            self.redo_bulk_paste_if_available
+        )
+
+        self.preview_area.external_redo_available_callback = (
+            self.has_bulk_paste_redo
+        )
+
         self.preview_area.copied_rects_changed.connect(
             self.record_copied_rects_source_page
         )
@@ -1558,6 +1579,10 @@ class MainWindow(QMainWindow):
 
         self.preview_area.rects_changed.connect(
             self.update_current_page_list_item_text
+        )
+
+        self.preview_area.rects_changed.connect(
+            self.clear_bulk_paste_undo_on_rect_change
         )
 
         self.zoom_out_button = QPushButton("−")
@@ -3677,6 +3702,252 @@ class MainWindow(QMainWindow):
             f"{self.current_page_index + 1} / {total}"
         )
 
+    def has_bulk_paste_undo(
+        self,
+    ):
+        return self.bulk_paste_undo_state is not None
+
+    def has_bulk_paste_redo(
+        self,
+    ):
+        return self.bulk_paste_redo_state is not None
+
+    def clear_bulk_paste_undo_on_rect_change(
+        self,
+        *args,
+    ):
+        if self.bulk_paste_in_progress:
+            return
+
+        self.bulk_paste_undo_state = None
+        self.bulk_paste_redo_state = None
+
+    def capture_page_rect_states(
+        self,
+        rows,
+    ):
+        states = {}
+
+        for row in sorted(set(rows)):
+            if (
+                row < 0
+                or row >= len(self.image_paths)
+            ):
+                continue
+
+            states[row] = {
+                "rects": [
+                    tuple(rect)
+                    for rect in self.page_rects.get(
+                        row,
+                        [],
+                    )
+                ],
+                "angles": list(
+                    self.page_angles.get(
+                        row,
+                        [],
+                    )
+                ),
+                "aspect_modes": list(
+                    self.page_aspect_modes.get(
+                        row,
+                        [],
+                    )
+                ),
+                "group_ids": list(
+                    self.page_group_ids.get(
+                        row,
+                        [],
+                    )
+                ),
+            }
+
+        return states
+
+    def restore_page_rect_states(
+        self,
+        states,
+    ):
+        if not states:
+            return False
+
+        for row, state in states.items():
+            if (
+                row < 0
+                or row >= len(self.image_paths)
+            ):
+                continue
+
+            self.page_rects[row] = [
+                tuple(rect)
+                for rect in state.get(
+                    "rects",
+                    [],
+                )
+            ]
+
+            self.page_angles[row] = list(
+                state.get(
+                    "angles",
+                    [],
+                )
+            )
+
+            self.page_aspect_modes[row] = list(
+                state.get(
+                    "aspect_modes",
+                    [],
+                )
+            )
+
+            self.page_group_ids[row] = list(
+                state.get(
+                    "group_ids",
+                    [],
+                )
+            )
+
+        current_row = self.current_page_index
+
+        if (
+            current_row in states
+            and 0 <= current_row
+            < len(self.image_paths)
+        ):
+            state = states[current_row]
+
+            current_rects = [
+                tuple(rect)
+                for rect in state.get(
+                    "rects",
+                    [],
+                )
+            ]
+
+            current_group_ids = list(
+                state.get(
+                    "group_ids",
+                    [],
+                )
+            )
+
+            self.preview_area.set_rects(
+                current_rects,
+                group_ids=current_group_ids,
+            )
+
+            self.preview_area.rect_angles = list(
+                state.get(
+                    "angles",
+                    [],
+                )
+            )
+
+            self.preview_area.rect_aspect_modes = list(
+                state.get(
+                    "aspect_modes",
+                    [],
+                )
+            )
+
+            self.detected_rects = list(
+                current_rects
+            )
+
+            self.preview_area.update()
+
+            self.update_crop_preview()
+            self.update_current_rect_count_status()
+
+        self.apply_page_list_display_mode()
+
+        self.page_list.viewport().update()
+
+        self.mark_project_modified()
+
+        return True
+
+    def undo_bulk_paste_if_available(
+        self,
+    ):
+        if self.bulk_paste_undo_state is None:
+            return False
+
+        undo_state = (
+            self.bulk_paste_undo_state
+        )
+
+        restored = self.restore_page_rect_states(
+            undo_state.get(
+                "before",
+                {},
+            )
+        )
+
+        if not restored:
+            return False
+
+        self.bulk_paste_redo_state = (
+            undo_state
+        )
+
+        self.bulk_paste_undo_state = None
+
+        page_count = undo_state.get(
+            "page_count",
+            0,
+        )
+
+        self.status_label.setText(
+            (
+                f"{page_count}画像への"
+                "一括貼り付けを元に戻しました。"
+            )
+        )
+
+        return True
+
+    def redo_bulk_paste_if_available(
+        self,
+    ):
+        if self.bulk_paste_redo_state is None:
+            return False
+
+        redo_state = (
+            self.bulk_paste_redo_state
+        )
+
+        restored = self.restore_page_rect_states(
+            redo_state.get(
+                "after",
+                {},
+            )
+        )
+
+        if not restored:
+            return False
+
+        self.bulk_paste_undo_state = (
+            redo_state
+        )
+
+        self.bulk_paste_redo_state = None
+
+        page_count = redo_state.get(
+            "page_count",
+            0,
+        )
+
+        self.status_label.setText(
+            (
+                f"{page_count}画像への"
+                "一括貼り付けをやり直しました。"
+            )
+        )
+
+        return True
+
     def paste_copied_rects_to_page_rows(
         self,
         target_rows,
@@ -3705,89 +3976,109 @@ class MainWindow(QMainWindow):
         # 現在ページの未保存状態を先に保持する
         self.save_current_page_rects()
 
+        # 一括貼り付け前の対象ページ状態を保存する
+        before_states = (
+            self.capture_page_rect_states(
+                valid_rows
+            )
+        )
+
         original_page_index = (
             self.current_page_index
         )
 
         pasted_page_count = 0
 
-        for row in valid_rows:
-            self.current_page_index = row
+        self.bulk_paste_in_progress = True
 
-            self.load_image(
-                self.image_paths[row]
-            )
+        try:
+            for row in valid_rows:
+                self.current_page_index = row
 
-            saved_rects = list(
-                self.page_rects.get(
-                    row,
-                    [],
-                )
-            )
-
-            saved_group_ids = list(
-                self.page_group_ids.get(
-                    row,
-                    [],
-                )
-            )
-
-            self.preview_area.set_rects(
-                saved_rects,
-                group_ids=saved_group_ids,
-            )
-
-            saved_angles = list(
-                self.page_angles.get(
-                    row,
-                    [],
-                )
-            )
-
-            self.preview_area.rect_angles = (
-                saved_angles
-            )
-
-            while (
-                len(
-                    self.preview_area.rect_angles
-                )
-                < len(
-                    self.preview_area.rects
-                )
-            ):
-                self.preview_area.rect_angles.append(
-                    0.0
+                self.load_image(
+                    self.image_paths[row]
                 )
 
-            if (
-                len(
-                    self.preview_area.rect_angles
+                saved_rects = list(
+                    self.page_rects.get(
+                        row,
+                        [],
+                    )
                 )
-                > len(
-                    self.preview_area.rects
+
+                saved_group_ids = list(
+                    self.page_group_ids.get(
+                        row,
+                        [],
+                    )
                 )
-            ):
+
+                self.preview_area.set_rects(
+                    saved_rects,
+                    group_ids=saved_group_ids,
+                )
+
+                saved_angles = list(
+                    self.page_angles.get(
+                        row,
+                        [],
+                    )
+                )
+
                 self.preview_area.rect_angles = (
-                    self.preview_area.rect_angles[
-                        :len(
-                            self.preview_area.rects
-                        )
-                    ]
+                    saved_angles
                 )
 
-            self.restore_current_page_aspect_modes()
+                while (
+                    len(
+                        self.preview_area.rect_angles
+                    )
+                    < len(
+                        self.preview_area.rects
+                    )
+                ):
+                    self.preview_area.rect_angles.append(
+                        0.0
+                    )
 
-            pasted = (
-                self.preview_area.paste_copied_rects(
-                    offset=0,
-                    save_undo=False,
+                if (
+                    len(
+                        self.preview_area.rect_angles
+                    )
+                    > len(
+                        self.preview_area.rects
+                    )
+                ):
+                    self.preview_area.rect_angles = (
+                        self.preview_area.rect_angles[
+                            :len(
+                                self.preview_area.rects
+                            )
+                        ]
+                    )
+
+                self.restore_current_page_aspect_modes()
+
+                pasted = (
+                    self.preview_area.paste_copied_rects(
+                        offset=0,
+                        save_undo=False,
+                    )
                 )
+
+                if pasted:
+                    self.save_current_page_rects()
+                    pasted_page_count += 1
+
+        finally:
+            self.bulk_paste_in_progress = False
+
+        # 貼り付け後の状態を保存する
+        after_states = (
+            self.capture_page_rect_states(
+                valid_rows
             )
-
-            if pasted:
-                self.save_current_page_rects()
-                pasted_page_count += 1
+        )
 
         # 元々表示していたページへ戻す
         self.current_page_index = (
@@ -3875,6 +4166,16 @@ class MainWindow(QMainWindow):
             self.update_page_label()
 
         if pasted_page_count > 0:
+            self.bulk_paste_undo_state = {
+                "before": before_states,
+                "after": after_states,
+                "page_count": pasted_page_count,
+            }
+
+            # 新しい操作を行ったので、
+            # 以前のRedo履歴は無効にする
+            self.bulk_paste_redo_state = None
+
             self.mark_project_modified()
 
         return pasted_page_count
@@ -3893,10 +4194,57 @@ class MainWindow(QMainWindow):
             )
             return
 
+        source_page_index = -1
+
+        # まず、コピー時のページ番号と画像パスの両方が
+        # 現在も一致しているか確認する
+        saved_source_index = (
+            self.copied_rects_source_page_index
+        )
+
+        saved_source_path = (
+            self.copied_rects_source_image_path
+        )
+
+        if (
+            0 <= saved_source_index
+            < len(self.image_paths)
+            and saved_source_path is not None
+            and self.image_paths[
+                saved_source_index
+            ] == saved_source_path
+        ):
+            source_page_index = (
+                saved_source_index
+            )
+
+        # コピー後にページ削除などで番号が変わった場合は、
+        # 画像パスからコピー元を探し直す
+        elif (
+            saved_source_path is not None
+            and saved_source_path
+            in self.image_paths
+        ):
+            source_page_index = (
+                self.image_paths.index(
+                    saved_source_path
+                )
+            )
+
         target_rows = [
             self.page_list.row(item)
             for item in selected_items
+            if (
+                self.page_list.row(item)
+                != source_page_index
+            )
         ]
+
+        if not target_rows:
+            self.status_label.setText(
+                "貼り付け先の画像がありません。"
+            )
+            return
 
         pasted_page_count = (
             self.paste_copied_rects_to_page_rows(
