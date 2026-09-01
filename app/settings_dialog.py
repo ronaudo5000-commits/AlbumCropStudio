@@ -1,9 +1,11 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QLabel,
+    QMessageBox,
     QSpinBox,
     QVBoxLayout,
 )
@@ -14,6 +16,8 @@ from app.config import Config
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        self.restart_requested = False
 
         self.setWindowTitle(
             self.tr("設定")
@@ -110,6 +114,47 @@ class SettingsDialog(QDialog):
         )
 
         # ---------------------------------
+        # 言語
+        # ---------------------------------
+        self.language_combo = QComboBox()
+
+        self.language_combo.addItem(
+            "日本語",
+            "ja",
+        )
+
+        self.language_combo.addItem(
+            "English",
+            "en",
+        )
+
+        current_language = (
+            Config.get_language()
+        )
+
+        language_index = (
+            self.language_combo.findData(
+                current_language
+            )
+        )
+
+        if language_index >= 0:
+            self.language_combo.setCurrentIndex(
+                language_index
+            )
+
+        self.language_combo.setToolTip(
+            self.tr(
+                "言語の変更は次回起動時に反映されます"
+            )
+        )
+
+        form_layout.addRow(
+            self.tr("言語"),
+            self.language_combo,
+        )
+
+        # ---------------------------------
         # 保存／キャンセル
         # ---------------------------------
         self.button_box = QDialogButtonBox(
@@ -148,6 +193,14 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(self.button_box)
 
     def save_settings(self):
+        previous_language = (
+            Config.get_language()
+        )
+
+        selected_language = (
+            self.language_combo.currentData()
+        )
+
         Config.set_dpi(
             self.dpi_spin.value()
         )
@@ -159,5 +212,38 @@ class SettingsDialog(QDialog):
         Config.set_margin_mm(
             self.margin_mm_spin.value()
         )
+
+        Config.set_language(
+            selected_language
+        )
+
+        language_changed = (
+            previous_language
+            != selected_language
+        )
+
+        if language_changed:
+            answer = QMessageBox.question(
+                self,
+                self.tr(
+                    "言語の変更"
+                ),
+                self.tr(
+                    "言語の変更を反映するには、"
+                    "AlbumCrop Studioの再起動が必要です。"
+                    "\n\n"
+                    "今すぐ再起動しますか？"
+                ),
+                (
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No
+                ),
+                QMessageBox.StandardButton.Yes,
+            )
+
+            self.restart_requested = (
+                answer
+                == QMessageBox.StandardButton.Yes
+            )
 
         self.accept()

@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from io import BytesIO
 from PIL import Image
@@ -10,6 +11,7 @@ import time
 from PySide6.QtCore import (
     Qt,
     QSize,
+    QProcess,
     QThread,
 )
 
@@ -93,7 +95,9 @@ class ClickablePreviewLabel(QLabel):
         )
 
         self.setToolTip(
-            "クリックすると拡大表示します"
+            self.tr(
+                "クリックすると拡大表示します"
+            )
         )
 
     def mousePressEvent(
@@ -295,21 +299,21 @@ class CropPreviewDialog(QDialog):
         )
 
         self.fit_button = QPushButton(
-            "全体表示"
+            self.tr("全体表示")
         )
 
         self.previous_button = QPushButton(
-            "◀ 前へ"
+            self.tr("◀ 前へ")
         )
 
         self.position_label = QLabel()
 
         self.next_button = QPushButton(
-            "次へ ▶"
+            self.tr("次へ ▶")
         )
 
         self.close_button = QPushButton(
-            "閉じる"
+            self.tr("閉じる")
         )
 
         self.zoom_out_button.setFixedWidth(
@@ -337,23 +341,33 @@ class CropPreviewDialog(QDialog):
         )
 
         self.zoom_out_button.setToolTip(
-            "画像を縮小します"
+            self.tr(
+                "画像を縮小します"
+            )
         )
 
         self.zoom_in_button.setToolTip(
-            "画像を拡大します"
+            self.tr(
+                "画像を拡大します"
+            )
         )
 
         self.fit_button.setToolTip(
-            "画像全体が収まる表示に戻します"
+            self.tr(
+                "画像全体が収まる表示に戻します"
+            )
         )
 
         self.previous_button.setToolTip(
-            "前の切り抜きプレビューへ移動します"
+            self.tr(
+                "前の切り抜きプレビューへ移動します"
+            )
         )
 
         self.next_button.setToolTip(
-            "次の切り抜きプレビューへ移動します"
+            self.tr(
+                "次の切り抜きプレビューへ移動します"
+            )
         )
 
         self.zoom_out_button.clicked.connect(
@@ -448,7 +462,11 @@ class CropPreviewDialog(QDialog):
         ]
 
         self.setWindowTitle(
-            f"切り抜きプレビュー - {title}"
+            self.tr(
+                "切り抜きプレビュー - {title}"
+            ).format(
+                title=title
+            )
         )
 
         self.viewer.set_pixmap(
@@ -709,7 +727,7 @@ class PageListWidget(QListWidget):
                     self.rect_count_callback(row)
                 )
 
-                badge_width = 44
+                badge_width = 72
                 badge_height = 22
 
                 badge_x = (
@@ -763,7 +781,11 @@ class PageListWidget(QListWidget):
                     badge_width,
                     badge_height,
                     Qt.AlignmentFlag.AlignCenter,
-                    f"{rect_count}枠",
+                    self.tr(
+                        "{count}枠"
+                    ).format(
+                        count=rect_count
+                    ),
                 )
 
                 painter.restore()
@@ -1225,11 +1247,11 @@ class MainWindow(QMainWindow):
         )
 
         self.thumbnail_view_button.setToolTip(
-            "サムネイル表示"
+            self.tr("サムネイル表示")
         )
 
         self.compact_view_button.setToolTip(
-            "コンパクト表示"
+            self.tr("コンパクト表示")
         )
 
         self.thumbnail_view_button.setStyleSheet("""
@@ -1432,15 +1454,15 @@ class MainWindow(QMainWindow):
         # 書き出し対象の一括操作
         # ---------------------------------
         export_target_label = QLabel(
-            "書き出し対象"
+            self.tr("書き出し対象")
         )
 
         self.export_all_on_button = QPushButton(
-            "すべて"
+            self.tr("すべて")
         )
 
         self.export_all_off_button = QPushButton(
-            "なし"
+            self.tr("なし")
         )
 
         self.export_all_on_button.setFixedHeight(
@@ -1452,11 +1474,15 @@ class MainWindow(QMainWindow):
         )
 
         self.export_all_on_button.setToolTip(
-            "すべてのページを書き出し対象にします"
+            self.tr(
+                "すべてのページを書き出し対象にします"
+            )
         )
 
         self.export_all_off_button.setToolTip(
-            "すべてのページを書き出し対象から外します"
+            self.tr(
+                "すべてのページを書き出し対象から外します"
+            )
         )
 
         self.export_all_on_button.clicked.connect(
@@ -1498,7 +1524,7 @@ class MainWindow(QMainWindow):
             )
 
         self.delete_page_button = QPushButton(
-            "🗑 ページを削除"
+            self.tr("🗑 ページを削除")
         )
 
         self.delete_page_button.setFixedHeight(
@@ -1518,7 +1544,6 @@ class MainWindow(QMainWindow):
         )
 
         page_list_layout = QVBoxLayout()
-
         page_list_layout.addLayout(
             page_list_display_layout
         )
@@ -1598,7 +1623,9 @@ class MainWindow(QMainWindow):
         self.zoom_in_button = QPushButton("+")
         self.zoom_in_button.setFixedWidth(40)
 
-        self.fit_button = QPushButton("全体表示")
+        self.fit_button = QPushButton(
+            self.tr("全体表示")
+        )
         self.fit_button.setMinimumWidth(80)
 
         self.zoom_out_button.clicked.connect(
@@ -1629,10 +1656,12 @@ class MainWindow(QMainWindow):
         zoom_layout.addWidget(self.zoom_in_button)
         zoom_layout.addWidget(self.fit_button)
 
-        zoom_layout.addStretch() 
+        zoom_layout.addStretch()
 
         # 切り抜き後プレビュー欄
-        self.crop_preview_box = QGroupBox("切り抜きプレビュー")
+        self.crop_preview_box = QGroupBox(
+            self.tr("切り抜きプレビュー")
+        )
         self.crop_preview_box.setMinimumWidth(140)
 
         crop_preview_layout = QVBoxLayout()
@@ -1646,18 +1675,18 @@ class MainWindow(QMainWindow):
         )
 
         self.crop_preview_label = QLabel(
-            "切り抜き結果が\nここに表示されます"
+            self.tr(
+                "切り抜き結果が\nここに表示されます"
+            )
         )
         self.crop_preview_label.setAlignment(
             Qt.AlignmentFlag.AlignCenter
         )
 
         self.crop_preview_list_layout.addStretch()
-
         self.crop_preview_list_layout.addWidget(
             self.crop_preview_label
         )
-
         self.crop_preview_list_layout.addStretch()
 
         self.crop_preview_scroll.setWidget(
@@ -1719,7 +1748,9 @@ class MainWindow(QMainWindow):
             1,
         )
 
-        settings_box = QGroupBox("出力設定")
+        settings_box = QGroupBox(
+            self.tr("出力設定")
+        )
         settings_layout = QHBoxLayout()
 
         # ---------------------------------
@@ -1728,7 +1759,9 @@ class MainWindow(QMainWindow):
         dpi_layout = QHBoxLayout()
         dpi_layout.setSpacing(6)
 
-        dpi_label = QLabel("解像度")
+        dpi_label = QLabel(
+            self.tr("解像度")
+        )
 
         self.dpi_spin = QSpinBox()
         self.dpi_spin.setRange(200, 1200)
@@ -1741,7 +1774,7 @@ class MainWindow(QMainWindow):
         self.dpi_preset_combo = QComboBox()
 
         self.dpi_preset_combo.addItems([
-            "プリセット",
+            self.tr("プリセット"),
             "200",
             "300",
             "350",
@@ -1769,7 +1802,9 @@ class MainWindow(QMainWindow):
         margin_layout = QHBoxLayout()
         margin_layout.setSpacing(6)
 
-        margin_label = QLabel("余白")
+        margin_label = QLabel(
+            self.tr("余白")
+        )
 
         self.margin_spin = QSpinBox()
         self.margin_spin.setRange(0, 20)
@@ -1788,7 +1823,9 @@ class MainWindow(QMainWindow):
         jpeg_quality_layout = QHBoxLayout()
         jpeg_quality_layout.setSpacing(6)
 
-        jpeg_quality_label = QLabel("JPEG品質")
+        jpeg_quality_label = QLabel(
+            self.tr("JPEG品質")
+        )
 
         self.jpeg_quality_spin = QSpinBox()
         self.jpeg_quality_spin.setRange(1, 100)
@@ -1860,7 +1897,9 @@ class MainWindow(QMainWindow):
             Qt.AlignmentFlag.AlignLeft,
         )
 
-        self.open_button = QPushButton("画像を開く")
+        self.open_button = QPushButton(
+            self.tr("画像を開く")
+        )
         self.open_button.setMinimumHeight(40)
         self.open_button.clicked.connect(self.open_image)
 
@@ -2039,7 +2078,9 @@ class MainWindow(QMainWindow):
             self.exit_action
         )      
 
-        self.prev_button = QPushButton("◀ 前へ")
+        self.prev_button = QPushButton(
+            self.tr("◀ 前へ")
+        )
         self.prev_button.setMinimumHeight(40)
         self.prev_button.clicked.connect(self.show_previous_page)
 
@@ -2048,7 +2089,9 @@ class MainWindow(QMainWindow):
             Qt.AlignmentFlag.AlignCenter
         )
 
-        self.next_button = QPushButton("次へ ▶")
+        self.next_button = QPushButton(
+            self.tr("次へ ▶")
+        )
         self.next_button.setMinimumHeight(40)
         self.next_button.clicked.connect(self.show_next_page)
 
@@ -2076,14 +2119,16 @@ class MainWindow(QMainWindow):
         )
 
         self.detect_button = QPushButton(
-            "写真を自動検出"
+            self.tr("写真を自動検出")
         )
         self.detect_button.setMinimumHeight(40)
         self.detect_button.clicked.connect(
             self.detect_photos
         )
 
-        self.manual_count_label = QLabel("枠数")
+        self.manual_count_label = QLabel(
+            self.tr("枠数")
+        )
 
         self.manual_count_spin = QSpinBox()
         self.manual_count_spin.setRange(1, 100)
@@ -2091,7 +2136,7 @@ class MainWindow(QMainWindow):
         self.manual_count_spin.setMinimumHeight(40)
 
         self.generate_rects_button = QPushButton(
-            "枠を自動配置"
+            self.tr("枠を自動配置")
         )
         self.generate_rects_button.setMinimumHeight(40)
         self.generate_rects_button.clicked.connect(
@@ -2099,7 +2144,7 @@ class MainWindow(QMainWindow):
         )
 
         self.mosaic_create_button = QPushButton(
-            "モザイク枠"
+            self.tr("モザイク枠")
         )
 
         self.mosaic_create_button.setMinimumHeight(
@@ -2128,7 +2173,7 @@ class MainWindow(QMainWindow):
         )
 
         self.composite_create_button = QPushButton(
-            "複合切り抜き"
+            self.tr("枠をグループ化")
         )
 
         self.composite_create_button.setMinimumHeight(
@@ -2152,12 +2197,12 @@ class MainWindow(QMainWindow):
 
         self.composite_create_button.setToolTip(
             self.tr(
-                "複数の領域を1つの複合切り抜き枠として作成します"
+                "複数の領域を1つのグループ枠として作成します"
             )
         )
 
         self.composite_member_edit_button = QPushButton(
-            "複合枠を編集"
+            self.tr("グループ枠を編集")
         )
 
         self.composite_member_edit_button.setMinimumHeight(
@@ -2174,12 +2219,12 @@ class MainWindow(QMainWindow):
 
         self.composite_member_edit_button.setToolTip(
             self.tr(
-                "複合枠を構成する領域を個別に編集します"
+                "グループ枠を構成する領域を個別に編集します"
             )
         )
 
         self.load_project_button = QPushButton(
-            "作業を開く"
+            self.tr("作業を開く")
         )
         self.load_project_button.setMinimumHeight(40)
         self.load_project_button.clicked.connect(
@@ -2187,7 +2232,7 @@ class MainWindow(QMainWindow):
         )
 
         self.save_project_button = QPushButton(
-            "作業を保存"
+            self.tr("作業を保存")
         )
         self.save_project_button.setMinimumHeight(40)
         self.save_project_button.clicked.connect(
@@ -2195,14 +2240,16 @@ class MainWindow(QMainWindow):
         )
 
         self.save_project_as_button = QPushButton(
-            "名前を付けて保存"
+            self.tr("名前を付けて保存")
         )
         self.save_project_as_button.setMinimumHeight(40)
         self.save_project_as_button.clicked.connect(
             self.save_project
         )
 
-        self.save_button = QPushButton("切り抜き")
+        self.save_button = QPushButton(
+            self.tr("切り抜き")
+        )
         self.save_button.setMinimumHeight(40)
 
         self.save_button.setStyleSheet("""
@@ -2338,7 +2385,9 @@ class MainWindow(QMainWindow):
         )
 
         # ファイル操作
-        file_group = QGroupBox("ファイル")
+        file_group = QGroupBox(
+            self.tr("ファイル")
+        )
         file_layout = QHBoxLayout()
 
         file_layout.setContentsMargins(
@@ -2355,7 +2404,9 @@ class MainWindow(QMainWindow):
 
 
         # 切り抜き編集
-        edit_group = QGroupBox("切り抜き編集")
+        edit_group = QGroupBox(
+            self.tr("切り抜き編集")
+        )
         edit_layout = QHBoxLayout()
 
         edit_layout.setContentsMargins(
@@ -2475,7 +2526,9 @@ class MainWindow(QMainWindow):
         edit_group.setLayout(edit_layout)
 
         # 出力
-        export_group = QGroupBox("出力")
+        export_group = QGroupBox(
+            self.tr("出力")
+        )
         export_layout = QHBoxLayout()
 
         export_layout.setContentsMargins(
@@ -2501,7 +2554,9 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(controls_layout)
 
-        self.status_label = QLabel("枠数: 0")
+        self.status_label = QLabel(
+            self.tr("枠数: 0")
+        )
         self.status_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft
             | Qt.AlignmentFlag.AlignVCenter
@@ -2546,10 +2601,12 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            (
+            self.tr(
                 "✂️ 切り抜き中: "
-                f"{saved_count} / "
-                f"{total_crops}枚"
+                "{saved} / {total}枚"
+            ).format(
+                saved=saved_count,
+                total=total_crops,
             )
         )
 
@@ -2563,7 +2620,11 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            f"✅ {saved_count}枚切り抜き完了"
+            self.tr(
+                "✅ {count}枚切り抜き完了"
+            ).format(
+                count=saved_count
+            )
         )
 
         # ---------------------------------
@@ -2645,7 +2706,9 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            "❌ 切り抜き保存に失敗しました"
+            self.tr(
+                "❌ 切り抜き保存に失敗しました"
+            )
         )
 
         self.progress_bar.setVisible(False)
@@ -2659,11 +2722,15 @@ class MainWindow(QMainWindow):
 
         QMessageBox.critical(
             self,
-            "書き出しエラー",
-            (
+            self.tr(
+                "書き出しエラー"
+            ),
+            self.tr(
                 "画像の書き出し中に"
                 "エラーが発生しました。\n\n"
-                f"{error_message}"
+                "{error}"
+            ).format(
+                error=error_message
             ),
         )
 
@@ -2755,8 +2822,10 @@ class MainWindow(QMainWindow):
             != self.current_image_path
         ):
             self.status_label.setText(
-                "検出対象の画像が変更されたため、"
-                "結果を反映しませんでした"
+                self.tr(
+                    "検出対象の画像が変更されたため、"
+                    "結果を反映しませんでした"
+                )
             )
             return
 
@@ -2815,16 +2884,22 @@ class MainWindow(QMainWindow):
         self.detection_running = False
 
         self.status_label.setText(
-            "❌ 写真の自動検出に失敗しました"
+            self.tr(
+                "❌ 写真の自動検出に失敗しました"
+            )
         )
 
         QMessageBox.critical(
             self,
-            "自動検出エラー",
-            (
+            self.tr(
+                "自動検出エラー"
+            ),
+            self.tr(
                 "写真の自動検出中に"
                 "エラーが発生しました。\n\n"
-                f"{error_message}"
+                "{error}"
+            ).format(
+                error=error_message
             ),
         )
 
@@ -2903,7 +2978,7 @@ class MainWindow(QMainWindow):
         )
 
     def apply_dpi_preset(self, text):
-        if text == "プリセット":
+        if text == self.tr("プリセット"):
             return
 
         self.dpi_spin.setValue(int(text))
@@ -2956,13 +3031,17 @@ class MainWindow(QMainWindow):
 
         QMessageBox.information(
             self,
-            "Free版のページ数制限",
-            (
+            self.tr(
+                "Free版のページ数制限"
+            ),
+            self.tr(
                 "AlbumCrop Studio Freeでは、"
-                f"一度に読み込めるのは"
-                f"最大{max_pages}ページまでです。\n\n"
+                "一度に読み込めるのは"
+                "最大{max_pages}ページまでです。\n\n"
                 "上限を超えるページは"
                 "読み込みませんでした。"
+            ).format(
+                max_pages=max_pages
             ),
         )
 
@@ -3050,10 +3129,14 @@ class MainWindow(QMainWindow):
 
             QMessageBox.critical(
                 self,
-                "PDF読み込みエラー",
-                (
+                self.tr(
+                    "PDF読み込みエラー"
+                ),
+                self.tr(
                     "PDFを画像へ変換できませんでした。\n\n"
-                    f"{e}"
+                    "{error}"
+                ).format(
+                    error=e
                 ),
             )
 
@@ -3064,9 +3147,11 @@ class MainWindow(QMainWindow):
     def open_image(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "画像またはPDFを開く",
+            self.tr(
+                "画像またはPDFを開く"
+            ),
             "",
-            (
+            self.tr(
                 "対応ファイル "
                 "(*.jpg *.jpeg *.png *.tif *.tiff *.pdf);;"
                 "画像ファイル "
@@ -3105,7 +3190,9 @@ class MainWindow(QMainWindow):
 
             if suffix == ".pdf":
                 self.status_label.setText(
-                    "📄 PDFを画像へ変換中..."
+                    self.tr(
+                        "📄 PDFを画像へ変換中..."
+                    )
                 )
 
                 QApplication.processEvents()
@@ -3168,13 +3255,17 @@ class MainWindow(QMainWindow):
             if available_slots <= 0:
                 QMessageBox.information(
                     self,
-                    "Free版のページ数制限",
-                    (
-                        f"AlbumCrop Studio Freeでは、"
-                        f"一度に読み込めるのは"
-                        f"最大{max_pages}ページまでです。\n\n"
+                    self.tr(
+                        "Free版のページ数制限"
+                    ),
+                    self.tr(
+                        "AlbumCrop Studio Freeでは、"
+                        "一度に読み込めるのは"
+                        "最大{max_pages}ページまでです。\n\n"
                         "追加するには、現在のページを"
                         "削除してから読み込んでください。"
+                    ).format(
+                        max_pages=max_pages
                     ),
                 )
                 return
@@ -3212,14 +3303,22 @@ class MainWindow(QMainWindow):
         ):
             QMessageBox.information(
                 self,
-                "Free版のページ数制限",
-                (
-                    f"AlbumCrop Studio Freeでは、"
-                    f"一度に読み込めるのは"
-                    f"最大{max_pages}ページまでです。\n\n"
-                    f"{len(new_file_paths)}ページを追加し、"
-                    f"{skipped_by_limit}ページは"
+                self.tr(
+                    "Free版のページ数制限"
+                ),
+                self.tr(
+                    "AlbumCrop Studio Freeでは、"
+                    "一度に読み込めるのは"
+                    "最大{max_pages}ページまでです。\n\n"
+                    "{added_count}ページを追加し、"
+                    "{skipped_count}ページは"
                     "読み込みませんでした。"
+                ).format(
+                    max_pages=max_pages,
+                    added_count=len(
+                        new_file_paths
+                    ),
+                    skipped_count=skipped_by_limit,
                 ),
             )
 
@@ -3332,7 +3431,9 @@ class MainWindow(QMainWindow):
 
             if suffix == ".pdf":
                 self.status_label.setText(
-                    "📄 PDFを画像へ変換中..."
+                    self.tr(
+                        "📄 PDFを画像へ変換中..."
+                    )
                 )
 
                 QApplication.processEvents()
@@ -3469,7 +3570,11 @@ class MainWindow(QMainWindow):
             >= len(self.image_paths)
         ):
             self.status_label.setText(
-                "枠数: 0"
+                self.tr(
+                    "枠数: {count}"
+                ).format(
+                    count=0
+                )
             )
             return
 
@@ -3479,7 +3584,11 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            f"枠数: {crop_count}"
+            self.tr(
+                "枠数: {count}"
+            ).format(
+                count=crop_count
+            )
         )
 
     def get_page_rect_count(
@@ -3546,7 +3655,11 @@ class MainWindow(QMainWindow):
                 (
                     f"{row + 1:03d}  "
                     f"{file_name}  "
-                    f"{rect_count}枠"
+                    + self.tr(
+                        "{count}枠"
+                    ).format(
+                        count=rect_count
+                    )
                 )
             )
         else:
@@ -3698,7 +3811,11 @@ class MainWindow(QMainWindow):
                     (
                         f"{row + 1:03d}  "
                         f"{file_name}  "
-                        f"{rect_count}枠"
+                        + self.tr(
+                            "{count}枠"
+                        ).format(
+                            count=rect_count
+                        )
                     )
                 )
             else:
@@ -3936,9 +4053,11 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            (
-                f"{page_count}画像への"
+            self.tr(
+                "{count}画像への"
                 "一括貼り付けを元に戻しました。"
+            ).format(
+                count=page_count
             )
         )
 
@@ -3976,9 +4095,11 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            (
-                f"{page_count}画像への"
+            self.tr(
+                "{count}画像への"
                 "一括貼り付けをやり直しました。"
+            ).format(
+                count=page_count
             )
         )
 
@@ -3990,7 +4111,9 @@ class MainWindow(QMainWindow):
     ):
         if not self.preview_area.copied_rects:
             self.status_label.setText(
-                "先に切り抜き枠をコピーしてください。"
+                self.tr(
+                    "先に切り抜き枠をコピーしてください。"
+                )
             )
             return 0
 
@@ -4005,7 +4128,9 @@ class MainWindow(QMainWindow):
 
         if not valid_rows:
             self.status_label.setText(
-                "貼り付け先の画像を選択してください。"
+                self.tr(
+                    "貼り付け先の画像を選択してください。"
+                )
             )
             return 0
 
@@ -4094,6 +4219,7 @@ class MainWindow(QMainWindow):
                     )
 
                 self.restore_current_page_aspect_modes()
+                self.restore_current_page_mosaic_rects()
 
                 pasted = (
                     self.preview_area.paste_copied_rects(
@@ -4194,6 +4320,7 @@ class MainWindow(QMainWindow):
                 )
 
             self.restore_current_page_aspect_modes()
+            self.restore_current_page_mosaic_rects()
 
             self.preview_area.update()
 
@@ -4226,7 +4353,9 @@ class MainWindow(QMainWindow):
 
         if not selected_items:
             self.status_label.setText(
-                "貼り付け先の画像を選択してください。"
+                self.tr(
+                    "貼り付け先の画像を選択してください。"
+                )
             )
             return
 
@@ -4278,7 +4407,9 @@ class MainWindow(QMainWindow):
 
         if not target_rows:
             self.status_label.setText(
-                "貼り付け先の画像がありません。"
+                self.tr(
+                    "貼り付け先の画像がありません。"
+                )
             )
             return
 
@@ -4290,8 +4421,12 @@ class MainWindow(QMainWindow):
 
         if pasted_page_count > 0:
             self.status_label.setText(
-                f"{pasted_page_count}画像へ"
-                "貼り付けました。"
+                self.tr(
+                    "{count}画像へ"
+                    "貼り付けました。"
+                ).format(
+                    count=pasted_page_count
+                )
             )
 
     def paste_copied_rects_to_all_pages(
@@ -4299,13 +4434,17 @@ class MainWindow(QMainWindow):
     ):
         if not self.image_paths:
             self.status_label.setText(
-                "貼り付け先の画像がありません。"
+                self.tr(
+                    "貼り付け先の画像がありません。"
+                )
             )
             return
 
         if not self.preview_area.copied_rects:
             self.status_label.setText(
-                "先に切り抜き枠をコピーしてください。"
+                self.tr(
+                    "先に切り抜き枠をコピーしてください。"
+                )
             )
             return
 
@@ -4356,7 +4495,9 @@ class MainWindow(QMainWindow):
 
         if not target_rows:
             self.status_label.setText(
-                "貼り付け先の画像がありません。"
+                self.tr(
+                    "貼り付け先の画像がありません。"
+                )
             )
             return
 
@@ -4368,8 +4509,12 @@ class MainWindow(QMainWindow):
 
         if pasted_page_count > 0:
             self.status_label.setText(
-                f"{pasted_page_count}画像へ"
-                "貼り付けました。"
+                self.tr(
+                    "{count}画像へ"
+                    "貼り付けました。"
+                ).format(
+                    count=pasted_page_count
+                )
             )
 
     def save_current_page_rects(self):
@@ -4573,7 +4718,9 @@ class MainWindow(QMainWindow):
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "作業を保存",
+            self.tr(
+                "作業を保存"
+            ),
             "",
             "AlbumCrop Studio Project (*.acsp.json)",
         )
@@ -4591,8 +4738,10 @@ class MainWindow(QMainWindow):
         if project_path.exists():
             reply = QMessageBox.warning(
                 self,
-                "上書き確認",
-                (
+                self.tr(
+                    "上書き確認"
+                ),
+                self.tr(
                     "同じ名前のプロジェクトファイルが"
                     "すでに存在します。\n\n"
                     "上書きしますか？"
@@ -4604,7 +4753,9 @@ class MainWindow(QMainWindow):
 
             if reply != QMessageBox.StandardButton.Yes:
                 self.status_label.setText(
-                    "保存をキャンセルしました"
+                    self.tr(
+                        "プロジェクト保存をキャンセルしました"
+                    )
                 )
                 return
 
@@ -4625,7 +4776,9 @@ class MainWindow(QMainWindow):
             self.project_modified = False
 
             self.status_label.setText(
-                "✅ 作業を保存しました"
+                self.tr(
+                    "✅ 作業を保存しました"
+                )
             )
 
         except Exception as e:
@@ -4634,7 +4787,9 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                "❌ 作業の保存に失敗しました"
+                self.tr(
+                    "❌ 作業の保存に失敗しました"
+                )
             )
 
     def save_project_overwrite(self):
@@ -4662,7 +4817,9 @@ class MainWindow(QMainWindow):
             self.project_modified = False
 
             self.status_label.setText(
-                "✅ 作業を上書き保存しました"
+                self.tr(
+                    "✅ 作業を上書き保存しました"
+                )
             )
 
         except Exception as e:
@@ -4671,8 +4828,10 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                "❌ 作業の上書き保存に失敗しました"
-        )
+                self.tr(
+                    "❌ 作業の上書き保存に失敗しました"
+                )
+            )
 
     def load_project(self):
 
@@ -4681,7 +4840,9 @@ class MainWindow(QMainWindow):
         
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "作業を開く",
+            self.tr(
+                "作業を開く"
+            ),
             "",
             "AlbumCrop Studio Project (*.acsp.json)",
         )
@@ -4703,7 +4864,9 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                "❌ 作業の読み込みに失敗しました"
+                self.tr(
+                    "❌ 作業の読み込みに失敗しました"
+                )
             )
             return
 
@@ -4714,7 +4877,9 @@ class MainWindow(QMainWindow):
 
         if not pages:
             self.status_label.setText(
-                "❌ プロジェクトに画像がありません"
+                self.tr(
+                    "❌ プロジェクトに画像がありません"
+                )
             )
             return
 
@@ -4729,22 +4894,29 @@ class MainWindow(QMainWindow):
         ):
             QMessageBox.information(
                 self,
-                "Free版のページ数制限",
-                (
+                self.tr(
+                    "Free版のページ数制限"
+                ),
+                self.tr(
                     "このプロジェクトには"
-                    f"{len(pages)}ページ含まれています。\n\n"
+                    "{page_count}ページ含まれています。\n\n"
                     "AlbumCrop Studio Freeで"
                     "開けるプロジェクトは"
-                    f"最大{max_pages}ページまでです。\n\n"
+                    "最大{max_pages}ページまでです。\n\n"
                     "プロジェクトの内容を保護するため、"
                     "読み込みを中止しました。"
+                ).format(
+                    page_count=len(pages),
+                    max_pages=max_pages,
                 ),
             )
 
             self.status_label.setText(
-                (
+                self.tr(
                     "プロジェクトを開けません: "
-                    f"{len(pages)}ページ"
+                    "{page_count}ページ"
+                ).format(
+                    page_count=len(pages)
                 )
             )
 
@@ -4771,30 +4943,45 @@ class MainWindow(QMainWindow):
             missing_names = "\n".join(
                 Path(path).name
                 if path
-                else "(ファイルパスなし)"
+                else self.tr(
+                    "(ファイルパスなし)"
+                )
                 for path in missing_files[:10]
             )
 
             if len(missing_files) > 10:
                 missing_names += (
-                    f"\nほか "
-                    f"{len(missing_files) - 10} 件"
+                    "\n"
+                    + self.tr(
+                        "ほか {count} 件"
+                    ).format(
+                        count=(
+                            len(missing_files)
+                            - 10
+                        )
+                    )
                 )
 
             QMessageBox.warning(
                 self,
-                "元画像が見つかりません",
-                (
+                self.tr(
+                    "元画像が見つかりません"
+                ),
+                self.tr(
                     "プロジェクトで使用している"
                     "元画像が見つかりません。\n\n"
-                    f"{missing_names}\n\n"
+                    "{missing_names}\n\n"
                     "元画像を元の場所に戻してから、"
                     "もう一度プロジェクトを開いてください。"
+                ).format(
+                    missing_names=missing_names
                 ),
             )
 
             self.status_label.setText(
-                "❌ 元画像が見つかりません"
+                self.tr(
+                    "❌ 元画像が見つかりません"
+                )
             )
             return
 
@@ -5097,7 +5284,9 @@ class MainWindow(QMainWindow):
         self.project_modified = False
 
         self.status_label.setText(
-            "✅ 作業を読み込みました"
+            self.tr(
+                "✅ 作業を読み込みました"
+            )
         )
 
         self.update_crop_preview()
@@ -5429,7 +5618,7 @@ class MainWindow(QMainWindow):
             self.preview_area.set_rects([])
 
             self.page_label.setText("0 / 0")
-            self.status_label.setText("枠数: 0")
+            self.update_current_rect_count_status()
 
             self.clear_crop_preview()
 
@@ -6087,7 +6276,9 @@ class MainWindow(QMainWindow):
             ".tiff",
         ]:
             self.preview_area.setText(
-                "対応していないファイル形式です。"
+                self.tr(
+                    "対応していないファイル形式です。"
+                )
             )
             return
 
@@ -6158,9 +6349,7 @@ class MainWindow(QMainWindow):
             []
         )
 
-        self.status_label.setText(
-            "枠数: 0"
-        )
+        self.update_current_rect_count_status()
 
         if hasattr(
             self,
@@ -6184,7 +6373,9 @@ class MainWindow(QMainWindow):
     def detect_photos(self):
         if not self.current_image_path:
             self.preview_area.setText(
-                "先に画像を読み込んでください。"
+                self.tr(
+                    "先に画像を読み込んでください。"
+                )
             )
             return
 
@@ -6206,7 +6397,9 @@ class MainWindow(QMainWindow):
         image_path = self.detection_image_path
 
         self.status_label.setText(
-            "🔍 写真を検出中..."
+            self.tr(
+                "🔍 写真を検出中..."
+            )
         )
 
         # 0, 0は処理時間が未確定の進捗表示
@@ -6270,7 +6463,9 @@ class MainWindow(QMainWindow):
     def generate_manual_rects(self):
         if self.current_pixmap is None:
             self.status_label.setText(
-                "先に画像を読み込んでください。"
+                self.tr(
+                    "先に画像を読み込んでください。"
+                )
             )
             return
 
@@ -6401,7 +6596,9 @@ class MainWindow(QMainWindow):
 
         if selected_index < 0:
             self.status_label.setText(
-                "コピーする枠を選択してください。"
+                self.tr(
+                    "コピーする枠を選択してください。"
+                )
             )
             return
 
@@ -6489,7 +6686,9 @@ class MainWindow(QMainWindow):
                 )
 
             self.status_label.setText(
-                "モザイク枠作成モード"
+                self.tr(
+                    "モザイク枠作成モード"
+                )
             )
 
         self.preview_area.set_mosaic_create_mode(
@@ -6522,7 +6721,9 @@ class MainWindow(QMainWindow):
 
         if enabled:
             self.status_label.setText(
-                "複合枠作成モード"
+                self.tr(
+                    "グループ枠作成モード"
+                )
             )
         else:
             self.update_current_rect_count_status()
@@ -6547,7 +6748,9 @@ class MainWindow(QMainWindow):
 
         if enabled:
             self.status_label.setText(
-                "構成領域編集モード"
+                self.tr(
+                    "構成領域編集モード"
+                )
             )
         else:
             self.update_current_rect_count_status()
@@ -6576,7 +6779,9 @@ class MainWindow(QMainWindow):
         )
 
         self.status_label.setText(
-            "✂️ 切り抜き中..."
+            self.tr(
+                "✂️ 切り抜き中..."
+            )
         )
         QApplication.processEvents()
 
@@ -6589,7 +6794,9 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                "画像が読み込まれていません"
+                self.tr(
+                    "画像が読み込まれていません"
+                )
             )
 
             self.save_button.setEnabled(
@@ -6632,8 +6839,10 @@ class MainWindow(QMainWindow):
             if len(checked_page_indexes) > 1:
                 QMessageBox.information(
                     self,
-                    "Free版の書き出しについて",
-                    (
+                    self.tr(
+                        "Free版の書き出しについて"
+                    ),
+                    self.tr(
                         "AlbumCrop Studio Freeでは、"
                         "一度に書き出せるのは"
                         "1ページずつです。\n\n"
@@ -6645,8 +6854,10 @@ class MainWindow(QMainWindow):
                 )
 
                 self.status_label.setText(
-                    "書き出し対象を1ページだけ"
-                    "選択してください"
+                    self.tr(
+                        "書き出し対象を1ページだけ"
+                        "選択してください"
+                    )
                 )
 
                 self.save_button.setEnabled(
@@ -6669,7 +6880,9 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                "書き出し対象のページがありません"
+                self.tr(
+                    "書き出し対象のページがありません"
+                )
             )
 
             self.save_button.setEnabled(
@@ -6704,23 +6917,30 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                "書き出し対象ページに枠がありません"
+                self.tr(
+                    "書き出し対象ページに枠がありません"
+                )
             )
 
             self.save_button.setEnabled(True)
             return
 
         self.status_label.setText(
-            (
+            self.tr(
                 "✂️ 切り抜き中: "
-                f"0 / {total_crops}枚"
+                "{saved} / {total}枚"
+            ).format(
+                saved=0,
+                total=total_crops,
             )
         )
 
         output_dir_text = (
             QFileDialog.getExistingDirectory(
                 self,
-                "保存先フォルダを選択",
+                self.tr(
+                    "保存先フォルダを選択"
+                ),
                 str(
                     Path(
                         self.current_image_path
@@ -6731,7 +6951,9 @@ class MainWindow(QMainWindow):
 
         if not output_dir_text:
             self.status_label.setText(
-                "保存をキャンセルしました"
+                self.tr(
+                    "書き出しをキャンセルしました"
+                )
             )
 
             self.save_button.setEnabled(True)
@@ -6775,12 +6997,16 @@ class MainWindow(QMainWindow):
         if existing_files:
             reply = QMessageBox.warning(
                 self,
-                "上書き確認",
-                (
-                    f"保存先に同名ファイルが"
-                    f"{len(existing_files)}件あります。\n\n"
+                self.tr(
+                    "上書き確認"
+                ),
+                self.tr(
+                    "保存先に同名ファイルが"
+                    "{count}件あります。\n\n"
                     "既存のファイルを"
                     "上書きしますか？"
+                ).format(
+                    count=len(existing_files)
                 ),
                 QMessageBox.StandardButton.Yes
                 | QMessageBox.StandardButton.Cancel,
@@ -6792,7 +7018,9 @@ class MainWindow(QMainWindow):
                 != QMessageBox.StandardButton.Yes
             ):
                 self.status_label.setText(
-                    "保存をキャンセルしました"
+                    self.tr(
+                        "書き出しをキャンセルしました"
+                    )
                 )
 
                 self.save_button.setEnabled(True)
@@ -6893,8 +7121,10 @@ class MainWindow(QMainWindow):
 
         reply = QMessageBox.question(
             self,
-            "未保存の変更",
-            (
+            self.tr(
+                "未保存の変更"
+            ),
+            self.tr(
                 "保存されていない変更があります。\n\n"
                 "作業を保存しますか？"
             ),
@@ -6917,8 +7147,10 @@ class MainWindow(QMainWindow):
         if self.detection_running:
             QMessageBox.information(
                 self,
-                "自動検出中",
-                (
+                self.tr(
+                    "自動検出中"
+                ),
+                self.tr(
                     "現在、写真の自動検出を実行しています。\n\n"
                     "検出が完了してから、"
                     "もう一度終了してください。"
@@ -6942,28 +7174,65 @@ class MainWindow(QMainWindow):
 
         result = dialog.exec()
 
-        if result:
-            self.dpi_spin.setValue(
-                Config.get_dpi()
+        if not result:
+            return
+
+        self.dpi_spin.setValue(
+            Config.get_dpi()
+        )
+
+        self.margin_spin.setValue(
+            Config.get_margin_mm()
+        )
+
+        self.jpeg_quality_spin.setValue(
+            Config.get_jpeg_quality()
+        )
+
+        self.update_dpi_preset(
+            self.dpi_spin.value()
+        )
+
+        self.status_label.setText(
+            self.tr(
+                "✅ 設定を保存しました"
+            )
+        )
+
+        if not dialog.restart_requested:
+            return
+
+        if not self.close():
+            return
+
+        if getattr(
+            sys,
+            "frozen",
+            False,
+        ):
+            program = sys.executable
+            arguments = list(
+                sys.argv[1:]
             )
 
-            self.margin_spin.setValue(
-                Config.get_margin_mm()
-            )
-
-            self.jpeg_quality_spin.setValue(
-                Config.get_jpeg_quality()
-            )
-
-            self.update_dpi_preset(
-                self.dpi_spin.value()
-            )
-
-            self.status_label.setText(
-                self.tr(
-                    "✅ 設定を保存しました"
+        else:
+            program = sys.executable
+            arguments = [
+                str(
+                    Path(
+                        sys.argv[0]
+                    ).resolve()
                 )
+            ]
+
+            arguments.extend(
+                sys.argv[1:]
             )
+
+        QProcess.startDetached(
+            program,
+            arguments,
+        )
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -7388,7 +7657,9 @@ class MainWindow(QMainWindow):
                 widget.deleteLater()
 
         empty_label = QLabel(
-            "切り抜き結果が\nここに表示されます"
+            self.tr(
+                "切り抜き結果が\nここに表示されます"
+            )
         )
         empty_label.setAlignment(
             Qt.AlignmentFlag.AlignCenter
@@ -7463,7 +7734,9 @@ class MainWindow(QMainWindow):
         # 枠がない場合
         if not self.preview_area.rects:
             empty_label = QLabel(
-                "切り抜き結果が\nここに表示されます"
+                self.tr(
+                    "切り抜き結果が\nここに表示されます"
+                )
             )
 
             empty_label.setAlignment(
@@ -7533,7 +7806,11 @@ class MainWindow(QMainWindow):
                 )
 
                 title_text = (
-                    f"写真 {unit_number}"
+                    self.tr(
+                        "写真 {number}"
+                    ).format(
+                        number=unit_number
+                    )
                 )
 
             else:
@@ -7545,7 +7822,8 @@ class MainWindow(QMainWindow):
                 )
 
                 title_text = (
-                    f"複合枠 G{group_id}"
+                    self.tr("グループ")
+                    + f" G{group_id}"
                 )
 
             if crop_pixmap.isNull():

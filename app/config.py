@@ -9,6 +9,8 @@ class Config:
     DEFAULT_DPI = 350
     DEFAULT_JPEG_QUALITY = 95
     DEFAULT_MARGIN_MM = 0
+    DEFAULT_LANGUAGE = "ja"
+    DEFAULT_LANGUAGE = "ja"
 
     @classmethod
     def settings(cls):
@@ -104,4 +106,74 @@ class Config:
         cls.settings().setValue(
             "margin_mm",
             safe_margin_mm,
+        )
+
+    @classmethod
+    def get_language(cls):
+        language = str(
+            cls.settings().value(
+                "language",
+                cls.DEFAULT_LANGUAGE,
+            )
+        )
+
+        if language not in (
+            "ja",
+            "en",
+        ):
+            return cls.DEFAULT_LANGUAGE
+
+        return language
+
+    @classmethod
+    def set_language(
+        cls,
+        language,
+    ):
+        safe_language = str(language)
+
+        if safe_language not in (
+            "ja",
+            "en",
+        ):
+            safe_language = cls.DEFAULT_LANGUAGE
+
+        cls.settings().setValue(
+            "language",
+            safe_language,
+        )
+
+    @classmethod
+    def get_language(cls):
+        language = str(
+            cls.settings().value(
+                "language",
+                cls.DEFAULT_LANGUAGE,
+            )
+        )
+
+        if language not in (
+            "ja",
+            "en",
+        ):
+            return cls.DEFAULT_LANGUAGE
+
+        return language
+
+    @classmethod
+    def set_language(
+        cls,
+        language,
+    ):
+        safe_language = str(language)
+
+        if safe_language not in (
+            "ja",
+            "en",
+        ):
+            safe_language = cls.DEFAULT_LANGUAGE
+
+        cls.settings().setValue(
+            "language",
+            safe_language,
         )

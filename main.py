@@ -6,8 +6,10 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     Qt,
+    QCoreApplication,
     QElapsedTimer,
     QTimer,
+    QTranslator,
 )
 
 from PySide6.QtGui import (
@@ -23,6 +25,68 @@ from PySide6.QtWidgets import (
 
 from app.main_window import MainWindow
 from app.logger import get_logger
+from app.config import Config
+
+
+def load_app_translator(
+    app,
+    project_root,
+    language,
+):
+    if language == "ja":
+        return None
+
+    translations_dir = (
+        project_root
+        / "translations"
+    )
+
+    qm_path = (
+        translations_dir
+        / f"albumcrop_{language}.qm"
+    )
+
+    if not qm_path.exists():
+        return None
+
+    translator = QTranslator(
+        app
+    )
+
+    if not translator.load(
+        str(qm_path)
+    ):
+        return None
+
+    app.installTranslator(
+        translator
+    )
+
+    return translator
+
+
+def get_splash_path(
+    resources_dir,
+    language,
+):
+    if language == "ja":
+        return (
+            resources_dir
+            / "splash.png"
+        )
+
+    localized_splash_path = (
+        resources_dir
+        / f"splash_{language}.png"
+    )
+
+    if localized_splash_path.exists():
+        return localized_splash_path
+
+    return (
+        resources_dir
+        / "splash.png"
+    )
 
 
 def main():
@@ -45,12 +109,38 @@ def main():
         app = QApplication(sys.argv)
 
         # ---------------------------------
-        # リソース
+        # プロジェクトルート
         # ---------------------------------
         project_root = Path(
             __file__
         ).resolve().parent
 
+        # ---------------------------------
+        # 言語
+        #
+        # 日本語を基準言語とする。
+        # 設定に保存された言語を読み込み、
+        # 対応する .qm がある場合のみ
+        # QTranslatorで読み込む。
+        # ---------------------------------
+        app_language = (
+            Config.get_language()
+        )
+
+        app_translator = (
+            load_app_translator(
+                app,
+                project_root,
+                app_language,
+            )
+        )
+
+        # QTranslatorをmain()終了まで保持する
+        _ = app_translator
+
+        # ---------------------------------
+        # リソース
+        # ---------------------------------
         resources_dir = (
             project_root
             / "resources"
@@ -62,8 +152,10 @@ def main():
         )
 
         splash_path = (
-            resources_dir
-            / "splash.png"
+            get_splash_path(
+                resources_dir,
+                app_language,
+            )
         )
 
         # ---------------------------------
@@ -87,6 +179,7 @@ def main():
         splash = None
         splash_message_label = None
         splash_timer = QElapsedTimer()
+
         if splash_path.exists():
             splash_pixmap = QPixmap(
                 str(splash_path)
@@ -113,7 +206,10 @@ def main():
                 )
 
                 splash_message_label.setText(
-                    "設定を読み込んでいます…"
+                    QCoreApplication.translate(
+                        "Main",
+                        "設定を読み込んでいます…",
+                    )
                 )
 
                 splash_message_label.setAlignment(
@@ -187,7 +283,10 @@ def main():
                     750 - elapsed_time,
                 ),
                 lambda: show_splash_message(
-                    "画面を準備しています…"
+                    QCoreApplication.translate(
+                        "Main",
+                        "画面を準備しています…",
+                    )
                 ),
             )
 
@@ -197,7 +296,10 @@ def main():
                     1500 - elapsed_time,
                 ),
                 lambda: show_splash_message(
-                    "コンポーネントを初期化しています…"
+                    QCoreApplication.translate(
+                        "Main",
+                        "コンポーネントを初期化しています…",
+                    )
                 ),
             )
 
@@ -207,7 +309,10 @@ def main():
                     2250 - elapsed_time,
                 ),
                 lambda: show_splash_message(
-                    "起動を完了しています…"
+                    QCoreApplication.translate(
+                        "Main",
+                        "起動を完了しています…",
+                    )
                 ),
             )
 

@@ -1454,7 +1454,11 @@ class PhotoCanvas(QWidget):
             painter.drawText(
                 self.rect(),
                 Qt.AlignmentFlag.AlignCenter,
-                "画像をここへドラッグ＆ドロップ\n\nまたは『画像を開く』ボタンを使用",
+                self.tr(
+                    "画像をここへドラッグ＆ドロップ"
+                    "\n\n"
+                    "または『画像を開く』ボタンを使用"
+                ),
             )
             return
 
@@ -1547,11 +1551,11 @@ class PhotoCanvas(QWidget):
 
             if is_selected_mosaic:
                 mosaic_pen.setWidthF(
-                    3.0
+                    1.8
                 )
             else:
                 mosaic_pen.setWidthF(
-                    2.0
+                    1.2
                 )
 
             mosaic_pen.setStyle(
@@ -1612,7 +1616,7 @@ class PhotoCanvas(QWidget):
             painter.drawText(
                 label_rect,
                 Qt.AlignmentFlag.AlignCenter,
-                "モザイク",
+                self.tr("モザイク"),
             )
 
             if is_selected_mosaic:
@@ -2385,7 +2389,9 @@ class PhotoCanvas(QWidget):
             )
 
         undo_action = menu.addAction(
-            "元に戻す\tCtrl+Z"
+            self.tr(
+                "元に戻す\tCtrl+Z"
+            )
         )
 
         undo_action.setEnabled(
@@ -2394,7 +2400,9 @@ class PhotoCanvas(QWidget):
         )
 
         redo_action = menu.addAction(
-            "やり直す\tCtrl+Y"
+            self.tr(
+                "やり直す\tCtrl+Y"
+            )
         )
 
         redo_action.setEnabled(
@@ -2405,28 +2413,36 @@ class PhotoCanvas(QWidget):
         menu.addSeparator()
 
         cut_action = menu.addAction(
-            "切り取り\tCtrl+X"
+            self.tr(
+                "切り取り\tCtrl+X"
+            )
         )
         cut_action.setEnabled(
             has_selection
         )
 
         copy_action = menu.addAction(
-            "コピー\tCtrl+C"
+            self.tr(
+                "コピー\tCtrl+C"
+            )
         )
         copy_action.setEnabled(
             has_selection
         )
 
         paste_action = menu.addAction(
-            "貼り付け\tCtrl+V"
+            self.tr(
+                "貼り付け\tCtrl+V"
+            )
         )
         paste_action.setEnabled(
             bool(self.copied_rects)
         )
 
         delete_action = menu.addAction(
-            "削除\tDelete"
+            self.tr(
+                "削除\tDelete"
+            )
         )
         delete_action.setEnabled(
             has_selection
@@ -2435,7 +2451,9 @@ class PhotoCanvas(QWidget):
         menu.addSeparator()
 
         select_all_action = menu.addAction(
-            "すべて選択\tCtrl+A"
+            self.tr(
+                "すべて選択\tCtrl+A"
+            )
         )
         select_all_action.setEnabled(
             bool(self.rects)
@@ -2444,14 +2462,18 @@ class PhotoCanvas(QWidget):
         menu.addSeparator()
 
         group_action = menu.addAction(
-            "複合枠にまとめる\tCtrl+G"
+            self.tr(
+                "枠をグループ化\tCtrl+G"
+            )
         )
         group_action.setEnabled(
             can_group
         )
 
         ungroup_action = menu.addAction(
-            "複合枠を解除\tCtrl+Shift+G"
+            self.tr(
+                "グループを解除\tCtrl+Shift+G"
+            )
         )
         ungroup_action.setEnabled(
             can_ungroup

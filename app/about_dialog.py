@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
 
 from app.version import (
     APP_NAME,
-    APP_TAGLINE,
     APP_VERSION,
     COPYRIGHT_TEXT,
 )
@@ -35,7 +34,9 @@ class AboutDialog(QDialog):
         )
 
         tagline = QLabel(
-            APP_TAGLINE
+            self.tr(
+                "「資料」を「資源」に そして「資産」へ"
+            )
         )
 
         tagline.setAlignment(
