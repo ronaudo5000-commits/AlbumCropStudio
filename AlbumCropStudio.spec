@@ -14,6 +14,10 @@ datas=[
         'resources/splash.png',
         'resources',
     ),
+    (
+        'translations/albumcrop_en.qm',
+        'translations',
+    ),
 ],
     hiddenimports=[],
     hookspath=[],

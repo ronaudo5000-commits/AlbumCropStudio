@@ -177,6 +177,7 @@ def main():
         # 起動スプラッシュ
         # ---------------------------------
         splash = None
+        splash_tagline_label = None
         splash_message_label = None
         splash_timer = QElapsedTimer()
 
@@ -201,6 +202,50 @@ def main():
 
                 splash.show()
 
+                # ---------------------------------
+                # スプラッシュ用タグライン
+                # ---------------------------------
+                splash_tagline_label = QLabel(
+                    splash
+                )
+
+                splash_tagline_label.setText(
+                    QCoreApplication.translate(
+                        "Main",
+                        "「資料」を「資源」に そして「資産」へ",
+                    )
+                )
+
+                splash_tagline_label.setAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
+
+                splash_tagline_label.setStyleSheet(
+                    """
+                    QLabel {
+                        color: white;
+                        background: transparent;
+                        font-size: 24px;
+                        font-weight: 600;
+                    }
+                    """
+                )
+
+                splash_tagline_label.setGeometry(
+                    0,
+                    int(
+                        splash_pixmap.height()
+                        * 0.67
+                    ),
+                    splash_pixmap.width(),
+                    42,
+                )
+
+                splash_tagline_label.show()
+
+                # ---------------------------------
+                # 起動メッセージ
+                # ---------------------------------
                 splash_message_label = QLabel(
                     splash
                 )
@@ -230,7 +275,7 @@ def main():
                     0,
                     int(
                         splash_pixmap.height()
-                        * 0.68
+                        * 0.75
                     ),
                     splash_pixmap.width(),
                     36,

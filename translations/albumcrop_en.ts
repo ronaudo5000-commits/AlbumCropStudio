@@ -78,22 +78,27 @@
 <context>
     <name>Main</name>
     <message>
-        <location filename="../main.py" line="209"/>
+        <location filename="../main.py" line="213"/>
+        <source>「資料」を「資源」に そして「資産」へ</source>
+        <translation>From Records to Resources, and from Resources to Assets</translation>
+    </message>
+    <message>
+        <location filename="../main.py" line="254"/>
         <source>設定を読み込んでいます…</source>
         <translation>Loading settings...</translation>
     </message>
     <message>
-        <location filename="../main.py" line="286"/>
+        <location filename="../main.py" line="331"/>
         <source>画面を準備しています…</source>
         <translation>Preparing the interface...</translation>
     </message>
     <message>
-        <location filename="../main.py" line="299"/>
+        <location filename="../main.py" line="344"/>
         <source>コンポーネントを初期化しています…</source>
         <translation>Initializing components...</translation>
     </message>
     <message>
-        <location filename="../main.py" line="312"/>
+        <location filename="../main.py" line="357"/>
         <source>起動を完了しています…</source>
         <translation>Finishing startup...</translation>
     </message>
