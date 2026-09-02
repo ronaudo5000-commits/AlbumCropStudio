@@ -2355,6 +2355,31 @@ class PhotoCanvas(QWidget):
             len(selected_indexes) >= 2
         )
 
+        # ---------------------------------
+        # 整列可否
+        # Phase 1では独立した通常枠のみ対象
+        # ---------------------------------
+        can_align = (
+            len(selected_indexes) >= 2
+        )
+
+        if can_align:
+            for index in selected_indexes:
+                if (
+                    index < 0
+                    or index >= len(self.rects)
+                ):
+                    can_align = False
+                    break
+
+                if (
+                    index < len(self.rect_group_ids)
+                    and self.rect_group_ids[index]
+                    is not None
+                ):
+                    can_align = False
+                    break
+
         can_ungroup = False
 
         if (
@@ -2461,6 +2486,22 @@ class PhotoCanvas(QWidget):
 
         menu.addSeparator()
 
+        align_menu = menu.addMenu(
+            self.tr("整列")
+        )
+
+        align_menu.setEnabled(
+            can_align
+        )
+
+        align_left_action = (
+            align_menu.addAction(
+                self.tr("左揃え")
+            )
+        )
+
+        menu.addSeparator()
+
         group_action = menu.addAction(
             self.tr(
                 "枠をグループ化\tCtrl+G"
@@ -2535,6 +2576,37 @@ class PhotoCanvas(QWidget):
                 Qt.KeyboardModifier.ControlModifier,
             )
             self.keyPressEvent(key_event)
+            return
+
+        if selected_action == align_left_action:
+            align_indexes = sorted(
+                selected_indexes
+            )
+
+            if len(align_indexes) < 2:
+                return
+
+            left_x = min(
+                self.rects[index][0]
+                for index in align_indexes
+            )
+
+            self.save_undo_state()
+
+            for index in align_indexes:
+                x, y, w, h = (
+                    self.rects[index]
+                )
+
+                self.rects[index] = (
+                    left_x,
+                    y,
+                    w,
+                    h,
+                )
+
+            self.rects_changed.emit()
+            self.update()
             return
 
         if selected_action == group_action:
