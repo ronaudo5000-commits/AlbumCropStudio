@@ -4983,6 +4983,57 @@ class MainWindow(QMainWindow):
         recovery_path,
         project_data,
     ):
+        pages = project_data.get(
+            "pages",
+            [],
+        )
+
+        missing_image_paths = []
+
+        for page in pages:
+            if not isinstance(
+                page,
+                dict,
+            ):
+                continue
+
+            image_path = page.get(
+                "image_path"
+            )
+
+            if not image_path:
+                continue
+
+            if not Path(
+                image_path
+            ).exists():
+                missing_image_paths.append(
+                    image_path
+                )
+
+        if missing_image_paths:
+            QMessageBox.warning(
+                self,
+                self.tr(
+                    "元画像が見つかりません"
+                ),
+                self.tr(
+                    "自動保存データは見つかりましたが、"
+                    "元画像の一部が見つからないため"
+                    "復元できませんでした。\n\n"
+                    "元画像を元の場所へ戻してから、"
+                    "もう一度復元してください。\n\n"
+                    "Recoveryデータは削除されません。"
+                ),
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "❌ 元画像が見つからないため復元できません"
+                )
+            )
+            return
+
         temporary_project_path = (
             self.recovery_dir
             / (
