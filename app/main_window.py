@@ -76,6 +76,11 @@ from app.edition import (
 from app.export_worker import CropExportWorker
 from app.detection_worker import DetectionWorker
 
+
+MIN_SUPPORTED_PROJECT_FORMAT_VERSION = 1
+PROJECT_FORMAT_VERSION = 2
+
+
 class ClickablePreviewLabel(QLabel):
     def __init__(
         self,
@@ -4631,7 +4636,7 @@ class MainWindow(QMainWindow):
             )
 
         project_data = {
-            "version": 2,
+            "version": PROJECT_FORMAT_VERSION,
             "current_page_index": self.current_page_index,
             "pages": pages,
             "settings": {
@@ -4866,6 +4871,94 @@ class MainWindow(QMainWindow):
             self.status_label.setText(
                 self.tr(
                     "❌ 作業の読み込みに失敗しました"
+                )
+            )
+            return
+
+        raw_project_version = project_data.get(
+            "version",
+            1,
+        )
+
+        if isinstance(
+            raw_project_version,
+            bool,
+        ):
+            project_version = None
+
+        elif isinstance(
+            raw_project_version,
+            int,
+        ):
+            project_version = raw_project_version
+
+        elif (
+            isinstance(
+                raw_project_version,
+                str,
+            )
+            and raw_project_version.isdigit()
+        ):
+            project_version = int(
+                raw_project_version
+            )
+
+        else:
+            project_version = None
+
+        if (
+            project_version is None
+            or project_version
+            < MIN_SUPPORTED_PROJECT_FORMAT_VERSION
+        ):
+            QMessageBox.warning(
+                self,
+                self.tr(
+                    "プロジェクト形式エラー"
+                ),
+                self.tr(
+                    "このプロジェクトファイルの"
+                    "形式バージョンを認識できません。\n\n"
+                    "ファイルが破損している可能性があるため、"
+                    "読み込みを中止しました。"
+                ),
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "❌ プロジェクト形式を認識できません"
+                )
+            )
+            return
+
+        if (
+            project_version
+            > PROJECT_FORMAT_VERSION
+        ):
+            QMessageBox.warning(
+                self,
+                self.tr(
+                    "新しいプロジェクト形式"
+                ),
+                self.tr(
+                    "このプロジェクトは、"
+                    "現在のAlbumCrop Studioより"
+                    "新しい形式で保存されています。\n\n"
+                    "プロジェクト形式: {project_version}\n"
+                    "対応形式: {supported_version}まで\n\n"
+                    "データを保護するため、"
+                    "読み込みを中止しました。"
+                ).format(
+                    project_version=project_version,
+                    supported_version=(
+                        PROJECT_FORMAT_VERSION
+                    ),
+                ),
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "❌ 新しい形式のプロジェクトは開けません"
                 )
             )
             return
