@@ -4766,6 +4766,87 @@ class MainWindow(QMainWindow):
 
         self.preview_area.update()
 
+    def read_recovery_data(
+        self,
+        recovery_path,
+    ):
+        try:
+            with open(
+                recovery_path,
+                "r",
+                encoding="utf-8",
+            ) as file:
+                recovery_data = json.load(
+                    file
+                )
+
+        except Exception as e:
+            print(
+                "Recovery読み込みエラー: "
+                f"{recovery_path}: {e}"
+            )
+            return None
+
+        if not isinstance(
+            recovery_data,
+            dict,
+        ):
+            print(
+                "Recovery形式エラー: "
+                f"{recovery_path}"
+            )
+            return None
+
+        recovery_format_version = (
+            recovery_data.get(
+                "recovery_format_version"
+            )
+        )
+
+        if (
+            isinstance(
+                recovery_format_version,
+                bool,
+            )
+            or not isinstance(
+                recovery_format_version,
+                int,
+            )
+        ):
+            print(
+                "Recoveryバージョンエラー: "
+                f"{recovery_path}"
+            )
+            return None
+
+        if (
+            recovery_format_version
+            != RECOVERY_FORMAT_VERSION
+        ):
+            print(
+                "未対応Recovery形式: "
+                f"{recovery_path} "
+                f"(version "
+                f"{recovery_format_version})"
+            )
+            return None
+
+        project_data = recovery_data.get(
+            "project_data"
+        )
+
+        if not isinstance(
+            project_data,
+            dict,
+        ):
+            print(
+                "Recoveryプロジェクトデータエラー: "
+                f"{recovery_path}"
+            )
+            return None
+
+        return recovery_data
+
     def check_for_recovery_files(self):
         try:
             recovery_files = sorted(
@@ -4792,55 +4873,32 @@ class MainWindow(QMainWindow):
             != self.recovery_file_path
         ]
 
-        if not recovery_files:
-            return
+        recovery_path = None
+        recovery_data = None
 
-        recovery_path = recovery_files[0]
-
-        try:
-            with open(
-                recovery_path,
-                "r",
-                encoding="utf-8",
-            ) as file:
-                recovery_data = json.load(
-                    file
+        for candidate_path in recovery_files:
+            candidate_data = (
+                self.read_recovery_data(
+                    candidate_path
                 )
-
-        except Exception as e:
-            print(
-                "Recovery読み込みエラー: "
-                f"{e}"
             )
-            return
 
-        if not isinstance(
-            recovery_data,
-            dict,
-        ):
-            return
+            if candidate_data is None:
+                continue
 
-        recovery_format_version = (
-            recovery_data.get(
-                "recovery_format_version"
-            )
-        )
+            recovery_path = candidate_path
+            recovery_data = candidate_data
+            break
 
         if (
-            recovery_format_version
-            != RECOVERY_FORMAT_VERSION
+            recovery_path is None
+            or recovery_data is None
         ):
             return
 
         project_data = recovery_data.get(
             "project_data"
         )
-
-        if not isinstance(
-            project_data,
-            dict,
-        ):
-            return
 
         message_box = QMessageBox(
             self
