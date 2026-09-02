@@ -2557,6 +2557,14 @@ class PhotoCanvas(QWidget):
             )
         )
 
+        distribute_vertical_action = (
+            distribute_menu.addAction(
+                self.tr(
+                    "縦方向に等間隔"
+                )
+            )
+        )
+
         menu.addSeparator()
 
         group_action = menu.addAction(
@@ -2917,6 +2925,86 @@ class PhotoCanvas(QWidget):
 
                 current_x += (
                     w + gap
+                )
+
+            self.rects_changed.emit()
+            self.update()
+            return
+
+        if (
+            selected_action
+            == distribute_vertical_action
+        ):
+            if len(align_indexes) < 3:
+                return
+
+            vertical_indexes = sorted(
+                align_indexes,
+                key=lambda index: (
+                    self.rects[index][1]
+                ),
+            )
+
+            first_index = (
+                vertical_indexes[0]
+            )
+
+            last_index = (
+                vertical_indexes[-1]
+            )
+
+            _, first_y, _, first_h = (
+                self.rects[first_index]
+            )
+
+            _, last_y, _, _ = (
+                self.rects[last_index]
+            )
+
+            total_height = sum(
+                self.rects[index][3]
+                for index
+                in vertical_indexes
+            )
+
+            available_span = (
+                last_y
+                - first_y
+                + self.rects[
+                    last_index
+                ][3]
+            )
+
+            gap = (
+                available_span
+                - total_height
+            ) / (
+                len(vertical_indexes)
+                - 1
+            )
+
+            self.save_undo_state()
+
+            current_y = (
+                first_y + first_h + gap
+            )
+
+            for index in (
+                vertical_indexes[1:-1]
+            ):
+                x, y, w, h = (
+                    self.rects[index]
+                )
+
+                self.rects[index] = (
+                    x,
+                    current_y,
+                    w,
+                    h,
+                )
+
+                current_y += (
+                    h + gap
                 )
 
             self.rects_changed.emit()
