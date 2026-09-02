@@ -2380,6 +2380,15 @@ class PhotoCanvas(QWidget):
                     can_align = False
                     break
 
+        # ---------------------------------
+        # 等間隔配置可否
+        # 独立した通常枠を3個以上選択
+        # ---------------------------------
+        can_distribute = (
+            can_align
+            and len(selected_indexes) >= 3
+        )
+
         can_ungroup = False
 
         if (
@@ -2529,6 +2538,22 @@ class PhotoCanvas(QWidget):
         align_bottom_action = (
             align_menu.addAction(
                 self.tr("下揃え")
+            )
+        )
+
+        distribute_menu = menu.addMenu(
+            self.tr("等間隔配置")
+        )
+
+        distribute_menu.setEnabled(
+            can_distribute
+        )
+
+        distribute_horizontal_action = (
+            distribute_menu.addAction(
+                self.tr(
+                    "横方向に等間隔"
+                )
             )
         )
 
@@ -2812,6 +2837,86 @@ class PhotoCanvas(QWidget):
                     new_y,
                     w,
                     h,
+                )
+
+            self.rects_changed.emit()
+            self.update()
+            return
+
+        if (
+            selected_action
+            == distribute_horizontal_action
+        ):
+            if len(align_indexes) < 3:
+                return
+
+            horizontal_indexes = sorted(
+                align_indexes,
+                key=lambda index: (
+                    self.rects[index][0]
+                ),
+            )
+
+            first_index = (
+                horizontal_indexes[0]
+            )
+
+            last_index = (
+                horizontal_indexes[-1]
+            )
+
+            first_x, _, first_w, _ = (
+                self.rects[first_index]
+            )
+
+            last_x, _, _, _ = (
+                self.rects[last_index]
+            )
+
+            total_width = sum(
+                self.rects[index][2]
+                for index
+                in horizontal_indexes
+            )
+
+            available_span = (
+                last_x
+                - first_x
+                + self.rects[
+                    last_index
+                ][2]
+            )
+
+            gap = (
+                available_span
+                - total_width
+            ) / (
+                len(horizontal_indexes)
+                - 1
+            )
+
+            self.save_undo_state()
+
+            current_x = (
+                first_x + first_w + gap
+            )
+
+            for index in (
+                horizontal_indexes[1:-1]
+            ):
+                x, y, w, h = (
+                    self.rects[index]
+                )
+
+                self.rects[index] = (
+                    current_x,
+                    y,
+                    w,
+                    h,
+                )
+
+                current_x += (
+                    w + gap
                 )
 
             self.rects_changed.emit()
