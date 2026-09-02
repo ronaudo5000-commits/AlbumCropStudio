@@ -1,5 +1,7 @@
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from io import BytesIO
 from PIL import Image
@@ -4717,7 +4719,68 @@ class MainWindow(QMainWindow):
         self.preview_area.mosaic_resize_undo_saved = False
 
         self.preview_area.update()
-    
+
+    def write_project_file_safely(
+        self,
+        file_path,
+        project_data,
+    ):
+        target_path = Path(
+            file_path
+        )
+
+        target_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        temp_path = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=target_path.parent,
+                prefix=(
+                    f".{target_path.name}."
+                ),
+                suffix=".tmp",
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(
+                    temp_file.name
+                )
+
+                json.dump(
+                    project_data,
+                    temp_file,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+                temp_file.flush()
+
+                os.fsync(
+                    temp_file.fileno()
+                )
+
+            os.replace(
+                temp_path,
+                target_path,
+            )
+
+        except Exception:
+            if (
+                temp_path is not None
+                and temp_path.exists()
+            ):
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass
+
+            raise
+
     def save_project(self):
         project_data = self.build_project_data()
 
@@ -4765,17 +4828,10 @@ class MainWindow(QMainWindow):
                 return
 
         try:
-            with open(
+            self.write_project_file_safely(
                 file_path,
-                "w",
-                encoding="utf-8",
-            ) as file:
-                json.dump(
-                    project_data,
-                    file,
-                    ensure_ascii=False,
-                    indent=2,
-                )
+                project_data,
+            )
 
             self.current_project_path = file_path
             self.project_modified = False
@@ -4807,17 +4863,10 @@ class MainWindow(QMainWindow):
         project_data = self.build_project_data()
 
         try:
-            with open(
+            self.write_project_file_safely(
                 self.current_project_path,
-                "w",
-                encoding="utf-8",
-            ) as file:
-                json.dump(
-                    project_data,
-                    file,
-                    ensure_ascii=False,
-                    indent=2,
-                )
+                project_data,
+            )
 
             self.project_modified = False
 
