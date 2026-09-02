@@ -888,47 +888,97 @@ or use the “Open Image” button</translation>
         <translation>Pixelation</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2393"/>
+        <location filename="../app/photo_canvas.py" line="2427"/>
         <source>元に戻す	Ctrl+Z</source>
         <translation>Undo	Ctrl+Z</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2404"/>
+        <location filename="../app/photo_canvas.py" line="2438"/>
         <source>やり直す	Ctrl+Y</source>
         <translation>Redo	Ctrl+Y</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2417"/>
+        <location filename="../app/photo_canvas.py" line="2451"/>
         <source>切り取り	Ctrl+X</source>
         <translation>Cut	Ctrl+X</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2426"/>
+        <location filename="../app/photo_canvas.py" line="2460"/>
         <source>コピー	Ctrl+C</source>
         <translation>Copy	Ctrl+C</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2435"/>
+        <location filename="../app/photo_canvas.py" line="2469"/>
         <source>貼り付け	Ctrl+V</source>
         <translation>Paste	Ctrl+V</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2444"/>
+        <location filename="../app/photo_canvas.py" line="2478"/>
         <source>削除	Delete</source>
         <translation>Delete	Delete</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2455"/>
+        <location filename="../app/photo_canvas.py" line="2489"/>
         <source>すべて選択	Ctrl+A</source>
         <translation>Select All	Ctrl+A</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2466"/>
+        <location filename="../app/photo_canvas.py" line="2499"/>
+        <source>整列</source>
+        <translation>Align</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2508"/>
+        <source>左揃え</source>
+        <translation>Align Left</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2514"/>
+        <source>左右中央揃え</source>
+        <translation>Align Horizontal Centers</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2520"/>
+        <source>右揃え</source>
+        <translation>Align Right</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2528"/>
+        <source>上揃え</source>
+        <translation>Align Top</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2534"/>
+        <source>上下中央揃え</source>
+        <translation>Align Vertical Centers</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2540"/>
+        <source>下揃え</source>
+        <translation>Align Bottom</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2545"/>
+        <source>等間隔配置</source>
+        <translation>Distribute Spacing</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2555"/>
+        <source>横方向に等間隔</source>
+        <translation>Distribute Horizontal Spacing</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2563"/>
+        <source>縦方向に等間隔</source>
+        <translation>Distribute Vertical Spacing</translation>
+    </message>
+    <message>
+        <location filename="../app/photo_canvas.py" line="2572"/>
         <source>枠をグループ化	Ctrl+G</source>
         <translation>Group Frames	Ctrl+G</translation>
     </message>
     <message>
-        <location filename="../app/photo_canvas.py" line="2475"/>
+        <location filename="../app/photo_canvas.py" line="2581"/>
         <source>グループを解除	Ctrl+Shift+G</source>
         <translation>Ungroup	Ctrl+Shift+G</translation>
     </message>
