@@ -128,6 +128,11 @@ class SettingsDialog(QDialog):
             "en",
         )
 
+        self.language_combo.addItem(
+            "繁體中文",
+            "zh_TW",
+        )
+
         current_language = (
             Config.get_language()
         )
