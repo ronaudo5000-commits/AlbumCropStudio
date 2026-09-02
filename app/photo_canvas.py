@@ -1450,15 +1450,25 @@ class PhotoCanvas(QWidget):
         painter.fillRect(self.rect(), QColor(245, 245, 245))
 
         if self.pixmap is None:
-            painter.setPen(QColor(80, 80, 80))
+            painter.setPen(
+                QColor(
+                    80,
+                    80,
+                    80,
+                )
+            )
+
+            empty_state_text = self.tr(
+                "画像またはPDFをここへドラッグ＆ドロップ\n\n"
+                "または「画像を開く」から読み込んでください\n\n"
+                "読み込み後は、写真を自動検出するか、"
+                "手動で切り抜き枠を作成できます"
+            )
+
             painter.drawText(
                 self.rect(),
                 Qt.AlignmentFlag.AlignCenter,
-                self.tr(
-                    "画像をここへドラッグ＆ドロップ"
-                    "\n\n"
-                    "または『画像を開く』ボタンを使用"
-                ),
+                empty_state_text,
             )
             return
 

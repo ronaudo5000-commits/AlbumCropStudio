@@ -2088,6 +2088,21 @@ class MainWindow(QMainWindow):
             self.paste_all_pages_action
         )
 
+        quick_start_action = QAction(
+            self.tr("クイックスタート"),
+            self,
+        )
+
+        quick_start_action.triggered.connect(
+            self.show_quick_start
+        )
+
+        help_menu.addAction(
+            quick_start_action
+        )
+
+        help_menu.addSeparator()
+
         about_action = QAction(
             self.tr("About AlbumCrop Studio"),
             self,
@@ -2355,7 +2370,8 @@ class MainWindow(QMainWindow):
 
         self.detect_button.setToolTip(
             self.tr(
-                "画像から写真を自動検出します"
+                "画像の中にある写真を自動検出して、"
+                "切り抜き枠を作成します"
             )
         )
 
@@ -2367,7 +2383,8 @@ class MainWindow(QMainWindow):
 
         self.generate_rects_button.setToolTip(
             self.tr(
-                "指定した枚数の枠を自動配置します"
+                "指定した数の切り抜き枠を"
+                "画像上へ均等に配置します"
             )
         )
 
@@ -7789,6 +7806,31 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+
+    def show_quick_start(self):
+        QMessageBox.information(
+            self,
+            self.tr(
+                "クイックスタート"
+            ),
+            self.tr(
+                "AlbumCrop Studioの基本的な使い方\n\n"
+                "1. 画像またはPDFを開く\n"
+                "   「画像を開く」またはドラッグ＆ドロップで"
+                "資料を読み込みます。\n\n"
+                "2. 切り抜き枠を作る\n"
+                "   「写真を自動検出」で写真を検出するか、"
+                "枠を手動で作成・配置します。\n\n"
+                "3. 枠を確認・調整する\n"
+                "   枠の位置・大きさ・角度などを"
+                "必要に応じて調整します。\n\n"
+                "4. 切り抜く\n"
+                "   右側のプレビューを確認し、"
+                "「切り抜き」から画像を書き出します。\n\n"
+                "作業内容は「作業を保存」で"
+                "プロジェクトとして保存できます。"
+            ),
+        )
 
     def show_about_dialog(self):
         dialog = AboutDialog(self)
