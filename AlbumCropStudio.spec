@@ -18,6 +18,10 @@ datas=[
         'translations/albumcrop_en.qm',
         'translations',
     ),
+    (
+        'translations/albumcrop_zh_TW.qm',
+        'translations',
+    ),
 ],
     hiddenimports=[],
     hookspath=[],
