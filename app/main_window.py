@@ -15,6 +15,7 @@ from PySide6.QtCore import (
     QSize,
     QProcess,
     QThread,
+    QTimer,
 )
 
 from PySide6.QtGui import (
@@ -81,6 +82,9 @@ from app.detection_worker import DetectionWorker
 
 MIN_SUPPORTED_PROJECT_FORMAT_VERSION = 1
 PROJECT_FORMAT_VERSION = 2
+
+RECOVERY_FORMAT_VERSION = 1
+AUTOSAVE_INTERVAL_MS = 60_000
 
 
 class ClickablePreviewLabel(QLabel):
@@ -1139,6 +1143,48 @@ class MainWindow(QMainWindow):
         self.pdf_temp_dir.mkdir(
             parents=True,
             exist_ok=True,
+        )
+
+        self.recovery_dir = (
+            Path.home()
+            / ".albumcrop_studio"
+            / "recovery"
+        )
+
+        self.recovery_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        recovery_session_id = (
+            f"{os.getpid()}_"
+            f"{int(time.time())}"
+        )
+
+        self.recovery_file_path = (
+            self.recovery_dir
+            / (
+                "recovery_"
+                f"{recovery_session_id}.json"
+            )
+        )
+
+        self.autosave_last_snapshot = None
+
+        self.autosave_timer = QTimer(
+            self
+        )
+        self.autosave_timer.setInterval(
+            AUTOSAVE_INTERVAL_MS
+        )
+        self.autosave_timer.timeout.connect(
+            self.perform_autosave
+        )
+        self.autosave_timer.start()
+
+        QTimer.singleShot(
+            0,
+            self.check_for_recovery_files,
         )
 
         central = QWidget()
@@ -4720,6 +4766,320 @@ class MainWindow(QMainWindow):
 
         self.preview_area.update()
 
+    def check_for_recovery_files(self):
+        try:
+            recovery_files = sorted(
+                self.recovery_dir.glob(
+                    "recovery_*.json"
+                ),
+                key=lambda path: (
+                    path.stat().st_mtime
+                ),
+                reverse=True,
+            )
+
+        except Exception as e:
+            print(
+                "Recovery検索エラー: "
+                f"{e}"
+            )
+            return
+
+        recovery_files = [
+            path
+            for path in recovery_files
+            if path
+            != self.recovery_file_path
+        ]
+
+        if not recovery_files:
+            return
+
+        recovery_path = recovery_files[0]
+
+        try:
+            with open(
+                recovery_path,
+                "r",
+                encoding="utf-8",
+            ) as file:
+                recovery_data = json.load(
+                    file
+                )
+
+        except Exception as e:
+            print(
+                "Recovery読み込みエラー: "
+                f"{e}"
+            )
+            return
+
+        if not isinstance(
+            recovery_data,
+            dict,
+        ):
+            return
+
+        recovery_format_version = (
+            recovery_data.get(
+                "recovery_format_version"
+            )
+        )
+
+        if (
+            recovery_format_version
+            != RECOVERY_FORMAT_VERSION
+        ):
+            return
+
+        project_data = recovery_data.get(
+            "project_data"
+        )
+
+        if not isinstance(
+            project_data,
+            dict,
+        ):
+            return
+
+        message_box = QMessageBox(
+            self
+        )
+
+        message_box.setIcon(
+            QMessageBox.Icon.Warning
+        )
+
+        message_box.setWindowTitle(
+            self.tr(
+                "作業の復元"
+            )
+        )
+
+        message_box.setText(
+            self.tr(
+                "前回の自動保存データが"
+                "見つかりました。\n\n"
+                "前回の作業が正常に終了しなかった"
+                "可能性があります。"
+            )
+        )
+
+        message_box.setInformativeText(
+            self.tr(
+                "自動保存された作業を"
+                "復元しますか？"
+            )
+        )
+
+        restore_button = (
+            message_box.addButton(
+                self.tr(
+                    "復元する"
+                ),
+                QMessageBox.ButtonRole.AcceptRole,
+            )
+        )
+
+        discard_button = (
+            message_box.addButton(
+                self.tr(
+                    "破棄する"
+                ),
+                QMessageBox.ButtonRole.DestructiveRole,
+            )
+        )
+
+        message_box.addButton(
+            self.tr(
+                "キャンセル"
+            ),
+            QMessageBox.ButtonRole.RejectRole,
+        )
+
+        message_box.exec()
+
+        clicked_button = (
+            message_box.clickedButton()
+        )
+
+        if clicked_button is restore_button:
+            self.restore_recovery_file(
+                recovery_path,
+                project_data,
+            )
+            return
+
+        if clicked_button is discard_button:
+            try:
+                recovery_path.unlink()
+
+            except Exception as e:
+                print(
+                    "Recovery削除エラー: "
+                    f"{e}"
+                )
+
+    def restore_recovery_file(
+        self,
+        recovery_path,
+        project_data,
+    ):
+        temporary_project_path = (
+            self.recovery_dir
+            / (
+                "restore_"
+                f"{os.getpid()}.acsp.json"
+            )
+        )
+
+        try:
+            self.write_project_file_safely(
+                temporary_project_path,
+                project_data,
+            )
+
+            self.load_project(
+                file_path=str(
+                    temporary_project_path
+                )
+            )
+
+            recovery_loaded = (
+                self.current_project_path
+                == str(
+                    temporary_project_path
+                )
+            )
+
+            if not recovery_loaded:
+                return
+
+            self.current_project_path = None
+            self.project_modified = True
+
+            try:
+                recovery_path.unlink()
+
+            except Exception as e:
+                print(
+                    "Recovery削除エラー: "
+                    f"{e}"
+                )
+
+            self.autosave_last_snapshot = None
+
+            self.status_label.setText(
+                self.tr(
+                    "✅ 自動保存から作業を復元しました"
+                )
+            )
+
+        except Exception as e:
+            print(
+                "Recovery復元エラー: "
+                f"{e}"
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "❌ 自動保存からの復元に失敗しました"
+                )
+            )
+
+        finally:
+            if temporary_project_path.exists():
+                try:
+                    temporary_project_path.unlink()
+
+                except Exception:
+                    pass
+
+    def clear_recovery_file(self):
+        recovery_path = getattr(
+            self,
+            "recovery_file_path",
+            None,
+        )
+
+        if (
+            recovery_path is not None
+            and recovery_path.exists()
+        ):
+            try:
+                recovery_path.unlink()
+
+            except Exception as e:
+                print(
+                    "Recoveryファイル削除エラー: "
+                    f"{e}"
+                )
+
+        self.autosave_last_snapshot = None
+
+    def perform_autosave(self):
+        if not self.project_modified:
+            return
+
+        if not self.image_paths:
+            return
+
+        if self.detection_running:
+            return
+
+        if self.export_running:
+            return
+
+        if self.bulk_paste_in_progress:
+            return
+
+        try:
+            project_data = (
+                self.build_project_data()
+            )
+
+            snapshot = json.dumps(
+                project_data,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(
+                    ",",
+                    ":",
+                ),
+            )
+
+            if (
+                snapshot
+                == self.autosave_last_snapshot
+            ):
+                return
+
+            recovery_data = {
+                "recovery_format_version": (
+                    RECOVERY_FORMAT_VERSION
+                ),
+                "saved_at": time.time(),
+                "source_project_path": (
+                    self.current_project_path
+                ),
+                "project_data": project_data,
+            }
+
+            self.write_project_file_safely(
+                self.recovery_file_path,
+                recovery_data,
+            )
+
+            self.autosave_last_snapshot = (
+                snapshot
+            )
+
+        except Exception as e:
+            print(
+                "Auto Saveエラー: "
+                f"{e}"
+            )
+
     def write_project_file_safely(
         self,
         file_path,
@@ -4836,6 +5196,8 @@ class MainWindow(QMainWindow):
             self.current_project_path = file_path
             self.project_modified = False
 
+            self.clear_recovery_file()
+
             self.status_label.setText(
                 self.tr(
                     "✅ 作業を保存しました"
@@ -4870,6 +5232,8 @@ class MainWindow(QMainWindow):
 
             self.project_modified = False
 
+            self.clear_recovery_file()
+
             self.status_label.setText(
                 self.tr(
                     "✅ 作業を上書き保存しました"
@@ -4887,19 +5251,28 @@ class MainWindow(QMainWindow):
                 )
             )
 
-    def load_project(self):
-
+    def load_project(
+        self,
+        checked=False,
+        file_path=None,
+    ):
         if not self.confirm_discard_changes():
             return
-        
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            self.tr(
-                "作業を開く"
-            ),
-            "",
-            "AlbumCrop Studio Project (*.acsp.json)",
-        )
+
+        if file_path is None:
+            file_path, _ = (
+                QFileDialog.getOpenFileName(
+                    self,
+                    self.tr(
+                        "作業を開く"
+                    ),
+                    "",
+                    (
+                        "AlbumCrop Studio Project "
+                        "(*.acsp.json)"
+                    ),
+                )
+            )
 
         if not file_path:
             return
@@ -7303,6 +7676,7 @@ class MainWindow(QMainWindow):
             return
 
         if self.confirm_discard_changes():
+            self.clear_recovery_file()
             event.accept()
         else:
             event.ignore()
