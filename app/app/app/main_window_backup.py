@@ -151,6 +151,9 @@ class MainWindow(QMainWindow):
         self.detected_rects = []
 
         self.current_project_path = None
+
+        self.undo_manager = UndoManager()
+
         self.project_modified = False
 
         self.image_paths = []

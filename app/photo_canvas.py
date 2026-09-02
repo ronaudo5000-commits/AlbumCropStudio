@@ -2500,6 +2500,18 @@ class PhotoCanvas(QWidget):
             )
         )
 
+        align_center_action = (
+            align_menu.addAction(
+                self.tr("左右中央揃え")
+            )
+        )
+
+        align_right_action = (
+            align_menu.addAction(
+                self.tr("右揃え")
+            )
+        )
+
         menu.addSeparator()
 
         group_action = menu.addAction(
@@ -2578,11 +2590,11 @@ class PhotoCanvas(QWidget):
             self.keyPressEvent(key_event)
             return
 
-        if selected_action == align_left_action:
-            align_indexes = sorted(
-                selected_indexes
-            )
+        align_indexes = sorted(
+            selected_indexes
+        )
 
+        if selected_action == align_left_action:
             if len(align_indexes) < 2:
                 return
 
@@ -2600,6 +2612,81 @@ class PhotoCanvas(QWidget):
 
                 self.rects[index] = (
                     left_x,
+                    y,
+                    w,
+                    h,
+                )
+
+            self.rects_changed.emit()
+            self.update()
+            return
+
+        if selected_action == align_center_action:
+            if len(align_indexes) < 2:
+                return
+
+            selection_left = min(
+                self.rects[index][0]
+                for index in align_indexes
+            )
+
+            selection_right = max(
+                self.rects[index][0]
+                + self.rects[index][2]
+                for index in align_indexes
+            )
+
+            center_x = (
+                selection_left
+                + selection_right
+            ) / 2
+
+            self.save_undo_state()
+
+            for index in align_indexes:
+                x, y, w, h = (
+                    self.rects[index]
+                )
+
+                new_x = (
+                    center_x
+                    - w / 2
+                )
+
+                self.rects[index] = (
+                    new_x,
+                    y,
+                    w,
+                    h,
+                )
+
+            self.rects_changed.emit()
+            self.update()
+            return
+
+        if selected_action == align_right_action:
+            if len(align_indexes) < 2:
+                return
+
+            right_x = max(
+                self.rects[index][0]
+                + self.rects[index][2]
+                for index in align_indexes
+            )
+
+            self.save_undo_state()
+
+            for index in align_indexes:
+                x, y, w, h = (
+                    self.rects[index]
+                )
+
+                new_x = (
+                    right_x - w
+                )
+
+                self.rects[index] = (
+                    new_x,
                     y,
                     w,
                     h,
