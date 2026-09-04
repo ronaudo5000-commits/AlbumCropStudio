@@ -1,4 +1,4 @@
-EDITION_FREE = "free"
+﻿EDITION_FREE = "free"
 EDITION_INTERNAL = "internal"
 
 
