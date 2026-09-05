@@ -213,6 +213,185 @@ class CropExportWorker(QObject):
             bottom - top,
         )
 
+    def transform_mosaic_rects_for_crop(
+        self,
+        mosaic_rects,
+        crop_x,
+        crop_y,
+        crop_w,
+        crop_h,
+        angle,
+    ):
+        if not mosaic_rects:
+            return []
+
+        crop_center_x = (
+            crop_x + crop_w / 2
+        )
+
+        crop_center_y = (
+            crop_y + crop_h / 2
+        )
+
+        angle_rad = math.radians(
+            -angle
+        )
+
+        cos_a = math.cos(
+            angle_rad
+        )
+
+        sin_a = math.sin(
+            angle_rad
+        )
+
+        transformed_rects = []
+
+        for rect in mosaic_rects:
+            if (
+                not isinstance(
+                    rect,
+                    (list, tuple),
+                )
+                or len(rect) != 4
+            ):
+                continue
+
+            try:
+                x, y, w, h = (
+                    float(value)
+                    for value in rect
+                )
+
+            except (
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
+                continue
+
+            if not all(
+                math.isfinite(value)
+                for value in (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+            ):
+                continue
+
+            if w <= 0 or h <= 0:
+                continue
+
+            corners = (
+                (x, y),
+                (x + w, y),
+                (x + w, y + h),
+                (x, y + h),
+            )
+
+            transformed_points = []
+
+            for point_x, point_y in corners:
+                dx = (
+                    point_x
+                    - crop_center_x
+                )
+
+                dy = (
+                    point_y
+                    - crop_center_y
+                )
+
+                rotated_x = (
+                    crop_center_x
+                    + dx * cos_a
+                    - dy * sin_a
+                )
+
+                rotated_y = (
+                    crop_center_y
+                    + dx * sin_a
+                    + dy * cos_a
+                )
+
+                transformed_points.append(
+                    (
+                        rotated_x - crop_x,
+                        rotated_y - crop_y,
+                    )
+                )
+
+            left = max(
+                0,
+                int(
+                    math.floor(
+                        min(
+                            point[0]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            top = max(
+                0,
+                int(
+                    math.floor(
+                        min(
+                            point[1]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            right = min(
+                int(round(crop_w)),
+                int(
+                    math.ceil(
+                        max(
+                            point[0]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            bottom = min(
+                int(round(crop_h)),
+                int(
+                    math.ceil(
+                        max(
+                            point[1]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            if (
+                right <= left
+                or bottom <= top
+            ):
+                continue
+
+            transformed_rects.append(
+                (
+                    left,
+                    top,
+                    right - left,
+                    bottom - top,
+                )
+            )
+
+        return transformed_rects
+
     def apply_mosaic_rects(
         self,
         image,
@@ -593,11 +772,6 @@ class CropExportWorker(QObject):
                     image_width = image.width
                     image_height = image.height
 
-                    image = self.apply_mosaic_rects(
-                        image,
-                        page_mosaic_rects,
-                    )
-
                     for (
                         crop_index,
                         member_indexes,
@@ -720,6 +894,22 @@ class CropExportWorker(QObject):
                                     crop_h,
                                     angle,
                                 )
+                            )
+
+                            transformed_mosaic_rects = (
+                                self.transform_mosaic_rects_for_crop(
+                                    page_mosaic_rects,
+                                    crop_x,
+                                    crop_y,
+                                    crop_w,
+                                    crop_h,
+                                    angle,
+                                )
+                            )
+
+                            crop = self.apply_mosaic_rects(
+                                crop,
+                                transformed_mosaic_rects,
                             )
 
                             elapsed_time = (

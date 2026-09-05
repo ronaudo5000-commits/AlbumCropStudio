@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sys
 import tempfile
@@ -2897,6 +2898,19 @@ class MainWindow(QMainWindow):
                     "結果を反映しませんでした"
                 )
             )
+            return
+
+        if not detected_rects:
+            if self.preview_area.rects:
+                self.status_label.setText(
+                    self.tr(
+                        "写真を検出できなかったため、"
+                        "既存の切り抜き枠を保持しました"
+                    )
+                )
+            else:
+                self.update_current_rect_count_status()
+
             return
 
         self.detected_rects = (
@@ -7023,6 +7037,55 @@ class MainWindow(QMainWindow):
         if self.detection_running:
             return
 
+        if self.preview_area.rects:
+            message_box = QMessageBox(
+                self
+            )
+
+            message_box.setIcon(
+                QMessageBox.Icon.Warning
+            )
+
+            message_box.setWindowTitle(
+                self.tr(
+                    "自動検出の確認"
+                )
+            )
+
+            message_box.setText(
+                self.tr(
+                    "既存の切り抜き枠があります。"
+                )
+            )
+
+            message_box.setInformativeText(
+                self.tr(
+                    "自動検出を実行すると、現在の切り抜き枠を"
+                    "検出結果で置き換えます。\n\n"
+                    "続行しますか？"
+                )
+            )
+
+            continue_button = (
+                message_box.addButton(
+                    self.tr("続行"),
+                    QMessageBox.ButtonRole.AcceptRole,
+                )
+            )
+
+            message_box.addButton(
+                self.tr("キャンセル"),
+                QMessageBox.ButtonRole.RejectRole,
+            )
+
+            message_box.exec()
+
+            if (
+                message_box.clickedButton()
+                is not continue_button
+            ):
+                return
+
         self.detection_running = True
 
         self.detection_image_path = (
@@ -7933,26 +7996,39 @@ class MainWindow(QMainWindow):
 
         super().keyPressEvent(event)
 
-    def create_mosaic_preview_source_pixmap(
+    def transform_mosaic_rects_for_preview(
         self,
+        mosaic_rects,
+        crop_x,
+        crop_y,
+        crop_w,
+        crop_h,
+        angle,
     ):
-        if self.current_pixmap is None:
-            return QPixmap()
-
-        result = self.current_pixmap.copy()
-
-        mosaic_rects = (
-            self.preview_area.mosaic_rects
-        )
-
         if not mosaic_rects:
-            return result
+            return []
 
-        painter = QPainter(
-            result
+        crop_center_x = (
+            crop_x + crop_w / 2
         )
 
-        block_size = 20
+        crop_center_y = (
+            crop_y + crop_h / 2
+        )
+
+        angle_rad = math.radians(
+            -angle
+        )
+
+        cos_a = math.cos(
+            angle_rad
+        )
+
+        sin_a = math.sin(
+            angle_rad
+        )
+
+        transformed_rects = []
 
         for rect in mosaic_rects:
             if (
@@ -7964,6 +8040,140 @@ class MainWindow(QMainWindow):
             ):
                 continue
 
+            x, y, w, h = (
+                float(value)
+                for value in rect
+            )
+
+            corners = (
+                (x, y),
+                (x + w, y),
+                (x + w, y + h),
+                (x, y + h),
+            )
+
+            transformed_points = []
+
+            for point_x, point_y in corners:
+                dx = (
+                    point_x
+                    - crop_center_x
+                )
+
+                dy = (
+                    point_y
+                    - crop_center_y
+                )
+
+                rotated_x = (
+                    crop_center_x
+                    + dx * cos_a
+                    - dy * sin_a
+                )
+
+                rotated_y = (
+                    crop_center_y
+                    + dx * sin_a
+                    + dy * cos_a
+                )
+
+                transformed_points.append(
+                    (
+                        rotated_x - crop_x,
+                        rotated_y - crop_y,
+                    )
+                )
+
+            left = max(
+                0,
+                int(
+                    math.floor(
+                        min(
+                            point[0]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            top = max(
+                0,
+                int(
+                    math.floor(
+                        min(
+                            point[1]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            right = min(
+                int(round(crop_w)),
+                int(
+                    math.ceil(
+                        max(
+                            point[0]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            bottom = min(
+                int(round(crop_h)),
+                int(
+                    math.ceil(
+                        max(
+                            point[1]
+                            for point
+                            in transformed_points
+                        )
+                    )
+                ),
+            )
+
+            if (
+                right <= left
+                or bottom <= top
+            ):
+                continue
+
+            transformed_rects.append(
+                (
+                    left,
+                    top,
+                    right - left,
+                    bottom - top,
+                )
+            )
+
+        return transformed_rects
+
+    def apply_mosaic_to_preview_pixmap(
+        self,
+        pixmap,
+        mosaic_rects,
+    ):
+        if (
+            pixmap is None
+            or pixmap.isNull()
+            or not mosaic_rects
+        ):
+            return pixmap
+
+        result = pixmap.copy()
+
+        painter = QPainter(
+            result
+        )
+
+        block_size = 20
+
+        for rect in mosaic_rects:
             x, y, w, h = rect
 
             left = max(
@@ -8000,13 +8210,11 @@ class MainWindow(QMainWindow):
                 bottom - top
             )
 
-            mosaic_region = (
-                self.current_pixmap.copy(
-                    left,
-                    top,
-                    region_width,
-                    region_height,
-                )
+            mosaic_region = result.copy(
+                left,
+                top,
+                region_width,
+                region_height,
             )
 
             reduced_width = max(
@@ -8182,12 +8390,15 @@ class MainWindow(QMainWindow):
     def create_composite_crop_preview_pixmap(
         self,
         member_indexes,
-        source_pixmap=None,
     ):
         if not member_indexes:
             return QPixmap()
 
         valid_members = []
+
+        mosaic_rects = (
+            self.preview_area.mosaic_rects
+        )
 
         for index in member_indexes:
             if (
@@ -8223,7 +8434,25 @@ class MainWindow(QMainWindow):
                     w,
                     h,
                     angle,
-                    source_pixmap,
+                    self.current_pixmap,
+                )
+            )
+
+            transformed_mosaic_rects = (
+                self.transform_mosaic_rects_for_preview(
+                    mosaic_rects,
+                    x,
+                    y,
+                    w,
+                    h,
+                    angle,
+                )
+            )
+
+            crop_pixmap = (
+                self.apply_mosaic_to_preview_pixmap(
+                    crop_pixmap,
+                    transformed_mosaic_rects,
                 )
             )
 
@@ -8423,8 +8652,8 @@ class MainWindow(QMainWindow):
             self.build_preview_crop_units()
         )
 
-        preview_source_pixmap = (
-            self.create_mosaic_preview_source_pixmap()
+        mosaic_rects = (
+            self.preview_area.mosaic_rects
         )
 
         for unit_number, unit in enumerate(
@@ -8468,7 +8697,25 @@ class MainWindow(QMainWindow):
                         w,
                         h,
                         angle,
-                        preview_source_pixmap,
+                        self.current_pixmap,
+                    )
+                )
+
+                transformed_mosaic_rects = (
+                    self.transform_mosaic_rects_for_preview(
+                        mosaic_rects,
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                    )
+                )
+
+                crop_pixmap = (
+                    self.apply_mosaic_to_preview_pixmap(
+                        crop_pixmap,
+                        transformed_mosaic_rects,
                     )
                 )
 
@@ -8484,7 +8731,6 @@ class MainWindow(QMainWindow):
                 crop_pixmap = (
                     self.create_composite_crop_preview_pixmap(
                         member_indexes,
-                        preview_source_pixmap,
                     )
                 )
 
