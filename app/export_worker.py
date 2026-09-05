@@ -484,8 +484,8 @@ class CropExportWorker(QObject):
             )
 
             # モザイク1ブロックを
-            # おおよそ20px程度にする
-            block_size = 20
+            # おおよそ36px程度にする
+            block_size = 36
 
             reduced_width = max(
                 1,

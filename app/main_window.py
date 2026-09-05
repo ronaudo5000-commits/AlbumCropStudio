@@ -8171,7 +8171,7 @@ class MainWindow(QMainWindow):
             result
         )
 
-        block_size = 20
+        block_size = 36
 
         for rect in mosaic_rects:
             x, y, w, h = rect
