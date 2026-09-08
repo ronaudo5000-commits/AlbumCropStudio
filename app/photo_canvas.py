@@ -654,14 +654,45 @@ class PhotoCanvas(QWidget):
 
         return max(existing_ids) + 1
 
-    def group_selected_rects(self):
-        selected_indexes = sorted(
-            self.selected_rects
+    def expand_group_selection(
+        self,
+        indexes,
+    ):
+        valid_indexes = {
+            index
+            for index in indexes
+            if (
+                0 <= index
+                < len(self.rects)
+            )
+        }
+
+        if not valid_indexes:
+            return []
+
+        selected_group_ids = {
+            self.rect_group_ids[index]
+            for index in valid_indexes
+            if (
+                index
+                < len(self.rect_group_ids)
+                and self.rect_group_ids[index]
+                is not None
+            )
+        }
+
+        if selected_group_ids:
+            for index, group_id in enumerate(
+                self.rect_group_ids
+            ):
+                if group_id in selected_group_ids:
+                    valid_indexes.add(index)
+
+        return sorted(
+            valid_indexes
         )
 
-        if len(selected_indexes) < 2:
-            return
-
+    def group_selected_rects(self):
         # 枠数に合わせてgroup ID情報を補完する
         while (
             len(self.rect_group_ids)
@@ -681,28 +712,69 @@ class PhotoCanvas(QWidget):
                 ]
             )
 
-        # Phase 1では独立枠同士だけを結合する
-        for index in selected_indexes:
-            if (
-                index < 0
-                or index >= len(self.rects)
-            ):
-                return
+        selected_indexes = set(
+            self.selected_rects
+        )
 
-            if (
-                self.rect_group_ids[index]
-                is not None
-            ):
-                return
+        if (
+            not selected_indexes
+            and 0 <= self.selected_rect
+            < len(self.rects)
+        ):
+            selected_indexes.add(
+                self.selected_rect
+            )
+
+        expanded_indexes = (
+            self.expand_group_selection(
+                selected_indexes
+            )
+        )
+
+        if len(expanded_indexes) < 2:
+            return
+
+        existing_group_ids = {
+            self.rect_group_ids[index]
+            for index in expanded_indexes
+            if self.rect_group_ids[index]
+            is not None
+        }
+
+        has_independent_rect = any(
+            self.rect_group_ids[index]
+            is None
+            for index in expanded_indexes
+        )
+
+        # すでに1つの同じグループだけが
+        # 選択されている場合は何もしない
+        if (
+            len(existing_group_ids) == 1
+            and not has_independent_rect
+        ):
+            return
 
         self.save_undo_state()
 
-        group_id = self.next_group_id()
+        new_group_id = self.next_group_id()
 
-        for index in selected_indexes:
+        for index in expanded_indexes:
             self.rect_group_ids[
                 index
-            ] = group_id
+            ] = new_group_id
+
+        self.selected_rects = set(
+            expanded_indexes
+        )
+
+        if (
+            self.selected_rect
+            not in self.selected_rects
+        ):
+            self.selected_rect = (
+                expanded_indexes[-1]
+            )
 
         self.rects_changed.emit()
         self.update()
@@ -3714,20 +3786,89 @@ class PhotoCanvas(QWidget):
                 )
 
                 if ctrl_pressed:
-                    # Ctrl + クリックでは選択を追加／解除する
-                    if index in self.selected_rects:
-                        self.selected_rects.remove(index)
+                    group_id = None
 
-                        if index == self.selected_rect:
-                            if self.selected_rects:
-                                self.selected_rect = max(
-                                    self.selected_rects
-                                )
-                            else:
-                                self.selected_rect = -1
+                    if index < len(
+                        self.rect_group_ids
+                    ):
+                        group_id = (
+                            self.rect_group_ids[
+                                index
+                            ]
+                        )
+
+                    if (
+                        group_id is not None
+                        and not self.composite_member_edit_mode
+                    ):
+                        group_indexes = {
+                            group_index
+                            for (
+                                group_index,
+                                current_group_id,
+                            )
+                            in enumerate(
+                                self.rect_group_ids
+                            )
+                            if (
+                                current_group_id
+                                == group_id
+                            )
+                        }
+
+                        if (
+                            group_indexes
+                            and group_indexes.issubset(
+                                self.selected_rects
+                            )
+                        ):
+                            self.selected_rects.difference_update(
+                                group_indexes
+                            )
+
+                            if (
+                                self.selected_rect
+                                in group_indexes
+                            ):
+                                if self.selected_rects:
+                                    self.selected_rect = max(
+                                        self.selected_rects
+                                    )
+                                else:
+                                    self.selected_rect = -1
+
+                        else:
+                            self.selected_rects.update(
+                                group_indexes
+                            )
+
+                            self.selected_rect = index
+
                     else:
-                        self.selected_rects.add(index)
-                        self.selected_rect = index
+                        # 独立枠、または構成領域編集モードでは
+                        # 従来どおり1枠単位で追加／解除する
+                        if index in self.selected_rects:
+                            self.selected_rects.remove(
+                                index
+                            )
+
+                            if (
+                                index
+                                == self.selected_rect
+                            ):
+                                if self.selected_rects:
+                                    self.selected_rect = max(
+                                        self.selected_rects
+                                    )
+                                else:
+                                    self.selected_rect = -1
+
+                        else:
+                            self.selected_rects.add(
+                                index
+                            )
+
+                            self.selected_rect = index
 
                 else:
                     group_id = None
