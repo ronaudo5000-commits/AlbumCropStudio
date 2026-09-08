@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QVBoxLayout,
     QHBoxLayout,
+    QGridLayout,
     QSplitter,
     QWidget,
     QGroupBox,
@@ -2475,39 +2476,42 @@ class MainWindow(QMainWindow):
 
 
         # 切り抜き編集
-        edit_group = QGroupBox(
+        self.edit_group = QGroupBox(
             self.tr("切り抜き編集")
         )
 
-        edit_layout = QVBoxLayout()
+        self.edit_layout = QGridLayout()
 
-        edit_layout.setContentsMargins(
+        self.edit_layout.setContentsMargins(
             8, 8, 8, 8
         )
-        edit_layout.setSpacing(6)
 
-        # ---------------------------------
-        # 1段目
-        # 自動検出 / 枠数 / 自動配置
-        # ---------------------------------
-        edit_top_layout = QHBoxLayout()
-
-        edit_top_layout.setContentsMargins(
-            0, 0, 0, 0
-        )
-        edit_top_layout.setSpacing(6)
-
-        edit_top_layout.addWidget(
-            self.detect_button
+        self.edit_layout.setHorizontalSpacing(
+            6
         )
 
-        edit_top_layout.addSpacing(8)
+        self.edit_layout.setVerticalSpacing(
+            6
+        )
 
-        count_layout = QHBoxLayout()
+        # ---------------------------------
+        # 枠数
+        # レスポンシブ再配置しやすいよう
+        # QWidgetとしてまとめて保持する
+        # ---------------------------------
+        self.count_widget = QWidget()
+
+        count_layout = QHBoxLayout(
+            self.count_widget
+        )
+
         count_layout.setContentsMargins(
             0, 0, 0, 0
         )
-        count_layout.setSpacing(4)
+
+        count_layout.setSpacing(
+            4
+        )
 
         count_layout.addWidget(
             self.manual_count_label
@@ -2521,41 +2525,9 @@ class MainWindow(QMainWindow):
             self.manual_count_spin
         )
 
-        edit_top_layout.addLayout(
-            count_layout
-        )
-
-        edit_top_layout.addWidget(
-            self.generate_rects_button
-        )
-
-        edit_top_layout.addStretch()
-
         # ---------------------------------
-        # 2段目
-        # モザイク / グループ / 縦横比
+        # 縦横比
         # ---------------------------------
-        edit_bottom_layout = QHBoxLayout()
-
-        edit_bottom_layout.setContentsMargins(
-            0, 0, 0, 0
-        )
-        edit_bottom_layout.setSpacing(6)
-
-        edit_bottom_layout.addWidget(
-            self.mosaic_create_button
-        )
-
-        edit_bottom_layout.addWidget(
-            self.composite_create_button
-        )
-
-        edit_bottom_layout.addWidget(
-            self.composite_member_edit_button
-        )
-
-        edit_bottom_layout.addSpacing(8)
-
         self.aspect_ratio_combo = QComboBox()
 
         self.aspect_ratio_combo.addItem(
@@ -2611,22 +2583,16 @@ class MainWindow(QMainWindow):
             self.sync_aspect_ratio_to_selected_rect
         )
 
-        edit_bottom_layout.addWidget(
-            self.aspect_ratio_combo
+        # 現在の表示状態
+        self.edit_layout_mode = None
+
+        self.edit_group.setLayout(
+            self.edit_layout
         )
 
-        edit_bottom_layout.addStretch()
-
-        edit_layout.addLayout(
-            edit_top_layout
-        )
-
-        edit_layout.addLayout(
-            edit_bottom_layout
-        )
-
-        edit_group.setLayout(
-            edit_layout
+        # 起動直後はいったん2段で安全側に配置
+        self.apply_edit_layout_mode(
+            "compact"
         )
 
         # 出力
@@ -2646,17 +2612,30 @@ class MainWindow(QMainWindow):
 
 
         # グループ全体
-        controls_layout = QHBoxLayout()
-        controls_layout.setSpacing(10)
-        controls_layout.setContentsMargins(
+        self.controls_layout = QHBoxLayout()
+        self.controls_layout.setSpacing(10)
+        self.controls_layout.setContentsMargins(
             0, 0, 0, 0
         )
 
-        controls_layout.addWidget(file_group, 3)
-        controls_layout.addWidget(edit_group, 5)
-        controls_layout.addWidget(export_group, 1)
+        self.controls_layout.addWidget(
+            file_group,
+            2,
+        )
 
-        main_layout.addLayout(controls_layout)
+        self.controls_layout.addWidget(
+            self.edit_group,
+            7,
+        )
+
+        self.controls_layout.addWidget(
+            export_group,
+            1,
+        )
+
+        main_layout.addLayout(
+            self.controls_layout
+        )
 
         self.status_label = QLabel(
             self.tr("枠数: 0")
@@ -7997,8 +7976,196 @@ class MainWindow(QMainWindow):
             arguments,
         )
 
+    def apply_edit_layout_mode(
+        self,
+        mode,
+    ):
+        if not hasattr(
+            self,
+            "edit_layout",
+        ):
+            return
+
+        if mode == self.edit_layout_mode:
+            return
+
+        widgets = [
+            self.detect_button,
+            self.count_widget,
+            self.generate_rects_button,
+            self.mosaic_create_button,
+            self.composite_create_button,
+            self.composite_member_edit_button,
+            self.aspect_ratio_combo,
+        ]
+
+        for widget in widgets:
+            self.edit_layout.removeWidget(
+                widget
+            )
+
+        for column in range(8):
+            self.edit_layout.setColumnStretch(
+                column,
+                0,
+            )
+
+        if mode == "wide":
+            self.edit_layout.addWidget(
+                self.detect_button,
+                0,
+                0,
+            )
+
+            self.edit_layout.addWidget(
+                self.count_widget,
+                0,
+                1,
+            )
+
+            self.edit_layout.addWidget(
+                self.generate_rects_button,
+                0,
+                2,
+            )
+
+            self.edit_layout.addWidget(
+                self.mosaic_create_button,
+                0,
+                3,
+            )
+
+            self.edit_layout.addWidget(
+                self.composite_create_button,
+                0,
+                4,
+            )
+
+            self.edit_layout.addWidget(
+                self.composite_member_edit_button,
+                0,
+                5,
+            )
+
+            self.edit_layout.addWidget(
+                self.aspect_ratio_combo,
+                0,
+                6,
+            )
+
+            self.edit_layout.setColumnStretch(
+                7,
+                1,
+            )
+
+        else:
+            self.edit_layout.addWidget(
+                self.detect_button,
+                0,
+                0,
+            )
+
+            self.edit_layout.addWidget(
+                self.count_widget,
+                0,
+                1,
+            )
+
+            self.edit_layout.addWidget(
+                self.generate_rects_button,
+                0,
+                2,
+            )
+
+            self.edit_layout.addWidget(
+                self.mosaic_create_button,
+                1,
+                0,
+            )
+
+            self.edit_layout.addWidget(
+                self.composite_create_button,
+                1,
+                1,
+            )
+
+            self.edit_layout.addWidget(
+                self.composite_member_edit_button,
+                1,
+                2,
+            )
+
+            self.edit_layout.addWidget(
+                self.aspect_ratio_combo,
+                1,
+                3,
+            )
+
+            self.edit_layout.setColumnStretch(
+                4,
+                1,
+            )
+
+        self.edit_layout_mode = mode
+
+
+    def update_edit_layout_mode(self):
+        if not hasattr(
+            self,
+            "edit_group",
+        ):
+            return
+
+        available_width = (
+            self.edit_group.contentsRect().width()
+        )
+
+        widgets = [
+            self.detect_button,
+            self.count_widget,
+            self.generate_rects_button,
+            self.mosaic_create_button,
+            self.composite_create_button,
+            self.composite_member_edit_button,
+            self.aspect_ratio_combo,
+        ]
+
+        required_width = sum(
+            widget.sizeHint().width()
+            for widget in widgets
+        )
+
+        spacing = (
+            self.edit_layout.horizontalSpacing()
+        )
+
+        required_width += (
+            spacing
+            * (len(widgets) - 1)
+        )
+
+        # 少しだけ余裕を持たせる
+        required_width += 24
+
+        if available_width >= required_width:
+            mode = "wide"
+        else:
+            mode = "compact"
+
+        self.apply_edit_layout_mode(
+            mode
+        )
+
+
     def resizeEvent(self, event):
-        super().resizeEvent(event)
+        super().resizeEvent(
+            event
+        )
+
+        QTimer.singleShot(
+            0,
+            self.update_edit_layout_mode,
+        )
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
