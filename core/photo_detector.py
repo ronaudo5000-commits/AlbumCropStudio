@@ -1,7 +1,14 @@
+import os
 from pathlib import Path
+import time
 
 import cv2
 import numpy as np
+
+from core.detection_log import (
+    write_detection_environment,
+    write_detection_log,
+)
 
 DEBUG = False
 DEBUG_SAVE_IMAGE = False
@@ -273,29 +280,157 @@ def find_all_contours(mask, edges):
     )
 
 def detect_photos(image_path):
-    image = cv2.imread(image_path)
+    started_at = time.perf_counter()
+
+    path = Path(
+        image_path
+    )
+
+    write_detection_log(
+        "=" * 60
+    )
+
+    write_detection_log(
+        "detection start"
+    )
+
+    write_detection_environment()
+
+    write_detection_log(
+        "opencv "
+        f"version={cv2.__version__}"
+    )
+
+    try:
+        resolved_path = path.resolve(
+            strict=False
+        )
+    except Exception:
+        resolved_path = path
+
+    write_detection_log(
+        "input "
+        f"path={str(path)!r} "
+        f"resolved={str(resolved_path)!r}"
+    )
+
+    path_exists = path.exists()
+    path_is_file = path.is_file()
+
+    write_detection_log(
+        "file status "
+        f"exists={path_exists} "
+        f"is_file={path_is_file} "
+        f"readable={os.access(path, os.R_OK)}"
+    )
+
+    if path_exists and path_is_file:
+        try:
+            file_size = path.stat().st_size
+
+            write_detection_log(
+                "file size "
+                f"bytes={file_size}"
+            )
+
+        except Exception as e:
+            write_detection_log(
+                "file stat failed "
+                f"exception_type="
+                f"{type(e).__name__} "
+                f"message={e!r}"
+            )
+
+    load_started_at = time.perf_counter()
+
+    write_detection_log(
+        "cv2.imread start"
+    )
+
+    image = cv2.imread(
+        str(path)
+    )
+
+    load_elapsed = (
+        time.perf_counter()
+        - load_started_at
+    )
 
     if image is None:
+        write_detection_log(
+            "cv2.imread result "
+            "image=None "
+            f"elapsed={load_elapsed:.4f}s"
+        )
+
+        total_elapsed = (
+            time.perf_counter()
+            - started_at
+        )
+
+        write_detection_log(
+            "detection finished "
+            "result=0 "
+            f"elapsed={total_elapsed:.4f}s"
+        )
+
         return []
+
+    write_detection_log(
+        "cv2.imread result "
+        "success=True "
+        f"shape={image.shape} "
+        f"dtype={image.dtype} "
+        f"elapsed={load_elapsed:.4f}s"
+    )
 
     width, height, image_area = get_image_info(
         image
+    )
+
+    write_detection_log(
+        "image info "
+        f"width={width} "
+        f"height={height} "
+        f"area={image_area}"
     )
 
     gray = create_gray(
         image
     )
 
+    write_detection_log(
+        "gray created "
+        f"shape={gray.shape} "
+        f"dtype={gray.dtype}"
+    )
+
     edges = create_edges(
         gray
+    )
+
+    write_detection_log(
+        "edges created "
+        f"nonzero={cv2.countNonZero(edges)}"
     )
 
     mask = create_mask(
         gray
     )
 
+    write_detection_log(
+        "mask created "
+        f"nonzero={cv2.countNonZero(mask)}"
+    )
+
     small_photo_mask = create_small_photo_mask(
         gray
+    )
+
+    write_detection_log(
+        "small photo mask created "
+        f"nonzero="
+        f"{cv2.countNonZero(small_photo_mask)}"
     )
 
     # ---------------------------------
@@ -375,6 +510,11 @@ def detect_photos(image_path):
         edges,
     )
 
+    write_detection_log(
+        "contours found "
+        f"count={len(contours)}"
+    )
+
     candidates = build_candidates(
         contours,
         image,
@@ -384,8 +524,24 @@ def detect_photos(image_path):
         height,
     )
 
+    write_detection_log(
+        "candidates built "
+        f"count={len(candidates)}"
+    )
+
     candidates = postprocess_candidates(
         candidates
+    )
+
+    total_elapsed = (
+        time.perf_counter()
+        - started_at
+    )
+
+    write_detection_log(
+        "detection finished "
+        f"result={len(candidates)} "
+        f"elapsed={total_elapsed:.4f}s"
     )
 
     return candidates
@@ -461,33 +617,95 @@ def remove_inner_overlaps(candidates):
     return filtered
 
 def postprocess_candidates(candidates):
-    if DEBUG:
-        print(f"postprocess start={len(candidates)}")
-
-    candidates = remove_inner_overlaps(candidates)
-
-    if DEBUG:
-        print(f"after remove_inner_overlaps={len(candidates)}")
-
-    candidates = split_large_rects(candidates)
+    write_detection_log(
+        "postprocess start "
+        f"count={len(candidates)}"
+    )
 
     if DEBUG:
-        print(f"after split_large_rects={len(candidates)}")
+        print(
+            f"postprocess start="
+            f"{len(candidates)}"
+        )
 
-    candidates = remove_lower_overlap_rects(candidates)
+    candidates = remove_inner_overlaps(
+        candidates
+    )
+
+    write_detection_log(
+        "postprocess "
+        "after_remove_inner_overlaps "
+        f"count={len(candidates)}"
+    )
 
     if DEBUG:
-        print(f"after remove_lower_overlap_rects={len(candidates)}")
+        print(
+            "after remove_inner_overlaps="
+            f"{len(candidates)}"
+        )
 
-    candidates = remove_duplicate_rects(candidates)
+    candidates = split_large_rects(
+        candidates
+    )
+
+    write_detection_log(
+        "postprocess "
+        "after_split_large_rects "
+        f"count={len(candidates)}"
+    )
 
     if DEBUG:
-        print(f"after remove_duplicate_rects={len(candidates)}")
+        print(
+            "after split_large_rects="
+            f"{len(candidates)}"
+        )
 
-    candidates = sort_rects_reading_order(candidates)
+    candidates = remove_lower_overlap_rects(
+        candidates
+    )
+
+    write_detection_log(
+        "postprocess "
+        "after_remove_lower_overlap_rects "
+        f"count={len(candidates)}"
+    )
 
     if DEBUG:
-        print(f"postprocess final={len(candidates)}")
+        print(
+            "after remove_lower_overlap_rects="
+            f"{len(candidates)}"
+        )
+
+    candidates = remove_duplicate_rects(
+        candidates
+    )
+
+    write_detection_log(
+        "postprocess "
+        "after_remove_duplicate_rects "
+        f"count={len(candidates)}"
+    )
+
+    if DEBUG:
+        print(
+            "after remove_duplicate_rects="
+            f"{len(candidates)}"
+        )
+
+    candidates = sort_rects_reading_order(
+        candidates
+    )
+
+    write_detection_log(
+        "postprocess final "
+        f"count={len(candidates)}"
+    )
+
+    if DEBUG:
+        print(
+            f"postprocess final="
+            f"{len(candidates)}"
+        )
 
     return candidates
 
