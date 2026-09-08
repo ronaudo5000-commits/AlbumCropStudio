@@ -2478,18 +2478,30 @@ class MainWindow(QMainWindow):
         edit_group = QGroupBox(
             self.tr("切り抜き編集")
         )
-        edit_layout = QHBoxLayout()
+
+        edit_layout = QVBoxLayout()
 
         edit_layout.setContentsMargins(
             8, 8, 8, 8
         )
         edit_layout.setSpacing(6)
 
-        edit_layout.addWidget(
+        # ---------------------------------
+        # 1段目
+        # 自動検出 / 枠数 / 自動配置
+        # ---------------------------------
+        edit_top_layout = QHBoxLayout()
+
+        edit_top_layout.setContentsMargins(
+            0, 0, 0, 0
+        )
+        edit_top_layout.setSpacing(6)
+
+        edit_top_layout.addWidget(
             self.detect_button
         )
 
-        edit_layout.addSpacing(8)
+        edit_top_layout.addSpacing(8)
 
         count_layout = QHBoxLayout()
         count_layout.setContentsMargins(
@@ -2509,31 +2521,40 @@ class MainWindow(QMainWindow):
             self.manual_count_spin
         )
 
-        edit_layout.addLayout(
+        edit_top_layout.addLayout(
             count_layout
         )
 
-        edit_layout.addWidget(
+        edit_top_layout.addWidget(
             self.generate_rects_button
         )
 
-        edit_layout.addSpacing(10)
+        edit_top_layout.addStretch()
 
-        edit_layout.addWidget(
+        # ---------------------------------
+        # 2段目
+        # モザイク / グループ / 縦横比
+        # ---------------------------------
+        edit_bottom_layout = QHBoxLayout()
+
+        edit_bottom_layout.setContentsMargins(
+            0, 0, 0, 0
+        )
+        edit_bottom_layout.setSpacing(6)
+
+        edit_bottom_layout.addWidget(
             self.mosaic_create_button
         )
 
-        edit_layout.addSpacing(10)
-
-        edit_layout.addWidget(
+        edit_bottom_layout.addWidget(
             self.composite_create_button
         )
 
-        edit_layout.addWidget(
+        edit_bottom_layout.addWidget(
             self.composite_member_edit_button
         )
 
-        edit_layout.addSpacing(10)
+        edit_bottom_layout.addSpacing(8)
 
         self.aspect_ratio_combo = QComboBox()
 
@@ -2590,11 +2611,23 @@ class MainWindow(QMainWindow):
             self.sync_aspect_ratio_to_selected_rect
         )
 
-        edit_layout.addWidget(
+        edit_bottom_layout.addWidget(
             self.aspect_ratio_combo
         )
 
-        edit_group.setLayout(edit_layout)
+        edit_bottom_layout.addStretch()
+
+        edit_layout.addLayout(
+            edit_top_layout
+        )
+
+        edit_layout.addLayout(
+            edit_bottom_layout
+        )
+
+        edit_group.setLayout(
+            edit_layout
+        )
 
         # 出力
         export_group = QGroupBox(
