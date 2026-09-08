@@ -300,12 +300,12 @@ will appear here</translation>
     <message>
         <location filename="../app/main_window.py" line="2274"/>
         <source>グループ枠を編集</source>
-        <translation>Edit Group Frames</translation>
+        <translation>Edit Group Members</translation>
     </message>
     <message>
         <location filename="../app/main_window.py" line="2291"/>
         <source>グループ枠を構成する領域を個別に編集します</source>
-        <translation>Edit individual areas within a grouped frame</translation>
+        <translation>Edit individual members within a group</translation>
     </message>
     <message>
         <location filename="../app/main_window.py" line="2356"/>
@@ -418,7 +418,7 @@ will appear here</translation>
         <location filename="../app/main_window.py" line="7572"/>
         <location filename="../app/main_window.py" line="7597"/>
         <source>切り抜き</source>
-        <translation>Crop</translation>
+        <translation>Export</translation>
     </message>
     <message>
         <location filename="../app/main_window.py" line="2093"/>
@@ -900,12 +900,12 @@ Do you want to continue?</translation>
     <message>
         <location filename="../app/main_window.py" line="7456"/>
         <source>構成領域編集モード</source>
-        <translation>Group Area Editing Mode</translation>
+        <translation>Group Member Editing Mode</translation>
     </message>
     <message>
         <location filename="../app/main_window.py" line="7482"/>
         <source>切り抜き中…</source>
-        <translation>Cropping...</translation>
+        <translation>Exporting...</translation>
     </message>
     <message>
         <location filename="../app/main_window.py" line="7487"/>
@@ -1026,8 +1026,8 @@ Please wait for detection to finish, then try closing the application again.</tr
 3. Review and adjust the frames
    Adjust the position, size, angle, and other settings as needed.
 
-4. Crop
-   Check the preview on the right, then use “Crop” to export the images.
+4. Export
+   Check the preview on the right, then use “Export” to export the images.
 
 You can save your work as a project using “Save Project”.</translation>
     </message>
