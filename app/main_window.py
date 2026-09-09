@@ -4244,89 +4244,347 @@ class MainWindow(QMainWindow):
             self.current_page_index
         )
 
+        copied_rects = list(
+            self.preview_area.copied_rects
+        )
+
+        # ---------------------------------
+        # コピー元画像サイズの予備取得
+        # ---------------------------------
+        fallback_source_width = 0
+        fallback_source_height = 0
+
+        source_path = (
+            self.copied_rects_source_image_path
+        )
+
+        if (
+            source_path is not None
+            and Path(source_path).is_file()
+        ):
+            try:
+                with Image.open(
+                    source_path
+                ) as source_image:
+                    (
+                        fallback_source_width,
+                        fallback_source_height,
+                    ) = source_image.size
+
+            except Exception:
+                fallback_source_width = 0
+                fallback_source_height = 0
+
         pasted_page_count = 0
 
         self.bulk_paste_in_progress = True
 
         try:
             for row in valid_rows:
-                self.current_page_index = row
-
-                self.load_image(
+                target_path = (
                     self.image_paths[row]
                 )
 
-                saved_rects = list(
+                # ---------------------------------
+                # フル画像は読み込まず、
+                # 画像サイズだけ取得する
+                # ---------------------------------
+                try:
+                    with Image.open(
+                        target_path
+                    ) as target_image:
+                        (
+                            target_width,
+                            target_height,
+                        ) = target_image.size
+
+                except Exception as e:
+                    print(
+                        "一括貼り付け時に"
+                        "画像サイズを取得できませんでした: "
+                        f"{target_path} / {e}"
+                    )
+                    continue
+
+                if (
+                    target_width <= 0
+                    or target_height <= 0
+                ):
+                    continue
+
+                target_rects = list(
                     self.page_rects.get(
                         row,
                         [],
                     )
                 )
 
-                saved_group_ids = list(
-                    self.page_group_ids.get(
-                        row,
-                        [],
-                    )
-                )
-
-                self.preview_area.set_rects(
-                    saved_rects,
-                    group_ids=saved_group_ids,
-                )
-
-                saved_angles = list(
+                target_angles = list(
                     self.page_angles.get(
                         row,
                         [],
                     )
                 )
 
-                self.preview_area.rect_angles = (
-                    saved_angles
+                target_aspect_modes = list(
+                    self.page_aspect_modes.get(
+                        row,
+                        [],
+                    )
                 )
 
+                target_group_ids = list(
+                    self.page_group_ids.get(
+                        row,
+                        [],
+                    )
+                )
+
+                # ---------------------------------
+                # 既存データの長さを枠数へ合わせる
+                # ---------------------------------
                 while (
-                    len(
-                        self.preview_area.rect_angles
-                    )
-                    < len(
-                        self.preview_area.rects
-                    )
+                    len(target_angles)
+                    < len(target_rects)
                 ):
-                    self.preview_area.rect_angles.append(
+                    target_angles.append(
                         0.0
                     )
 
                 if (
-                    len(
-                        self.preview_area.rect_angles
-                    )
-                    > len(
-                        self.preview_area.rects
-                    )
+                    len(target_angles)
+                    > len(target_rects)
                 ):
-                    self.preview_area.rect_angles = (
-                        self.preview_area.rect_angles[
-                            :len(
-                                self.preview_area.rects
-                            )
+                    target_angles = (
+                        target_angles[
+                            :len(target_rects)
                         ]
                     )
 
-                self.restore_current_page_aspect_modes()
-                self.restore_current_page_mosaic_rects()
-
-                pasted = (
-                    self.preview_area.paste_copied_rects(
-                        offset=0,
-                        save_undo=False,
+                while (
+                    len(target_aspect_modes)
+                    < len(target_rects)
+                ):
+                    target_aspect_modes.append(
+                        "free"
                     )
-                )
 
-                if pasted:
-                    self.save_current_page_rects()
-                    pasted_page_count += 1
+                if (
+                    len(target_aspect_modes)
+                    > len(target_rects)
+                ):
+                    target_aspect_modes = (
+                        target_aspect_modes[
+                            :len(target_rects)
+                        ]
+                    )
+
+                while (
+                    len(target_group_ids)
+                    < len(target_rects)
+                ):
+                    target_group_ids.append(
+                        None
+                    )
+
+                if (
+                    len(target_group_ids)
+                    > len(target_rects)
+                ):
+                    target_group_ids = (
+                        target_group_ids[
+                            :len(target_rects)
+                        ]
+                    )
+
+                # ---------------------------------
+                # グループIDの衝突を避ける
+                # ---------------------------------
+                existing_group_ids = [
+                    group_id
+                    for group_id
+                    in target_group_ids
+                    if (
+                        isinstance(group_id, int)
+                        and not isinstance(
+                            group_id,
+                            bool,
+                        )
+                    )
+                ]
+
+                if existing_group_ids:
+                    next_group_id = (
+                        max(existing_group_ids)
+                        + 1
+                    )
+                else:
+                    next_group_id = 1
+
+                group_id_map = {}
+
+                added_count = 0
+
+                for copied in copied_rects:
+                    copied_rect = copied.get(
+                        "rect"
+                    )
+
+                    if (
+                        copied_rect is None
+                        or len(copied_rect) < 4
+                    ):
+                        continue
+
+                    x, y, w, h = (
+                        copied_rect[:4]
+                    )
+
+                    source_width = copied.get(
+                        "source_width",
+                        fallback_source_width,
+                    )
+
+                    source_height = copied.get(
+                        "source_height",
+                        fallback_source_height,
+                    )
+
+                    try:
+                        source_width = int(
+                            source_width
+                        )
+
+                        source_height = int(
+                            source_height
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        source_width = (
+                            fallback_source_width
+                        )
+
+                        source_height = (
+                            fallback_source_height
+                        )
+
+                    scale_x = 1.0
+                    scale_y = 1.0
+
+                    if (
+                        source_width > 0
+                        and source_height > 0
+                    ):
+                        scale_x = (
+                            target_width
+                            / source_width
+                        )
+
+                        scale_y = (
+                            target_height
+                            / source_height
+                        )
+
+                    new_rect = (
+                        int(round(
+                            x * scale_x
+                        )),
+                        int(round(
+                            y * scale_y
+                        )),
+                        max(
+                            1,
+                            int(round(
+                                w * scale_x
+                            )),
+                        ),
+                        max(
+                            1,
+                            int(round(
+                                h * scale_y
+                            )),
+                        ),
+                    )
+
+                    angle = copied.get(
+                        "angle",
+                        0.0,
+                    )
+
+                    aspect_mode = copied.get(
+                        "aspect_mode",
+                        "free",
+                    )
+
+                    source_group_id = copied.get(
+                        "group_id",
+                        None,
+                    )
+
+                    new_group_id = None
+
+                    if source_group_id is not None:
+                        if (
+                            source_group_id
+                            not in group_id_map
+                        ):
+                            group_id_map[
+                                source_group_id
+                            ] = next_group_id
+
+                            next_group_id += 1
+
+                        new_group_id = (
+                            group_id_map[
+                                source_group_id
+                            ]
+                        )
+
+                    target_rects.append(
+                        new_rect
+                    )
+
+                    target_angles.append(
+                        angle
+                    )
+
+                    target_aspect_modes.append(
+                        aspect_mode
+                    )
+
+                    target_group_ids.append(
+                        new_group_id
+                    )
+
+                    added_count += 1
+
+                if added_count <= 0:
+                    continue
+
+                # ---------------------------------
+                # PhotoCanvasへページごとに表示せず、
+                # ページデータへ直接反映する
+                # ---------------------------------
+                self.page_rects[
+                    row
+                ] = target_rects
+
+                self.page_angles[
+                    row
+                ] = target_angles
+
+                self.page_aspect_modes[
+                    row
+                ] = target_aspect_modes
+
+                self.page_group_ids[
+                    row
+                ] = target_group_ids
+
+                pasted_page_count += 1
 
         finally:
             self.bulk_paste_in_progress = False
@@ -4338,7 +4596,9 @@ class MainWindow(QMainWindow):
             )
         )
 
+        # ---------------------------------
         # 元々表示していたページへ戻す
+        # ---------------------------------
         self.current_page_index = (
             original_page_index
         )
@@ -4347,12 +4607,6 @@ class MainWindow(QMainWindow):
             0 <= original_page_index
             < len(self.image_paths)
         ):
-            self.load_image(
-                self.image_paths[
-                    original_page_index
-                ]
-            )
-
             saved_rects = list(
                 self.page_rects.get(
                     original_page_index,
@@ -4424,6 +4678,9 @@ class MainWindow(QMainWindow):
             self.update_current_rect_count_status()
             self.update_page_label()
 
+        # ページ一覧の枠数表示を最後に一度だけ更新
+        self.apply_page_list_display_mode()
+
         if pasted_page_count > 0:
             self.bulk_paste_undo_state = {
                 "before": before_states,
@@ -4431,8 +4688,6 @@ class MainWindow(QMainWindow):
                 "page_count": pasted_page_count,
             }
 
-            # 新しい操作を行ったので、
-            # 以前のRedo履歴は無効にする
             self.bulk_paste_redo_state = None
 
             self.mark_project_modified()
@@ -4535,6 +4790,16 @@ class MainWindow(QMainWindow):
                 )
             )
             return
+
+        bulk_total_start = time.perf_counter()
+
+        bulk_before_states_time = 0.0
+        bulk_image_size_time = 0.0
+        bulk_data_time = 0.0
+        bulk_process_events_time = 0.0
+        bulk_after_states_time = 0.0
+        bulk_restore_time = 0.0
+        bulk_page_list_time = 0.0
 
         if not self.preview_area.copied_rects:
             self.status_label.setText(
