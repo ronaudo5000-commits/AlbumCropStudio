@@ -3340,8 +3340,6 @@ class MainWindow(QMainWindow):
         if not file_paths:
             return
 
-        ui_ready_start = time.perf_counter()
-
         if self.image_paths:
             self.save_current_page_rects()
 
@@ -3490,16 +3488,6 @@ class MainWindow(QMainWindow):
             self.start_thumbnail_generation(
                 new_file_paths
             )
-
-        ui_ready_time = (
-            time.perf_counter()
-            - ui_ready_start
-        )
-
-        print(
-            "IMAGE IMPORT UI READY: "
-            f"{ui_ready_time:.3f}s"
-        )
 
     def start_thumbnail_generation(
         self,
