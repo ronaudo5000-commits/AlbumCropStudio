@@ -39,3 +39,4 @@ def get_max_pages():
 def is_multi_page_export_enabled():
     return is_internal_edition()
 
+

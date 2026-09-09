@@ -344,11 +344,57 @@ def detect_photos(image_path):
     load_started_at = time.perf_counter()
 
     write_detection_log(
-        "cv2.imread start"
+        "binary image read start"
     )
 
-    image = cv2.imread(
-        str(path)
+    try:
+        with path.open("rb") as image_file:
+            image_bytes = image_file.read()
+
+        write_detection_log(
+            "binary image read result "
+            "success=True "
+            f"bytes={len(image_bytes)}"
+        )
+
+    except Exception as e:
+        load_elapsed = (
+            time.perf_counter()
+            - load_started_at
+        )
+
+        write_detection_log(
+            "binary image read failed "
+            f"exception_type={type(e).__name__} "
+            f"message={e!r} "
+            f"elapsed={load_elapsed:.4f}s"
+        )
+
+        total_elapsed = (
+            time.perf_counter()
+            - started_at
+        )
+
+        write_detection_log(
+            "detection finished "
+            "result=0 "
+            f"elapsed={total_elapsed:.4f}s"
+        )
+
+        return []
+
+    image_data = np.frombuffer(
+        image_bytes,
+        dtype=np.uint8,
+    )
+
+    write_detection_log(
+        "cv2.imdecode start"
+    )
+
+    image = cv2.imdecode(
+        image_data,
+        cv2.IMREAD_COLOR,
     )
 
     load_elapsed = (
@@ -358,7 +404,7 @@ def detect_photos(image_path):
 
     if image is None:
         write_detection_log(
-            "cv2.imread result "
+            "cv2.imdecode result "
             "image=None "
             f"elapsed={load_elapsed:.4f}s"
         )
@@ -377,7 +423,7 @@ def detect_photos(image_path):
         return []
 
     write_detection_log(
-        "cv2.imread result "
+        "cv2.imdecode result "
         "success=True "
         f"shape={image.shape} "
         f"dtype={image.dtype} "
