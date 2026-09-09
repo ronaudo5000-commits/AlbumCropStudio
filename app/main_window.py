@@ -1766,12 +1766,73 @@ class MainWindow(QMainWindow):
             crop_preview_layout
         )
 
+        # ---------------------------------
+        # 中央プレビュー
+        #
+        # 画像領域とページ移動・ズーム操作を
+        # 明確に分離する。
+        # 高DPI環境でも操作部が画像へ
+        # 重なって見えないよう、
+        # 専用の操作バーとして配置する。
+        # ---------------------------------
         preview_layout = QVBoxLayout()
-        preview_layout.addWidget(self.preview_area, 1)
-        preview_layout.addLayout(zoom_layout)
+
+        preview_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        preview_layout.setSpacing(
+            6
+        )
+
+        preview_layout.addWidget(
+            self.preview_area,
+            1,
+        )
+
+        preview_control_bar = QWidget()
+
+        preview_control_bar.setMinimumHeight(
+            48
+        )
+
+        preview_control_bar.setStyleSheet("""
+            QWidget {
+                background-color: #1f1f1f;
+            }
+        """)
+
+        preview_control_layout = QHBoxLayout(
+            preview_control_bar
+        )
+
+        preview_control_layout.setContentsMargins(
+            8,
+            4,
+            8,
+            4,
+        )
+
+        preview_control_layout.setSpacing(
+            6
+        )
+
+        preview_control_layout.addLayout(
+            zoom_layout
+        )
+
+        preview_layout.addWidget(
+            preview_control_bar,
+            0,
+        )
 
         preview_container = QWidget()
-        preview_container.setLayout(preview_layout)
+        preview_container.setLayout(
+            preview_layout
+        )
 
         self.content_splitter.addWidget(
             page_list_container
