@@ -26,6 +26,7 @@ from PySide6.QtGui import (
     QPen,
     QColor,
     QImage,
+    QImageReader,
     QIcon,
     QKeySequence,
 )
@@ -80,6 +81,7 @@ from app.edition import (
 
 from app.export_worker import CropExportWorker
 from app.detection_worker import DetectionWorker
+from app.thumbnail_worker import ThumbnailWorker
 
 
 MIN_SUPPORTED_PROJECT_FORMAT_VERSION = 1
@@ -1098,6 +1100,14 @@ class MainWindow(QMainWindow):
 
         self.detection_running = False
         self.detection_image_path = None
+
+        # ---------------------------------
+        # サムネイル非同期生成
+        # ---------------------------------
+        self.thumbnail_thread = None
+        self.thumbnail_worker = None
+        self.thumbnail_running = False
+        self.thumbnail_pending_paths = []
 
         self.setWindowTitle(
             f"{APP_NAME} {APP_VERSION}"
@@ -3330,6 +3340,8 @@ class MainWindow(QMainWindow):
         if not file_paths:
             return
 
+        ui_ready_start = time.perf_counter()
+
         if self.image_paths:
             self.save_current_page_rects()
 
@@ -3369,6 +3381,9 @@ class MainWindow(QMainWindow):
         new_file_paths = []
         skipped_by_limit = 0
 
+        # ---------------------------------
+        # まずファイル情報だけ登録する
+        # ---------------------------------
         for file_path in file_paths:
             if file_path in self.image_paths:
                 continue
@@ -3421,45 +3436,17 @@ class MainWindow(QMainWindow):
         if was_empty and self.image_paths:
             self.current_page_index = 0
 
-        # 新しく追加された画像だけサムネイルを作成
+        # ---------------------------------
+        # サムネイルを待たず、
+        # ページ一覧の項目を先に追加する
+        # ---------------------------------
         for file_path in new_file_paths:
-            item_name = Path(file_path).name
+            item_name = Path(
+                file_path
+            ).name
 
-            thumbnail = QPixmap()
-
-            try:
-                with Image.open(file_path) as pil_image:
-                    pil_image = pil_image.convert("RGB")
-
-                    # Pillow側で先にサムネイルサイズへ縮小
-                    pil_image.thumbnail(
-                        (120, 90)
-                    )
-
-                    # メモリ上でPNGへ変換
-                    buffer = BytesIO()
-
-                    pil_image.save(
-                        buffer,
-                        format="PNG",
-                    )
-
-                    thumbnail.loadFromData(
-                        buffer.getvalue(),
-                        "PNG",
-                    )
-
-            except Exception as e:
-                print(
-                    f"サムネイルを作成できませんでした: "
-                    f"{file_path} / {e}"
-                )
-
-            # サムネイル生成の成否に関係なく
-            # ファイル項目自体は必ず追加する
             item = QListWidgetItem(
-                QIcon(thumbnail),
-                item_name,
+                item_name
             )
 
             item.setData(
@@ -3471,8 +3458,13 @@ class MainWindow(QMainWindow):
                 item
             )
 
+        # ---------------------------------
+        # 最初のページはすぐ表示する
+        # ---------------------------------
         if was_empty and self.image_paths:
-            self.page_list.setCurrentRow(0)
+            self.page_list.setCurrentRow(
+                0
+            )
 
             self.load_image(
                 self.image_paths[
@@ -3489,6 +3481,174 @@ class MainWindow(QMainWindow):
 
         self.update_page_label()
         self.apply_page_list_display_mode()
+
+        # ---------------------------------
+        # サムネイル生成は
+        # バックグラウンドで開始する
+        # ---------------------------------
+        if new_file_paths:
+            self.start_thumbnail_generation(
+                new_file_paths
+            )
+
+        ui_ready_time = (
+            time.perf_counter()
+            - ui_ready_start
+        )
+
+        print(
+            "IMAGE IMPORT UI READY: "
+            f"{ui_ready_time:.3f}s"
+        )
+
+    def start_thumbnail_generation(
+        self,
+        file_paths,
+    ):
+        paths = [
+            str(file_path)
+            for file_path in file_paths
+        ]
+
+        if not paths:
+            return
+
+        # ---------------------------------
+        # すでにサムネイルWorkerが
+        # 動作している場合は、
+        # 次回処理分として待機させる
+        # ---------------------------------
+        if self.thumbnail_running:
+            for file_path in paths:
+                if (
+                    file_path
+                    not in self.thumbnail_pending_paths
+                ):
+                    self.thumbnail_pending_paths.append(
+                        file_path
+                    )
+
+            return
+
+        self.thumbnail_running = True
+
+        self.thumbnail_thread = QThread()
+
+        self.thumbnail_worker = (
+            ThumbnailWorker(
+                paths
+            )
+        )
+
+        self.thumbnail_worker.moveToThread(
+            self.thumbnail_thread
+        )
+
+        self.thumbnail_thread.started.connect(
+            self.thumbnail_worker.run
+        )
+
+        self.thumbnail_worker.thumbnail_ready.connect(
+            self.apply_generated_thumbnail
+        )
+
+        self.thumbnail_worker.failed.connect(
+            self.thumbnail_generation_failed
+        )
+
+        self.thumbnail_worker.finished.connect(
+            self.thumbnail_thread.quit
+        )
+
+        self.thumbnail_worker.finished.connect(
+            self.thumbnail_worker.deleteLater
+        )
+
+        self.thumbnail_thread.finished.connect(
+            self.thumbnail_thread_finished
+        )
+
+        self.thumbnail_thread.finished.connect(
+            self.thumbnail_thread.deleteLater
+        )
+
+        self.thumbnail_thread.start()
+
+    def apply_generated_thumbnail(
+        self,
+        file_path,
+        thumbnail_image,
+    ):
+        if (
+            thumbnail_image is None
+            or thumbnail_image.isNull()
+        ):
+            return
+
+        try:
+            row = self.image_paths.index(
+                file_path
+            )
+        except ValueError:
+            # Worker処理中にページが削除された場合
+            return
+
+        item = self.page_list.item(
+            row
+        )
+
+        if item is None:
+            return
+
+        thumbnail = QPixmap.fromImage(
+            thumbnail_image
+        )
+
+        if thumbnail.isNull():
+            return
+
+        item.setIcon(
+            QIcon(
+                thumbnail
+            )
+        )
+
+        self.page_list.viewport().update()
+
+    def thumbnail_generation_failed(
+        self,
+        file_path,
+        error_message,
+    ):
+        print(
+            "サムネイルを作成できませんでした: "
+            f"{file_path} / "
+            f"{error_message}"
+        )
+
+    def thumbnail_thread_finished(
+        self,
+    ):
+        self.thumbnail_running = False
+        self.thumbnail_worker = None
+        self.thumbnail_thread = None
+
+        # ---------------------------------
+        # Worker実行中に追加された画像があれば、
+        # 待機分を次のWorkerで処理する
+        # ---------------------------------
+        if not self.thumbnail_pending_paths:
+            return
+
+        pending_paths = list(
+            self.thumbnail_pending_paths
+        )
+
+        self.thumbnail_pending_paths.clear()
+
+        self.start_thumbnail_generation(
+            pending_paths
+        )
 
     def dropEvent(self, event):
         if not event.mimeData().hasUrls():
@@ -6326,64 +6486,73 @@ class MainWindow(QMainWindow):
                 return
 
             selected_rows = sorted(
-                [
+                {
                     self.page_list.row(
                         item
                     )
                     for item
                     in selected_items
-                ],
+                },
                 reverse=True,
             )
 
+        if not selected_rows:
+            return
+
         self.save_current_page_rects()
 
+        old_image_paths = list(
+            self.image_paths
+        )
+
+        old_export_enabled = list(
+            self.page_export_enabled
+        )
+
+        old_page_rects = dict(
+            self.page_rects
+        )
+
+        old_page_angles = dict(
+            self.page_angles
+        )
+
+        old_page_aspect_modes = dict(
+            self.page_aspect_modes
+        )
+
+        old_page_group_ids = dict(
+            self.page_group_ids
+        )
+
+        old_page_mosaic_rects = dict(
+            self.page_mosaic_rects
+        )
+
+        delete_row_set = set(
+            selected_rows
+        )
+
+        # ---------------------------------
+        # Undo用データを先にまとめて保存する
+        # ---------------------------------
         deleted_group = []
 
         for delete_index in selected_rows:
-            deleted_path = self.image_paths[delete_index]
-
-            deleted_rects = list(
-                self.page_rects.get(
-                    delete_index,
-                    [],
+            if (
+                delete_index < 0
+                or delete_index >= len(
+                    old_image_paths
                 )
-            )
-
-            deleted_angles = list(
-                self.page_angles.get(
-                    delete_index,
-                    [],
-                )
-            )
-
-            deleted_aspect_modes = list(
-                self.page_aspect_modes.get(
-                    delete_index,
-                    [],
-                )
-            )
-
-            deleted_group_ids = list(
-                self.page_group_ids.get(
-                    delete_index,
-                    [],
-                )
-            )
-
-            deleted_mosaic_rects = list(
-                self.page_mosaic_rects.get(
-                    delete_index,
-                    [],
-                )
-            )
+            ):
+                continue
 
             if (
                 delete_index
-                < len(self.page_export_enabled)
+                < len(old_export_enabled)
             ):
                 deleted_export_enabled = (
-                    self.page_export_enabled[
+                    old_export_enabled[
                         delete_index
                     ]
                 )
@@ -6393,17 +6562,40 @@ class MainWindow(QMainWindow):
             deleted_group.append(
                 {
                     "index": delete_index,
-                    "path": deleted_path,
-                    "rects": deleted_rects,
-                    "angles": deleted_angles,
-                    "aspect_modes": (
-                        deleted_aspect_modes
+                    "path": (
+                        old_image_paths[
+                            delete_index
+                        ]
                     ),
-                    "group_ids": (
-                        deleted_group_ids
+                    "rects": list(
+                        old_page_rects.get(
+                            delete_index,
+                            [],
+                        )
                     ),
-                    "mosaic_rects": (
-                        deleted_mosaic_rects
+                    "angles": list(
+                        old_page_angles.get(
+                            delete_index,
+                            [],
+                        )
+                    ),
+                    "aspect_modes": list(
+                        old_page_aspect_modes.get(
+                            delete_index,
+                            [],
+                        )
+                    ),
+                    "group_ids": list(
+                        old_page_group_ids.get(
+                            delete_index,
+                            [],
+                        )
+                    ),
+                    "mosaic_rects": list(
+                        old_page_mosaic_rects.get(
+                            delete_index,
+                            [],
+                        )
                     ),
                     "export_enabled": (
                         deleted_export_enabled
@@ -6411,127 +6603,169 @@ class MainWindow(QMainWindow):
                 }
             )
 
-            self.image_paths.pop(
-                delete_index
+        if not deleted_group:
+            return
+
+        deleting_all_pages = (
+            len(delete_row_set)
+            >= len(old_image_paths)
+        )
+
+        # ---------------------------------
+        # 全ページ削除なら、
+        # 不要になったサムネイル生成を止める
+        # ---------------------------------
+        if deleting_all_pages:
+            self.thumbnail_pending_paths.clear()
+
+            if (
+                self.thumbnail_running
+                and self.thumbnail_worker
+                is not None
+            ):
+                self.thumbnail_worker.cancel()
+
+        # ---------------------------------
+        # 残すページの旧index → 新indexを
+        # 一度だけ作成する
+        # ---------------------------------
+        index_map = {}
+
+        new_image_paths = []
+        new_export_enabled = []
+
+        for old_index, image_path in enumerate(
+            old_image_paths
+        ):
+            if old_index in delete_row_set:
+                continue
+
+            new_index = len(
+                new_image_paths
             )
 
-            self.page_list.takeItem(
-                delete_index
+            index_map[
+                old_index
+            ] = new_index
+
+            new_image_paths.append(
+                image_path
             )
 
             if (
-                delete_index
-                < len(self.page_export_enabled)
+                old_index
+                < len(old_export_enabled)
             ):
-                self.page_export_enabled.pop(
-                    delete_index
+                new_export_enabled.append(
+                    old_export_enabled[
+                        old_index
+                    ]
+                )
+            else:
+                new_export_enabled.append(
+                    True
                 )
 
-            if delete_index in self.page_rects:
-                del self.page_rects[delete_index]
+        # ---------------------------------
+        # ページ別データも一度だけ再構築する
+        # ---------------------------------
+        self.page_rects = {
+            new_index: list(
+                old_page_rects.get(
+                    old_index,
+                    [],
+                )
+            )
+            for old_index, new_index
+            in index_map.items()
+            if old_index in old_page_rects
+        }
 
-            if delete_index in self.page_angles:
-                del self.page_angles[delete_index]
+        self.page_angles = {
+            new_index: list(
+                old_page_angles.get(
+                    old_index,
+                    [],
+                )
+            )
+            for old_index, new_index
+            in index_map.items()
+            if old_index in old_page_angles
+        }
 
-            if (
-                delete_index
-                in self.page_aspect_modes
-            ):
-                del self.page_aspect_modes[
-                    delete_index
-                ]
+        self.page_aspect_modes = {
+            new_index: list(
+                old_page_aspect_modes.get(
+                    old_index,
+                    [],
+                )
+            )
+            for old_index, new_index
+            in index_map.items()
+            if old_index in old_page_aspect_modes
+        }
 
-            if (
-                delete_index
-                in self.page_group_ids
-            ):
-                del self.page_group_ids[
-                    delete_index
-                ]
+        self.page_group_ids = {
+            new_index: list(
+                old_page_group_ids.get(
+                    old_index,
+                    [],
+                )
+            )
+            for old_index, new_index
+            in index_map.items()
+            if old_index in old_page_group_ids
+        }
 
-            new_page_rects = {}
+        self.page_mosaic_rects = {
+            new_index: list(
+                old_page_mosaic_rects.get(
+                    old_index,
+                    [],
+                )
+            )
+            for old_index, new_index
+            in index_map.items()
+            if old_index in old_page_mosaic_rects
+        }
 
-            for old_index, rects in self.page_rects.items():
-                if old_index > delete_index:
-                    new_page_rects[old_index - 1] = rects
-                else:
-                    new_page_rects[old_index] = rects
+        self.image_paths = (
+            new_image_paths
+        )
 
-            self.page_rects = new_page_rects
+        self.page_export_enabled = (
+            new_export_enabled
+        )
 
-            new_page_angles = {}
+        # ---------------------------------
+        # QListWidgetはSignalと描画を止めて
+        # まとめて削除する
+        # ---------------------------------
+        self.page_list.blockSignals(
+            True
+        )
 
-            for old_index, angles in self.page_angles.items():
-                if old_index > delete_index:
-                    new_page_angles[old_index - 1] = angles
-                else:
-                    new_page_angles[old_index] = angles
+        self.page_list.setUpdatesEnabled(
+            False
+        )
 
-            self.page_angles = new_page_angles
+        try:
+            for delete_index in selected_rows:
+                if (
+                    0 <= delete_index
+                    < self.page_list.count()
+                ):
+                    self.page_list.takeItem(
+                        delete_index
+                    )
 
-            new_page_aspect_modes = {}
-
-            for (
-                old_index,
-                aspect_modes,
-            ) in self.page_aspect_modes.items():
-                if old_index > delete_index:
-                    new_page_aspect_modes[
-                        old_index - 1
-                    ] = aspect_modes
-                else:
-                    new_page_aspect_modes[
-                        old_index
-                    ] = aspect_modes
-
-            self.page_aspect_modes = (
-                new_page_aspect_modes
+        finally:
+            self.page_list.setUpdatesEnabled(
+                True
             )
 
-            new_page_group_ids = {}
-
-            for (
-                old_index,
-                group_ids,
-            ) in self.page_group_ids.items():
-                if old_index > delete_index:
-                    new_page_group_ids[
-                        old_index - 1
-                    ] = group_ids
-                else:
-                    new_page_group_ids[
-                        old_index
-                    ] = group_ids
-
-            self.page_group_ids = (
-                new_page_group_ids
-            )
-
-            if (
-                delete_index
-                in self.page_mosaic_rects
-            ):
-                del self.page_mosaic_rects[
-                    delete_index
-                ]
-
-            new_page_mosaic_rects = {}
-
-            for (
-                old_index,
-                mosaic_rects,
-            ) in self.page_mosaic_rects.items():
-                if old_index > delete_index:
-                    new_page_mosaic_rects[
-                        old_index - 1
-                    ] = mosaic_rects
-                else:
-                    new_page_mosaic_rects[
-                        old_index
-                    ] = mosaic_rects
-
-            self.page_mosaic_rects = (
-                new_page_mosaic_rects
+            self.page_list.blockSignals(
+                False
             )
 
         self.deleted_pages_stack.append(
@@ -6541,38 +6775,68 @@ class MainWindow(QMainWindow):
             }
         )
 
+        # ---------------------------------
+        # 全ページ削除後
+        # ---------------------------------
         if not self.image_paths:
             self.current_page_index = -1
             self.current_image_path = None
             self.current_pixmap = None
+            self.detected_rects = []
 
-            self.preview_area.set_image(None)
-            self.preview_area.set_rects([])
+            self.preview_area.set_image(
+                None
+            )
 
-            self.page_label.setText("0 / 0")
+            self.preview_area.set_rects(
+                []
+            )
+
+            self.page_label.setText(
+                "0 / 0"
+            )
+
             self.update_current_rect_count_status()
 
             self.clear_crop_preview()
 
-            self.delete_page_button.setEnabled(False)
+            self.delete_page_button.setEnabled(
+                False
+            )
+
             self.project_modified = True
+
+            self.page_list.viewport().update()
+
             return
 
+        # ---------------------------------
+        # 一部削除の場合は、
+        # 削除位置に最も近い残存ページを表示する
+        # ---------------------------------
+        first_deleted_index = min(
+            selected_rows
+        )
+
         self.current_page_index = min(
-            min(selected_rows),
+            first_deleted_index,
             len(self.image_paths) - 1,
         )
 
         self.load_image(
-            self.image_paths[self.current_page_index]
+            self.image_paths[
+                self.current_page_index
+            ]
         )
 
-        saved_rects = self.page_rects.get(
-            self.current_page_index,
-            [],
+        saved_rects = list(
+            self.page_rects.get(
+                self.current_page_index,
+                [],
+            )
         )
 
-        saved_group_ids = (
+        saved_group_ids = list(
             self.page_group_ids.get(
                 self.current_page_index,
                 [],
@@ -6583,21 +6847,49 @@ class MainWindow(QMainWindow):
             saved_rects,
             group_ids=saved_group_ids,
         )
-        self.detected_rects = list(saved_rects)
 
-        saved_angles = self.page_angles.get(
-            self.current_page_index,
-            [],
+        self.detected_rects = list(
+            saved_rects
         )
 
-        self.preview_area.rect_angles = list(
+        saved_angles = list(
+            self.page_angles.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.rect_angles = (
             saved_angles
         )
 
-        while len(self.preview_area.rect_angles) < len(
-            self.preview_area.rects
+        while (
+            len(
+                self.preview_area.rect_angles
+            )
+            < len(
+                self.preview_area.rects
+            )
         ):
-            self.preview_area.rect_angles.append(0.0)
+            self.preview_area.rect_angles.append(
+                0.0
+            )
+
+        if (
+            len(
+                self.preview_area.rect_angles
+            )
+            > len(
+                self.preview_area.rects
+            )
+        ):
+            self.preview_area.rect_angles = (
+                self.preview_area.rect_angles[
+                    :len(
+                        self.preview_area.rects
+                    )
+                ]
+            )
 
         self.restore_current_page_aspect_modes()
         self.restore_current_page_mosaic_rects()
@@ -6610,12 +6902,16 @@ class MainWindow(QMainWindow):
 
         self.update_current_rect_count_status()
 
-        self.delete_page_button.setEnabled(True)
+        self.delete_page_button.setEnabled(
+            True
+        )
 
         self.project_modified = True
 
         self.update_crop_preview()
         self.update_page_label()
+
+        self.apply_page_list_display_mode()
 
     def restore_deleted_page(self):
         if not self.deleted_pages_stack:
@@ -8141,11 +8437,49 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
 
-        if self.confirm_discard_changes():
-            self.clear_recovery_file()
-            event.accept()
-        else:
+        if not self.confirm_discard_changes():
             event.ignore()
+            return
+
+        # ---------------------------------
+        # サムネイルWorkerを安全に停止する
+        # ---------------------------------
+        self.thumbnail_pending_paths.clear()
+
+        if (
+            self.thumbnail_running
+            and self.thumbnail_worker
+            is not None
+        ):
+            self.thumbnail_worker.cancel()
+
+        if (
+            self.thumbnail_thread
+            is not None
+            and self.thumbnail_thread.isRunning()
+        ):
+            self.thumbnail_thread.quit()
+
+            if not self.thumbnail_thread.wait(
+                5000
+            ):
+                QMessageBox.information(
+                    self,
+                    self.tr(
+                        "画像を読み込み中"
+                    ),
+                    self.tr(
+                        "現在、画像の準備処理を実行しています。\n\n"
+                        "処理が停止してから、"
+                        "もう一度終了してください。"
+                    ),
+                )
+
+                event.ignore()
+                return
+
+        self.clear_recovery_file()
+        event.accept()
 
     def show_quick_start(self):
         QMessageBox.information(
