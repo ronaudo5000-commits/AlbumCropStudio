@@ -1109,6 +1109,23 @@ class MainWindow(QMainWindow):
         self.thumbnail_running = False
         self.thumbnail_pending_paths = []
 
+        # ---------------------------------
+        # PDF別プロセス変換
+        # ---------------------------------
+        self.pdf_process = None
+        self.pdf_process_stdout_buffer = ""
+
+        self.pdf_conversion_running = False
+
+        self.pending_pdf_paths = []
+        self.pending_image_paths = []
+
+        self.current_pdf_limit_was_reached = False
+
+        # PDF変換中は、重いサムネイル生成を
+        # 同時実行せず待機させる
+        self.defer_thumbnails_until_pdf_done = False
+
         self.setWindowTitle(
             f"{APP_NAME} {APP_VERSION}"
         )
@@ -2069,7 +2086,7 @@ class MainWindow(QMainWindow):
         )
 
         self.save_as_action.setShortcut(
-            QKeySequence("Ctrl+Shift+S")
+            QKeySequence.StandardKey.SaveAs
         )
 
         self.save_as_action.triggered.connect(
@@ -2425,7 +2442,7 @@ class MainWindow(QMainWindow):
 
         self.open_button.setToolTip(
             self.tr(
-                "画像またはPDFを開きます（Ctrl+O）"
+                "画像またはPDFを開きます"
             )
         )
 
@@ -2469,13 +2486,13 @@ class MainWindow(QMainWindow):
 
         self.save_project_button.setToolTip(
             self.tr(
-                "現在のプロジェクトへ上書き保存します（Ctrl+S）"
+                "現在のプロジェクトへ上書き保存します"
             )
         )
 
         self.save_project_as_button.setToolTip(
             self.tr(
-                "名前を付けてプロジェクトを保存します（Ctrl+Shift+S）"
+                "名前を付けてプロジェクトを保存します"
             )
         )
 
@@ -3311,6 +3328,333 @@ class MainWindow(QMainWindow):
 
         return converted_paths, was_limited
 
+    def start_pdf_conversion(
+        self,
+        pdf_path,
+        max_pages=None,
+    ):
+        if self.pdf_conversion_running:
+            self.pending_pdf_paths.append(
+                (
+                    str(pdf_path),
+                    max_pages,
+                )
+            )
+            return
+
+        self.pdf_conversion_running = True
+
+        self.status_label.setText(
+            self.tr(
+                "📄 PDFを画像へ変換中..."
+            )
+        )
+
+        self.pdf_process_stdout_buffer = ""
+
+        self.pdf_process = QProcess(
+            self
+        )
+
+        self.pdf_process.setProcessChannelMode(
+            QProcess.ProcessChannelMode.SeparateChannels
+        )
+
+        self.pdf_process.readyReadStandardOutput.connect(
+            self.read_pdf_process_output
+        )
+
+        self.pdf_process.readyReadStandardError.connect(
+            self.read_pdf_process_error
+        )
+
+        self.pdf_process.finished.connect(
+            self.pdf_process_finished
+        )
+
+        process_script = (
+            Path(__file__).resolve().parent
+            / "pdf_conversion_process.py"
+        )
+
+        process_max_pages = (
+            -1
+            if max_pages is None
+            else int(max_pages)
+        )
+
+        arguments = [
+            str(process_script),
+            "--pdf",
+            str(pdf_path),
+            "--output-dir",
+            str(self.pdf_temp_dir),
+            "--max-pages",
+            str(process_max_pages),
+        ]
+
+        self.pdf_process.start(
+            sys.executable,
+            arguments,
+        )
+
+    def read_pdf_process_output(
+        self,
+    ):
+        if self.pdf_process is None:
+            return
+
+        data = (
+            self.pdf_process
+            .readAllStandardOutput()
+            .data()
+        )
+
+        text = data.decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        self.pdf_process_stdout_buffer += (
+            text
+        )
+
+        while "\n" in self.pdf_process_stdout_buffer:
+            (
+                line,
+                self.pdf_process_stdout_buffer,
+            ) = (
+                self.pdf_process_stdout_buffer.split(
+                    "\n",
+                    1,
+                )
+            )
+
+            line = line.strip()
+
+            if not line:
+                continue
+
+            try:
+                message = json.loads(
+                    line
+                )
+
+            except json.JSONDecodeError:
+                print(
+                    "PDF process unknown output:",
+                    line,
+                    flush=True,
+                )
+                continue
+
+            message_type = message.get(
+                "type"
+            )
+
+            if message_type == "progress":
+                self.pdf_conversion_progress(
+                    message.get(
+                        "current",
+                        0,
+                    ),
+                    message.get(
+                        "total",
+                        0,
+                    ),
+                )
+
+            elif message_type == "finished":
+                self.pdf_conversion_finished(
+                    message.get(
+                        "paths",
+                        [],
+                    ),
+                    bool(
+                        message.get(
+                            "was_limited",
+                            False,
+                        )
+                    ),
+                )
+
+            elif message_type == "failed":
+                self.pdf_conversion_failed(
+                    message.get(
+                        "message",
+                        self.tr(
+                            "不明なエラー"
+                        ),
+                    )
+                )
+
+    def read_pdf_process_error(
+        self,
+    ):
+        if self.pdf_process is None:
+            return
+
+        data = (
+            self.pdf_process
+            .readAllStandardError()
+            .data()
+        )
+
+        error_text = data.decode(
+            "utf-8",
+            errors="replace",
+        ).strip()
+
+        if error_text:
+            print(
+                "PDF PROCESS STDERR:",
+                error_text,
+                flush=True,
+            )
+
+    def pdf_conversion_progress(
+        self,
+        current_page,
+        total_pages,
+    ):
+        self.status_label.setText(
+            self.tr(
+                "📄 PDFを画像へ変換中..."
+            )
+            + " "
+            + f"{current_page} / {total_pages}"
+        )
+
+    def pdf_conversion_finished(
+        self,
+        converted_paths,
+        was_limited,
+    ):
+        print(
+            "=" * 60,
+            flush=True,
+        )
+
+        print(
+            "PDF CONVERSION FINISHED",
+            flush=True,
+        )
+
+        print(
+            f"converted pages: "
+            f"{len(converted_paths)}",
+            flush=True,
+        )
+
+        add_images_start = (
+            time.perf_counter()
+        )
+
+        if converted_paths:
+            print(
+                "PDF -> add_images START",
+                flush=True,
+            )
+
+            self.add_images(
+                converted_paths
+            )
+
+            print(
+                "PDF -> add_images END "
+                f"{time.perf_counter() - add_images_start:.3f}s",
+                flush=True,
+            )
+
+        if was_limited:
+            self.current_pdf_limit_was_reached = True
+
+        print(
+            "=" * 60,
+            flush=True,
+        )
+
+    def pdf_conversion_failed(
+        self,
+        error_message,
+    ):
+        QMessageBox.critical(
+            self,
+            self.tr(
+                "PDF読み込みエラー"
+            ),
+            self.tr(
+                "PDFを画像へ変換できませんでした。\n\n"
+                "{error}"
+            ).format(
+                error=error_message
+            ),
+        )
+
+    def pdf_process_finished(
+        self,
+        exit_code,
+        exit_status,
+    ):
+        process = self.pdf_process
+
+        self.pdf_conversion_running = False
+        self.pdf_process = None
+        self.pdf_process_stdout_buffer = ""
+
+        if process is not None:
+            process.deleteLater()
+
+        print(
+            "PDF PROCESS EXIT:",
+            exit_code,
+            exit_status,
+            flush=True,
+        )
+
+        # 次のPDFがある場合は、
+        # サムネイルをまだ開始しない
+        if self.pending_pdf_paths:
+            (
+                next_pdf_path,
+                next_max_pages,
+            ) = self.pending_pdf_paths.pop(
+                0
+            )
+
+            self.start_pdf_conversion(
+                next_pdf_path,
+                max_pages=next_max_pages,
+            )
+
+            return
+
+        # ---------------------------------
+        # すべてのPDF変換が終わったので、
+        # 待機していたサムネイル生成を開始する
+        # ---------------------------------
+        self.defer_thumbnails_until_pdf_done = False
+
+        if self.thumbnail_pending_paths:
+            pending_paths = list(
+                self.thumbnail_pending_paths
+            )
+
+            self.thumbnail_pending_paths.clear()
+
+            self.start_thumbnail_generation(
+                pending_paths
+            )
+
+        if self.current_pdf_limit_was_reached:
+            self.current_pdf_limit_was_reached = False
+
+            self.show_free_page_limit_message()
+
+        self.status_label.setText(
+            ""
+        )
+
     def open_image(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
@@ -3331,78 +3675,105 @@ class MainWindow(QMainWindow):
             return
 
         image_file_paths = []
+        pdf_file_paths = []
 
         max_pages = get_max_pages()
 
-        limit_was_reached = False
+        available_slots = None
+
+        if max_pages is not None:
+            available_slots = max(
+                0,
+                max_pages - len(
+                    self.image_paths
+                ),
+            )
 
         for file_path in file_paths:
-            remaining_slots = None
-
-            if max_pages is not None:
-                remaining_slots = max(
-                    0,
-                    max_pages
-                    - len(self.image_paths)
-                    - len(image_file_paths),
-                )
-
-                if remaining_slots <= 0:
-                    limit_was_reached = True
-                    break
-
             suffix = Path(
                 file_path
             ).suffix.lower()
 
             if suffix == ".pdf":
-                self.status_label.setText(
-                    self.tr(
-                        "📄 PDFを画像へ変換中..."
-                    )
-                )
-
-                QApplication.processEvents()
-
-                (
-                    converted_paths,
-                    pdf_was_limited,
-                ) = self.convert_pdf_to_images(
-                    file_path,
-                    max_pages=remaining_slots,
-                )
-
-                image_file_paths.extend(
-                    converted_paths
-                )
-
-                if pdf_was_limited:
-                    limit_was_reached = True
-
-            else:
-                if file_path in self.image_paths:
-                    continue
-
-                if file_path in image_file_paths:
-                    continue
-
-                image_file_paths.append(
+                pdf_file_paths.append(
                     file_path
                 )
+                continue
 
-        self.add_images(
-            image_file_paths
-        )
+            if file_path in self.image_paths:
+                continue
 
-        if limit_was_reached:
-            self.show_free_page_limit_message()
+            if file_path in image_file_paths:
+                continue
+
+            image_file_paths.append(
+                file_path
+            )
+
+        if pdf_file_paths:
+            self.defer_thumbnails_until_pdf_done = True
+
+        if image_file_paths:
+            self.add_images(
+                image_file_paths
+            )
+
+        if not pdf_file_paths:
+            return
+
+        remaining_slots = None
+
+        if max_pages is not None:
+            remaining_slots = max(
+                0,
+                max_pages - len(
+                    self.image_paths
+                ),
+            )
+
+            if remaining_slots <= 0:
+                self.show_free_page_limit_message()
+                return
+
+        for pdf_path in pdf_file_paths:
+            self.start_pdf_conversion(
+                pdf_path,
+                max_pages=remaining_slots,
+            )
 
     def add_images(self, file_paths):
         if not file_paths:
             return
 
+        total_start = time.perf_counter()
+
+        print(
+            "",
+            flush=True,
+        )
+
+        print(
+            "ADD_IMAGES DIAGNOSTIC START",
+            flush=True,
+        )
+
+        print(
+            f"input files: {len(file_paths)}",
+            flush=True,
+        )
+
+        save_state_start = (
+            time.perf_counter()
+        )
+
         if self.image_paths:
             self.save_current_page_rects()
+
+        print(
+            "save_current_page_rects: "
+            f"{time.perf_counter() - save_state_start:.3f}s",
+            flush=True,
+        )
 
         was_empty = len(self.image_paths) == 0
 
@@ -3440,6 +3811,10 @@ class MainWindow(QMainWindow):
         new_file_paths = []
         skipped_by_limit = 0
 
+        registration_start = (
+            time.perf_counter()
+        )
+
         # ---------------------------------
         # まずファイル情報だけ登録する
         # ---------------------------------
@@ -3466,6 +3841,12 @@ class MainWindow(QMainWindow):
             new_file_paths.append(
                 file_path
             )
+
+        print(
+            "file_registration: "
+            f"{time.perf_counter() - registration_start:.3f}s",
+            flush=True,
+        )
 
         if (
             max_pages is not None
@@ -3495,6 +3876,10 @@ class MainWindow(QMainWindow):
         if was_empty and self.image_paths:
             self.current_page_index = 0
 
+        list_items_start = (
+            time.perf_counter()
+        )
+
         # ---------------------------------
         # サムネイルを待たず、
         # ページ一覧の項目を先に追加する
@@ -3517,10 +3902,25 @@ class MainWindow(QMainWindow):
                 item
             )
 
+        print(
+            "page_list_items: "
+            f"{time.perf_counter() - list_items_start:.3f}s",
+            flush=True,
+        )
+
         # ---------------------------------
         # 最初のページはすぐ表示する
         # ---------------------------------
+        first_image_start = (
+            time.perf_counter()
+        )
+
         if was_empty and self.image_paths:
+            print(
+                "first load_image START",
+                flush=True,
+            )
+
             self.page_list.setCurrentRow(
                 0
             )
@@ -3531,6 +3931,17 @@ class MainWindow(QMainWindow):
                 ]
             )
 
+            print(
+                "first load_image END",
+                flush=True,
+            )
+
+        print(
+            "first_image_load: "
+            f"{time.perf_counter() - first_image_start:.3f}s",
+            flush=True,
+        )
+
         self.delete_page_button.setEnabled(
             len(self.image_paths) > 0
         )
@@ -3538,17 +3949,63 @@ class MainWindow(QMainWindow):
         if new_file_paths:
             self.project_modified = True
 
+        page_update_start = (
+            time.perf_counter()
+        )
+
         self.update_page_label()
         self.apply_page_list_display_mode()
+
+        print(
+            "page_list_update: "
+            f"{time.perf_counter() - page_update_start:.3f}s",
+            flush=True,
+        )
 
         # ---------------------------------
         # サムネイル生成は
         # バックグラウンドで開始する
         # ---------------------------------
+        thumbnail_start = (
+            time.perf_counter()
+        )
+
         if new_file_paths:
+            print(
+                "start_thumbnail_generation START",
+                flush=True,
+            )
+
             self.start_thumbnail_generation(
                 new_file_paths
             )
+
+            print(
+                "start_thumbnail_generation END",
+                flush=True,
+            )
+
+        print(
+            "thumbnail_start: "
+            f"{time.perf_counter() - thumbnail_start:.3f}s",
+            flush=True,
+        )
+
+        print(
+            "ADD_IMAGES TOTAL: "
+            f"{time.perf_counter() - total_start:.3f}s",
+            flush=True,
+        )
+
+        print(
+            "ADD_IMAGES DIAGNOSTIC END",
+            flush=True,
+        )
+
+        print(
+            "",
+            flush=True,
+        )
 
     def start_thumbnail_generation(
         self,
@@ -3560,6 +4017,22 @@ class MainWindow(QMainWindow):
         ]
 
         if not paths:
+            return
+
+        # ---------------------------------
+        # PDF変換中は同時実行しない。
+        # サムネイル対象だけ待機キューへ入れる。
+        # ---------------------------------
+        if self.defer_thumbnails_until_pdf_done:
+            for file_path in paths:
+                if (
+                    file_path
+                    not in self.thumbnail_pending_paths
+                ):
+                    self.thumbnail_pending_paths.append(
+                        file_path
+                    )
+
             return
 
         # ---------------------------------
@@ -3705,10 +4178,9 @@ class MainWindow(QMainWindow):
             return
 
         image_file_paths = []
+        pdf_file_paths = []
 
         max_pages = get_max_pages()
-
-        limit_was_reached = False
 
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
@@ -3716,71 +4188,65 @@ class MainWindow(QMainWindow):
             if not file_path:
                 continue
 
-            remaining_slots = None
-
-            if max_pages is not None:
-                remaining_slots = max(
-                    0,
-                    max_pages
-                    - len(self.image_paths)
-                    - len(image_file_paths),
-                )
-
-                if remaining_slots <= 0:
-                    limit_was_reached = True
-                    break
-
             suffix = Path(
                 file_path
             ).suffix.lower()
 
             if suffix == ".pdf":
-                self.status_label.setText(
-                    self.tr(
-                        "📄 PDFを画像へ変換中..."
-                    )
-                )
-
-                QApplication.processEvents()
-
-                (
-                    converted_paths,
-                    pdf_was_limited,
-                ) = self.convert_pdf_to_images(
-                    file_path,
-                    max_pages=remaining_slots,
-                )
-
-                image_file_paths.extend(
-                    converted_paths
-                )
-
-                if pdf_was_limited:
-                    limit_was_reached = True
-
-            else:
-                if file_path in self.image_paths:
-                    continue
-
-                if file_path in image_file_paths:
-                    continue
-
-                image_file_paths.append(
+                pdf_file_paths.append(
                     file_path
                 )
+                continue
+
+            if file_path in self.image_paths:
+                continue
+
+            if file_path in image_file_paths:
+                continue
+
+            image_file_paths.append(
+                file_path
+            )
+
+        if pdf_file_paths:
+            self.defer_thumbnails_until_pdf_done = True
 
         if image_file_paths:
             self.add_images(
                 image_file_paths
             )
 
-            event.acceptProposedAction()
+        remaining_slots = None
 
+        if max_pages is not None:
+            remaining_slots = max(
+                0,
+                max_pages
+                - len(self.image_paths),
+            )
+
+            if (
+                pdf_file_paths
+                and remaining_slots <= 0
+            ):
+                self.show_free_page_limit_message()
+
+                event.acceptProposedAction()
+                return
+
+        for pdf_path in pdf_file_paths:
+            self.start_pdf_conversion(
+                pdf_path,
+                max_pages=remaining_slots,
+            )
+
+        if (
+            image_file_paths
+            or pdf_file_paths
+        ):
+            event.acceptProposedAction()
         else:
             event.ignore()
-
-        if limit_was_reached:
-            self.show_free_page_limit_message()
 
     def set_page_export_enabled(
         self,
@@ -8834,10 +9300,8 @@ class MainWindow(QMainWindow):
         event.ignore()
 
     def keyPressEvent(self, event):
-        if (
-            event.key() == Qt.Key.Key_Z
-            and event.modifiers()
-            == Qt.KeyboardModifier.ControlModifier
+        if event.matches(
+            QKeySequence.StandardKey.Undo
         ):
             self.restore_deleted_page()
             return
