@@ -3452,7 +3452,17 @@ class MainWindow(QMainWindow):
                 "type"
             )
 
-            if message_type == "progress":
+            if message_type == "page_ready":
+                page_path = message.get(
+                    "path"
+                )
+
+                if page_path:
+                    self.pdf_page_ready(
+                        page_path
+                    )
+
+            elif message_type == "progress":
                 self.pdf_conversion_progress(
                     message.get(
                         "current",
@@ -3512,6 +3522,24 @@ class MainWindow(QMainWindow):
                 flush=True,
             )
 
+    def pdf_page_ready(
+        self,
+        page_path,
+    ):
+        # ---------------------------------
+        # PDF全体の変換完了を待たず、
+        # 完成したページを1ページずつ
+        # AlbumCrop Studioへ追加する。
+        #
+        # add_images() 内から
+        # サムネイル生成も開始される。
+        # ---------------------------------
+        self.add_images(
+            [
+                str(page_path),
+            ]
+        )
+
     def pdf_conversion_progress(
         self,
         current_page,
@@ -3546,25 +3574,12 @@ class MainWindow(QMainWindow):
             flush=True,
         )
 
-        add_images_start = (
-            time.perf_counter()
-        )
-
-        if converted_paths:
-            print(
-                "PDF -> add_images START",
-                flush=True,
-            )
-
-            self.add_images(
-                converted_paths
-            )
-
-            print(
-                "PDF -> add_images END "
-                f"{time.perf_counter() - add_images_start:.3f}s",
-                flush=True,
-            )
+        # ---------------------------------
+        # 各ページは page_ready を受信した時点で
+        # すでに add_images() 済み。
+        #
+        # ここでは再追加しない。
+        # ---------------------------------
 
         if was_limited:
             self.current_pdf_limit_was_reached = True
@@ -4020,25 +4035,12 @@ class MainWindow(QMainWindow):
             return
 
         # ---------------------------------
-        # PDF変換中は同時実行しない。
-        # サムネイル対象だけ待機キューへ入れる。
-        # ---------------------------------
-        if self.defer_thumbnails_until_pdf_done:
-            for file_path in paths:
-                if (
-                    file_path
-                    not in self.thumbnail_pending_paths
-                ):
-                    self.thumbnail_pending_paths.append(
-                        file_path
-                    )
-
-            return
-
-        # ---------------------------------
-        # すでにサムネイルWorkerが
-        # 動作している場合は、
-        # 次回処理分として待機させる
+        # PDF変換は現在QProcessによって
+        # 別プロセスで実行しているため、
+        # PDF変換中でもサムネイル生成を許可する。
+        #
+        # すでにThumbnailWorkerが動作中なら、
+        # 新しいページは待機キューへ入れる。
         # ---------------------------------
         if self.thumbnail_running:
             for file_path in paths:

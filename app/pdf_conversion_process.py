@@ -16,10 +16,22 @@ def send_message(
         **data,
     }
 
+    # ---------------------------------
+    # QProcessの標準出力はWindows環境で
+    # 必ずしもUTF-8になるとは限らない。
+    #
+    # 日本語を含むファイルパスが文字化けすると、
+    # AlbumCrop Studio本体が存在しないパスとして
+    # 受け取ってしまうため、
+    # JSON通信はASCIIのみで送信する。
+    #
+    # json.loads() 時に \uXXXX は
+    # 元のUnicode文字列へ自動復元される。
+    # ---------------------------------
     print(
         json.dumps(
             message,
-            ensure_ascii=False,
+            ensure_ascii=True,
         ),
         flush=True,
     )
@@ -104,6 +116,21 @@ def convert_pdf(
                 str(output_path)
             )
 
+            # ---------------------------------
+            # 1ページの変換が完了した時点で、
+            # AlbumCrop Studio本体へ通知する。
+            #
+            # PDF全体の変換完了を待たず、
+            # ページ一覧への追加と
+            # サムネイル生成を開始できるようにする。
+            # ---------------------------------
+            send_message(
+                "page_ready",
+                path=str(output_path),
+                current=page_index + 1,
+                total=page_count,
+            )
+
             send_message(
                 "progress",
                 current=page_index + 1,
@@ -111,8 +138,7 @@ def convert_pdf(
             )
 
             # ---------------------------------
-            # GUIとは別プロセスになった後も、
-            # CPUを連続占有しすぎないよう、
+            # PDF変換がCPUを連続占有しすぎないよう、
             # ページ間で短時間だけ処理を譲る。
             # ---------------------------------
             if (
