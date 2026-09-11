@@ -1122,10 +1122,6 @@ class MainWindow(QMainWindow):
 
         self.current_pdf_limit_was_reached = False
 
-        # PDF変換中は、重いサムネイル生成を
-        # 同時実行せず待機させる
-        self.defer_thumbnails_until_pdf_done = False
-
         self.setWindowTitle(
             f"{APP_NAME} {APP_VERSION}"
         )
@@ -3645,11 +3641,10 @@ class MainWindow(QMainWindow):
             return
 
         # ---------------------------------
-        # すべてのPDF変換が終わったので、
-        # 待機していたサムネイル生成を開始する
+        # PDF変換完了時点で
+        # サムネイル待機キューが残っていれば、
+        # 引き続きバックグラウンドで処理する
         # ---------------------------------
-        self.defer_thumbnails_until_pdf_done = False
-
         if self.thumbnail_pending_paths:
             pending_paths = list(
                 self.thumbnail_pending_paths
@@ -3724,9 +3719,6 @@ class MainWindow(QMainWindow):
             image_file_paths.append(
                 file_path
             )
-
-        if pdf_file_paths:
-            self.defer_thumbnails_until_pdf_done = True
 
         if image_file_paths:
             self.add_images(
@@ -4209,9 +4201,6 @@ class MainWindow(QMainWindow):
             image_file_paths.append(
                 file_path
             )
-
-        if pdf_file_paths:
-            self.defer_thumbnails_until_pdf_done = True
 
         if image_file_paths:
             self.add_images(
