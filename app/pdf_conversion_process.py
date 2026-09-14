@@ -170,7 +170,9 @@ def convert_pdf(
             document.close()
 
 
-def main():
+def main(
+    argv=None,
+):
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -189,7 +191,9 @@ def main():
         default=-1,
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(
+        argv
+    )
 
     max_pages = args.max_pages
 

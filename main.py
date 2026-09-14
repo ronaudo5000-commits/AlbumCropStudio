@@ -90,6 +90,33 @@ def get_splash_path(
 
 
 def main():
+    # ---------------------------------
+    # PDF変換Workerモード
+    #
+    # PyInstallerで配布版になった場合、
+    # sys.executable は python.exe ではなく
+    # AlbumCropStudio.exe 自身を指す。
+    #
+    # --pdf-worker が指定されている場合は
+    # GUIを起動せず、PDF変換処理だけを実行する。
+    # ---------------------------------
+    if "--pdf-worker" in sys.argv:
+        from app.pdf_conversion_process import (
+            main as pdf_worker_main,
+        )
+
+        worker_args = [
+            argument
+            for argument in sys.argv[1:]
+            if argument != "--pdf-worker"
+        ]
+
+        sys.exit(
+            pdf_worker_main(
+                worker_args
+            )
+        )
+
     logger = get_logger()
 
     try:

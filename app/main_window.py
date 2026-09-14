@@ -3368,26 +3368,57 @@ class MainWindow(QMainWindow):
             self.pdf_process_finished
         )
 
-        process_script = (
-            Path(__file__).resolve().parent
-            / "pdf_conversion_process.py"
-        )
-
         process_max_pages = (
             -1
             if max_pages is None
             else int(max_pages)
         )
 
-        arguments = [
-            str(process_script),
-            "--pdf",
-            str(pdf_path),
-            "--output-dir",
-            str(self.pdf_temp_dir),
-            "--max-pages",
-            str(process_max_pages),
-        ]
+        # ---------------------------------
+        # PDF変換プロセスの起動方法
+        #
+        # 開発環境:
+        #   python.exe
+        #   pdf_conversion_process.py
+        #
+        # PyInstaller配布版:
+        #   AlbumCropStudio.exe
+        #   --pdf-worker
+        #
+        # 配布版では sys.executable が
+        # AlbumCropStudio.exe 自身になるため、
+        # 専用Workerモードで起動する。
+        # ---------------------------------
+        if getattr(
+            sys,
+            "frozen",
+            False,
+        ):
+            arguments = [
+                "--pdf-worker",
+                "--pdf",
+                str(pdf_path),
+                "--output-dir",
+                str(self.pdf_temp_dir),
+                "--max-pages",
+                str(process_max_pages),
+            ]
+
+        else:
+            process_script = (
+                Path(__file__).resolve().parent
+                / "pdf_conversion_process.py"
+            )
+
+            arguments = [
+                str(process_script),
+                "--pdf",
+                str(pdf_path),
+                "--output-dir",
+                str(self.pdf_temp_dir),
+                "--max-pages",
+                str(process_max_pages),
+            ]
 
         self.pdf_process.start(
             sys.executable,

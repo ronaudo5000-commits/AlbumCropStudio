@@ -98,10 +98,14 @@ try {
             -Force
     }
 
-    Compress-Archive `
-        -Path (Join-Path $DistDir "*") `
-        -DestinationPath $ZipPath `
-        -CompressionLevel Optimal
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $DistDir,
+        $ZipPath,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false
+    )
 
     if (-not (Test-Path $ZipPath)) {
         throw "ZIPファイルを作成できませんでした。"
