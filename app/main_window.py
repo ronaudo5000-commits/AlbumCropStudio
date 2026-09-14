@@ -2763,6 +2763,10 @@ class MainWindow(QMainWindow):
             self.sync_aspect_ratio_to_selected_rect
         )
 
+        self.preview_area.selected_rect_changed.connect(
+            self.sync_crop_preview_to_selected_rect
+        )
+
         # 現在の表示状態
         self.edit_layout_mode = None
 
@@ -10082,12 +10086,80 @@ class MainWindow(QMainWindow):
 
         dialog.exec()
 
+    def sync_crop_preview_to_selected_rect(
+        self,
+        rect_index,
+    ):
+        preview_rows = getattr(
+            self,
+            "crop_preview_rows",
+            [],
+        )
+
+        if not preview_rows:
+            return
+
+        selected_widget = None
+
+        for row_info in preview_rows:
+            row_widget = row_info[
+                "widget"
+            ]
+
+            member_indexes = row_info[
+                "indexes"
+            ]
+
+            if rect_index in member_indexes:
+                row_widget.setStyleSheet(
+                    """
+                    QWidget#cropPreviewRow {
+                        border: 2px solid #2f80ed;
+                        border-radius: 4px;
+                        background-color: rgba(
+                            47,
+                            128,
+                            237,
+                            35
+                        );
+                    }
+                    """
+                )
+
+                selected_widget = row_widget
+
+            else:
+                row_widget.setStyleSheet(
+                    """
+                    QWidget#cropPreviewRow {
+                        border: 1px solid transparent;
+                        border-radius: 4px;
+                        background-color: transparent;
+                    }
+                    """
+                )
+
+        if selected_widget is not None:
+            QTimer.singleShot(
+                0,
+                lambda widget=selected_widget:
+                self.crop_preview_scroll.ensureWidgetVisible(
+                    widget,
+                    8,
+                    8,
+                ),
+            )
+
     def update_crop_preview(self):
         if self.current_pixmap is None:
             return
 
         # 拡大プレビュー用の一覧を作り直す
         self.crop_preview_items = []
+
+        # 中央キャンバスとの選択同期用に、
+        # 各プレビュー行と元枠番号の対応も作り直す
+        self.crop_preview_rows = []
 
         # 既存のプレビュー表示を全部削除
         while self.crop_preview_list_layout.count():
@@ -10228,6 +10300,58 @@ class MainWindow(QMainWindow):
                 }
             )
 
+            # ---------------------------------
+            # コンパクトなプレビュー行
+            #
+            # 左：サムネイル
+            # 右：タイトル
+            # ---------------------------------
+            preview_row_widget = QWidget()
+
+            preview_row_widget.setObjectName(
+                "cropPreviewRow"
+            )
+
+            preview_row_widget.setStyleSheet(
+                """
+                QWidget#cropPreviewRow {
+                    border: 1px solid transparent;
+                    border-radius: 4px;
+                    background-color: transparent;
+                }
+                """
+            )
+
+            available_preview_width = (
+                self.crop_preview_scroll
+                .viewport()
+                .width()
+            )
+
+            narrow_preview = (
+                available_preview_width < 175
+            )
+
+            if narrow_preview:
+                preview_row_layout = QVBoxLayout(
+                    preview_row_widget
+                )
+            else:
+                preview_row_layout = QHBoxLayout(
+                    preview_row_widget
+                )
+
+            preview_row_layout.setContentsMargins(
+                4,
+                3,
+                4,
+                3,
+            )
+
+            preview_row_layout.setSpacing(
+                6
+            )
+
             title_label = QLabel(
                 title_text
             )
@@ -10239,12 +10363,15 @@ class MainWindow(QMainWindow):
                 title_font
             )
 
-            title_label.setContentsMargins(
-                2,
-                0,
-                0,
-                0,
-            )
+            if narrow_preview:
+                title_label.setAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
+            else:
+                title_label.setAlignment(
+                    Qt.AlignmentFlag.AlignVCenter
+                    | Qt.AlignmentFlag.AlignLeft
+                )
 
             preview_label = (
                 ClickablePreviewLabel(
@@ -10267,22 +10394,22 @@ class MainWindow(QMainWindow):
                 Qt.AlignmentFlag.AlignCenter
             )
 
-            available_width = max(
-                80,
-                self.crop_preview_scroll
-                .viewport()
-                .width()
-                - 24,
-            )
+            if narrow_preview:
+                thumbnail_width = 88
+                thumbnail_height = 66
 
-            preview_width = min(
-                150,
-                available_width,
-            )
+                preview_box_width = 96
+                preview_box_height = 72
+            else:
+                thumbnail_width = 96
+                thumbnail_height = 72
+
+                preview_box_width = 104
+                preview_box_height = 80
 
             preview_pixmap = crop_pixmap.scaled(
-                preview_width,
-                120,
+                thumbnail_width,
+                thumbnail_height,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -10291,16 +10418,48 @@ class MainWindow(QMainWindow):
                 preview_pixmap
             )
 
-            self.crop_preview_list_layout.addWidget(
-                title_label
+            preview_label.setFixedSize(
+                preview_box_width,
+                preview_box_height,
+            )
+
+            preview_row_layout.addWidget(
+                preview_label,
+                0,
+                Qt.AlignmentFlag.AlignCenter,
+            )
+
+            preview_row_layout.addWidget(
+                title_label,
+                1,
+            )
+
+            self.crop_preview_rows.append(
+                {
+                    "widget": preview_row_widget,
+                    "indexes": list(
+                        member_indexes
+                    ),
+                }
             )
 
             self.crop_preview_list_layout.addWidget(
-                preview_label
+                preview_row_widget
             )
 
             self.crop_preview_list_layout.addSpacing(
-                12
+                4
             )
 
         self.crop_preview_list_layout.addStretch()
+
+        selected_rect = getattr(
+            self.preview_area,
+            "selected_rect",
+            -1,
+        )
+
+        if selected_rect >= 0:
+            self.sync_crop_preview_to_selected_rect(
+                selected_rect
+            )
