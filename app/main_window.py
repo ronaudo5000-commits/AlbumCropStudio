@@ -327,8 +327,8 @@ class CropPreviewDialog(QDialog):
             self.tr("次へ ▶")
         )
 
-        self.close_button = QPushButton(
-            self.tr("閉じる")
+        self.maximize_button = QPushButton(
+            self.tr("最大化")
         )
 
         self.zoom_out_button.setFixedWidth(
@@ -385,6 +385,12 @@ class CropPreviewDialog(QDialog):
             )
         )
 
+        self.maximize_button.setToolTip(
+            self.tr(
+                "プレビュー画面を最大化します"
+            )
+        )
+
         self.zoom_out_button.clicked.connect(
             self.viewer.zoom_out
         )
@@ -405,8 +411,8 @@ class CropPreviewDialog(QDialog):
             self.show_next_preview
         )
 
-        self.close_button.clicked.connect(
-            self.accept
+        self.maximize_button.clicked.connect(
+            self.toggle_maximized
         )
 
         button_layout = QHBoxLayout()
@@ -440,11 +446,15 @@ class CropPreviewDialog(QDialog):
         button_layout.addStretch()
 
         button_layout.addWidget(
-            self.close_button
+            self.maximize_button
         )
 
         main_layout = QVBoxLayout(
             self
+        )
+
+        main_layout.addLayout(
+            button_layout
         )
 
         main_layout.addWidget(
@@ -452,11 +462,34 @@ class CropPreviewDialog(QDialog):
             1,
         )
 
-        main_layout.addLayout(
-            button_layout
-        )
-
         self.update_preview_display()
+
+    def toggle_maximized(self):
+        if self.isMaximized():
+            self.showNormal()
+
+            self.maximize_button.setText(
+                self.tr("最大化")
+            )
+
+            self.maximize_button.setToolTip(
+                self.tr(
+                    "プレビュー画面を最大化します"
+                )
+            )
+
+        else:
+            self.showMaximized()
+
+            self.maximize_button.setText(
+                self.tr("元に戻す")
+            )
+
+            self.maximize_button.setToolTip(
+                self.tr(
+                    "プレビュー画面を元のサイズに戻します"
+                )
+            )
 
     def update_preview_display(self):
         if not self.preview_items:
@@ -1746,6 +1779,10 @@ class MainWindow(QMainWindow):
 
         self.crop_preview_scroll = QScrollArea()
         self.crop_preview_scroll.setWidgetResizable(True)
+
+        self.crop_preview_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
 
         self.crop_preview_container = QWidget()
         self.crop_preview_list_layout = QVBoxLayout(
@@ -10126,7 +10163,7 @@ class MainWindow(QMainWindow):
                 Qt.AlignmentFlag.AlignCenter
             )
 
-            preview_width = max(
+            available_width = max(
                 80,
                 self.crop_preview_scroll
                 .viewport()
@@ -10134,9 +10171,14 @@ class MainWindow(QMainWindow):
                 - 24,
             )
 
+            preview_width = min(
+                150,
+                available_width,
+            )
+
             preview_pixmap = crop_pixmap.scaled(
                 preview_width,
-                180,
+                120,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
