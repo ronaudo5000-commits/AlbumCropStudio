@@ -420,6 +420,11 @@
         <translation>裁切編輯</translation>
     </message>
     <message>
+        <location filename="../app/main_window.py" line="2676" />
+        <source>縦横比</source>
+        <translation>長寬比</translation>
+    </message>
+    <message>
         <location filename="../app/main_window.py" line="2605" />
         <source>自由</source>
         <translation>自由</translation>

@@ -2616,6 +2616,36 @@ class MainWindow(QMainWindow):
         )
 
         # ---------------------------------
+        # 編集操作の視覚的な区切り
+        #
+        # wide表示では、
+        # 機能グループごとに縦線を表示する。
+        #
+        # compact表示では上下2段に分かれるため、
+        # 区切り線は非表示にする。
+        # ---------------------------------
+        self.edit_separator_1 = QWidget()
+        self.edit_separator_2 = QWidget()
+        self.edit_separator_3 = QWidget()
+
+        for separator in (
+            self.edit_separator_1,
+            self.edit_separator_2,
+            self.edit_separator_3,
+        ):
+            separator.setFixedWidth(
+                1
+            )
+
+            separator.setStyleSheet(
+                """
+                QWidget {
+                    background-color: #555555;
+                }
+                """
+            )
+
+        # ---------------------------------
         # 枠数
         # レスポンシブ再配置しやすいよう
         # QWidgetとしてまとめて保持する
@@ -2649,6 +2679,10 @@ class MainWindow(QMainWindow):
         # ---------------------------------
         # 縦横比
         # ---------------------------------
+        self.aspect_ratio_label = QLabel(
+            self.tr("縦横比")
+        )
+
         self.aspect_ratio_combo = QComboBox()
 
         self.aspect_ratio_combo.addItem(
@@ -2694,6 +2728,31 @@ class MainWindow(QMainWindow):
             self.tr(
                 "枠をリサイズするときの縦横比を選びます"
             )
+        )
+
+        self.aspect_ratio_widget = QWidget()
+
+        aspect_ratio_layout = QHBoxLayout(
+            self.aspect_ratio_widget
+        )
+
+        aspect_ratio_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        aspect_ratio_layout.setSpacing(
+            4
+        )
+
+        aspect_ratio_layout.addWidget(
+            self.aspect_ratio_label
+        )
+
+        aspect_ratio_layout.addWidget(
+            self.aspect_ratio_combo
         )
 
         self.aspect_ratio_combo.currentIndexChanged.connect(
@@ -9166,10 +9225,13 @@ class MainWindow(QMainWindow):
             self.detect_button,
             self.count_widget,
             self.generate_rects_button,
+            self.edit_separator_1,
             self.mosaic_create_button,
+            self.edit_separator_2,
             self.composite_create_button,
             self.composite_member_edit_button,
-            self.aspect_ratio_combo,
+            self.edit_separator_3,
+            self.aspect_ratio_widget,
         ]
 
         for widget in widgets:
@@ -9177,13 +9239,25 @@ class MainWindow(QMainWindow):
                 widget
             )
 
-        for column in range(8):
+        for column in range(11):
             self.edit_layout.setColumnStretch(
                 column,
                 0,
             )
 
         if mode == "wide":
+            self.edit_separator_1.setVisible(
+                True
+            )
+
+            self.edit_separator_2.setVisible(
+                True
+            )
+
+            self.edit_separator_3.setVisible(
+                True
+            )
+
             self.edit_layout.addWidget(
                 self.detect_button,
                 0,
@@ -9203,7 +9277,7 @@ class MainWindow(QMainWindow):
             )
 
             self.edit_layout.addWidget(
-                self.mosaic_create_button,
+                self.edit_separator_1,
                 0,
                 3,
             )
@@ -9221,17 +9295,47 @@ class MainWindow(QMainWindow):
             )
 
             self.edit_layout.addWidget(
-                self.aspect_ratio_combo,
+                self.edit_separator_2,
                 0,
                 6,
             )
 
-            self.edit_layout.setColumnStretch(
+            self.edit_layout.addWidget(
+                self.aspect_ratio_widget,
+                0,
                 7,
+            )
+
+            self.edit_layout.addWidget(
+                self.edit_separator_3,
+                0,
+                8,
+            )
+
+            self.edit_layout.addWidget(
+                self.mosaic_create_button,
+                0,
+                9,
+            )
+
+            self.edit_layout.setColumnStretch(
+                10,
                 1,
             )
 
         else:
+            self.edit_separator_1.setVisible(
+                False
+            )
+
+            self.edit_separator_2.setVisible(
+                False
+            )
+
+            self.edit_separator_3.setVisible(
+                False
+            )
+
             self.edit_layout.addWidget(
                 self.detect_button,
                 0,
@@ -9251,25 +9355,25 @@ class MainWindow(QMainWindow):
             )
 
             self.edit_layout.addWidget(
-                self.mosaic_create_button,
+                self.composite_create_button,
                 1,
                 0,
             )
 
             self.edit_layout.addWidget(
-                self.composite_create_button,
+                self.composite_member_edit_button,
                 1,
                 1,
             )
 
             self.edit_layout.addWidget(
-                self.composite_member_edit_button,
+                self.aspect_ratio_widget,
                 1,
                 2,
             )
 
             self.edit_layout.addWidget(
-                self.aspect_ratio_combo,
+                self.mosaic_create_button,
                 1,
                 3,
             )
@@ -9300,7 +9404,7 @@ class MainWindow(QMainWindow):
             self.mosaic_create_button,
             self.composite_create_button,
             self.composite_member_edit_button,
-            self.aspect_ratio_combo,
+            self.aspect_ratio_widget,
         ]
 
         required_width = sum(
