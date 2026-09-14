@@ -136,6 +136,10 @@ class PhotoCanvas(QWidget):
         self.rotation_sensitivity = 0.30
         self.rotation_fine_sensitivity = 0.10
 
+        # 選択枠の操作コントロールのホバー状態
+        # None / "copy" / "delete" / "rotate"
+        self.hover_operation_control = None
+
         self.setMinimumHeight(400)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -1232,10 +1236,10 @@ class PhotoCanvas(QWidget):
         scale_x,
         scale_y,
     ):
-        button_size = 28
-        button_gap = 4
-        rotate_handle_size = 18
-        rotate_distance = 45
+        button_size = 24
+        button_gap = 3
+        rotate_handle_size = 12
+        rotate_distance = 32
         edge_margin = 4
 
         screen_w = w * scale_x
@@ -1844,44 +1848,18 @@ class PhotoCanvas(QWidget):
 
             painter.restore()
 
-            painter.setFont(QFont("Arial", 12))
-
-            label_width = 48
-            label_height = 24
-
-            rect_center_x = x + w / 2
-            rect_center_y = y + h / 2
-
-            rotated_label_x, rotated_label_y = self.rotate_point(
-                x,
-                y,
-                rect_center_x,
-                rect_center_y,
-                angle,
-            )
-
-            label_x = int(
-                x_offset + rotated_label_x * scale_x
-            )
-
-            label_y = int(
-                y_offset + rotated_label_y * scale_y
-            )
-
-            # ハンドルと重なりにくいよう少し外側へずらす
-            label_x -= label_width
-            label_y -= label_height
-
-            painter.fillRect(
-                label_x,
-                label_y,
-                label_width,
-                label_height,
-                QColor(255, 200, 0),
-            )
-
-            painter.setPen(
-                QColor(0, 0, 0)
+            # ---------------------------------
+            # 枠番号バッジ
+            #
+            # 固定サイズの黄色ラベルではなく、
+            # 文字数に応じて幅が変わる
+            # 小型バッジとして表示する。
+            # ---------------------------------
+            painter.setFont(
+                QFont(
+                    "Arial",
+                    10,
+                )
             )
 
             label_text = str(
@@ -1930,6 +1908,89 @@ class PhotoCanvas(QWidget):
                         f"{member_letter}"
                     )
 
+            font_metrics = painter.fontMetrics()
+
+            label_width = max(
+                24,
+                font_metrics.horizontalAdvance(
+                    label_text
+                )
+                + 14,
+            )
+
+            label_height = 20
+
+            rect_center_x = x + w / 2
+            rect_center_y = y + h / 2
+
+            rotated_label_x, rotated_label_y = (
+                self.rotate_point(
+                    x,
+                    y,
+                    rect_center_x,
+                    rect_center_y,
+                    angle,
+                )
+            )
+
+            label_x = int(
+                x_offset
+                + rotated_label_x * scale_x
+            )
+
+            label_y = int(
+                y_offset
+                + rotated_label_y * scale_y
+            )
+
+            # 枠の左上から少し外側へ配置する
+            label_x -= label_width
+            label_y -= label_height
+
+            painter.save()
+
+            painter.setPen(
+                Qt.PenStyle.NoPen
+            )
+
+            if index == self.selected_rect:
+                label_background = QColor(
+                    47,
+                    128,
+                    237,
+                    230,
+                )
+            else:
+                label_background = QColor(
+                    35,
+                    35,
+                    35,
+                    215,
+                )
+
+            painter.setBrush(
+                label_background
+            )
+
+            painter.drawRoundedRect(
+                QRectF(
+                    label_x,
+                    label_y,
+                    label_width,
+                    label_height,
+                ),
+                4,
+                4,
+            )
+
+            painter.setPen(
+                QColor(
+                    255,
+                    255,
+                    255,
+                )
+            )
+
             painter.drawText(
                 label_x,
                 label_y,
@@ -1939,6 +2000,7 @@ class PhotoCanvas(QWidget):
                 label_text,
             )
 
+            painter.restore()
             if index == self.selected_rect:
                 handle_size = self.resize_handle_size
 
@@ -2005,18 +2067,79 @@ class PhotoCanvas(QWidget):
                 ]
 
                 # ---------------------------------
+                # 選択枠の操作ボタン
+                #
+                # 背景色を統一し、
+                # アイコン色で役割を区別する。
+                # ---------------------------------
+                painter.save()
+
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                control_background = QColor(
+                    45,
+                    45,
+                    45,
+                    235,
+                )
+
+                delete_background = (
+                    QColor(
+                        190,
+                        60,
+                        60,
+                        245,
+                    )
+                    if self.hover_operation_control
+                    == "delete"
+                    else control_background
+                )
+
+                copy_background = (
+                    QColor(
+                        47,
+                        128,
+                        237,
+                        245,
+                    )
+                    if self.hover_operation_control
+                    == "copy"
+                    else control_background
+                )
+
+                # ---------------------------------
                 # 削除ボタン
                 # ---------------------------------
-                painter.fillRect(
-                    delete_x,
-                    delete_y,
-                    button_size,
-                    button_size,
-                    QColor(220, 60, 60),
+                painter.setBrush(
+                    delete_background
+                )
+
+                painter.drawRoundedRect(
+                    QRectF(
+                        delete_x,
+                        delete_y,
+                        button_size,
+                        button_size,
+                    ),
+                    4,
+                    4,
                 )
 
                 painter.setPen(
-                    QColor(255, 255, 255)
+                    QColor(
+                        255,
+                        255,
+                        255,
+                    )
+                    if self.hover_operation_control
+                    == "delete"
+                    else QColor(
+                        255,
+                        125,
+                        125,
+                    )
                 )
 
                 painter.drawText(
@@ -2031,16 +2154,38 @@ class PhotoCanvas(QWidget):
                 # ---------------------------------
                 # コピーボタン
                 # ---------------------------------
-                painter.fillRect(
-                    copy_x,
-                    copy_y,
-                    button_size,
-                    button_size,
-                    QColor(70, 120, 220),
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                painter.setBrush(
+                    copy_background
+                )
+
+                painter.drawRoundedRect(
+                    QRectF(
+                        copy_x,
+                        copy_y,
+                        button_size,
+                        button_size,
+                    ),
+                    4,
+                    4,
                 )
 
                 painter.setPen(
-                    QColor(255, 255, 255)
+                    QColor(
+                        255,
+                        255,
+                        255,
+                    )
+                    if self.hover_operation_control
+                    == "copy"
+                    else QColor(
+                        125,
+                        175,
+                        255,
+                    )
                 )
 
                 painter.drawText(
@@ -2051,6 +2196,8 @@ class PhotoCanvas(QWidget):
                     Qt.AlignmentFlag.AlignCenter,
                     "⧉",
                 )
+
+                painter.restore()
 
                 # ---------------------------------
                 # 回転ハンドル
@@ -2096,9 +2243,76 @@ class PhotoCanvas(QWidget):
                     int(rotate_center_y),
                 )
 
-                painter.setBrush(
-                    QColor(255, 200, 0)
-                )
+                if (
+                    self.hover_operation_control
+                    == "rotate"
+                ):
+                    hover_ring_size = (
+                        rotate_handle_size + 8
+                    )
+
+                    hover_ring_x = int(
+                        rotate_center_x
+                        - hover_ring_size / 2
+                    )
+
+                    hover_ring_y = int(
+                        rotate_center_y
+                        - hover_ring_size / 2
+                    )
+
+                    painter.setPen(
+                        QPen(
+                            QColor(
+                                225,
+                                70,
+                                190,
+                                230,
+                            ),
+                            2,
+                        )
+                    )
+
+                    painter.setBrush(
+                        QColor(
+                            225,
+                            70,
+                            190,
+                            70,
+                        )
+                    )
+
+                    painter.drawEllipse(
+                        hover_ring_x,
+                        hover_ring_y,
+                        hover_ring_size,
+                        hover_ring_size,
+                    )
+
+                    painter.setPen(
+                        Qt.PenStyle.NoPen
+                    )
+
+                    painter.setBrush(
+                        QColor(
+                            225,
+                            70,
+                            190,
+                        )
+                    )
+
+                else:
+                    painter.setPen(
+                        Qt.PenStyle.NoPen
+                    )
+
+                    painter.setBrush(
+                        QColor(
+                            255,
+                            200,
+                            0,
+                        )
+                    )
 
                 painter.drawEllipse(
                     rotate_x,
@@ -2106,6 +2320,82 @@ class PhotoCanvas(QWidget):
                     rotate_handle_size,
                     rotate_handle_size,
                 )
+
+                if (
+                    self.hover_operation_control
+                    == "rotate"
+                ):
+                    painter.setFont(
+                        QFont(
+                            "Arial",
+                            11,
+                            QFont.Weight.Bold,
+                        )
+                    )
+
+                    # ---------------------------------
+                    # 回転ヒント記号
+                    #
+                    # 角度表示と重ならないよう、
+                    # 回転ハンドルの少し左上へ配置する。
+                    # 白縁＋黒文字で、
+                    # 写真上でも見やすくする。
+                    # ---------------------------------
+                    rotate_hint_x = int(
+                        rotate_x - 10
+                    )
+
+                    rotate_hint_y = int(
+                        rotate_y - 22
+                    )
+
+                    outline_offsets = [
+                        (-1, 0),
+                        (1, 0),
+                        (0, -1),
+                        (0, 1),
+                        (-1, -1),
+                        (-1, 1),
+                        (1, -1),
+                        (1, 1),
+                    ]
+
+                    painter.setPen(
+                        QColor(
+                            255,
+                            255,
+                            255,
+                            235,
+                        )
+                    )
+
+                    for dx, dy in outline_offsets:
+                        painter.drawText(
+                            rotate_hint_x + dx,
+                            rotate_hint_y + dy,
+                            20,
+                            20,
+                            Qt.AlignmentFlag.AlignCenter,
+                            "↻",
+                        )
+
+                    painter.setPen(
+                        QColor(
+                            20,
+                            20,
+                            20,
+                            235,
+                        )
+                    )
+
+                    painter.drawText(
+                        rotate_hint_x,
+                        rotate_hint_y,
+                        20,
+                        20,
+                        Qt.AlignmentFlag.AlignCenter,
+                        "↻",
+                    )
 
                 painter.setBrush(
                     Qt.BrushStyle.NoBrush
@@ -3996,7 +4286,160 @@ class PhotoCanvas(QWidget):
 
         self.update()
 
+    def leaveEvent(self, event):
+        if self.hover_operation_control is not None:
+            self.hover_operation_control = None
+            self.update()
+
+        super().leaveEvent(
+            event
+        )
+
     def mouseMoveEvent(self, event):
+        new_hover_control = None
+
+        if (
+            self.pixmap is not None
+            and self.selected_rect >= 0
+            and self.selected_rect < len(self.rects)
+            and not self.panning
+            and not self.dragging
+            and not self.resizing
+            and not self.rotating
+            and not self.adding_rect
+            and not self.adding_mosaic_rect
+            and not self.mosaic_dragging
+            and not self.mosaic_resizing
+        ):
+            info = self.image_display_info()
+
+            if info is not None:
+                (
+                    _,
+                    x_offset,
+                    y_offset,
+                    scale_x,
+                    scale_y,
+                ) = info
+
+                x, y, w, h = self.rects[
+                    self.selected_rect
+                ]
+
+                angle = 0.0
+
+                if self.selected_rect < len(
+                    self.rect_angles
+                ):
+                    angle = self.rect_angles[
+                        self.selected_rect
+                    ]
+
+                controls = (
+                    self.operation_control_geometry(
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                        x_offset,
+                        y_offset,
+                        scale_x,
+                        scale_y,
+                    )
+                )
+
+                button_size = controls[
+                    "button_size"
+                ]
+
+                copy_x = controls[
+                    "copy_x"
+                ]
+
+                copy_y = controls[
+                    "copy_y"
+                ]
+
+                delete_x = controls[
+                    "delete_x"
+                ]
+
+                delete_y = controls[
+                    "delete_y"
+                ]
+
+                rotate_handle_size = controls[
+                    "rotate_handle_size"
+                ]
+
+                rotate_center_x = controls[
+                    "rotate_center_x"
+                ]
+
+                rotate_center_y = controls[
+                    "rotate_center_y"
+                ]
+
+                rotate_hit_margin = 14
+
+                rotate_x = (
+                    rotate_center_x
+                    - rotate_handle_size / 2
+                )
+
+                rotate_y = (
+                    rotate_center_y
+                    - rotate_handle_size / 2
+                )
+
+                pos = event.position()
+
+                if (
+                    copy_x
+                    <= pos.x()
+                    <= copy_x + button_size
+                    and copy_y
+                    <= pos.y()
+                    <= copy_y + button_size
+                ):
+                    new_hover_control = "copy"
+
+                elif (
+                    delete_x
+                    <= pos.x()
+                    <= delete_x + button_size
+                    and delete_y
+                    <= pos.y()
+                    <= delete_y + button_size
+                ):
+                    new_hover_control = "delete"
+
+                elif (
+                    rotate_x - rotate_hit_margin
+                    <= pos.x()
+                    <= rotate_x
+                    + rotate_handle_size
+                    + rotate_hit_margin
+                    and
+                    rotate_y - rotate_hit_margin
+                    <= pos.y()
+                    <= rotate_y
+                    + rotate_handle_size
+                    + rotate_hit_margin
+                ):
+                    new_hover_control = "rotate"
+
+        if (
+            new_hover_control
+            != self.hover_operation_control
+        ):
+            self.hover_operation_control = (
+                new_hover_control
+            )
+
+            self.update()
+
         if self.panning:
             if self.last_pan_pos is None:
                 return
