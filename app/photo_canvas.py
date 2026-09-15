@@ -6555,6 +6555,8 @@ class PhotoCanvas(QWidget):
                         }
                     )
 
+                self.copied_rects_changed.emit()
+
                 self.save_undo_state()
 
                 # インデックスずれを防ぐため、

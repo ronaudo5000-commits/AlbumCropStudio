@@ -2499,6 +2499,12 @@ class MainWindow(QMainWindow):
             self.paste_all_pages_action
         )
 
+        # 編集メニューを開く直前に、
+        # 貼り付け可能な状態か再判定する
+        edit_menu.aboutToShow.connect(
+            self.update_bulk_paste_actions_state
+        )
+
         quick_start_action = QAction(
             self.tr("クイックスタート"),
             self,
@@ -3143,7 +3149,61 @@ class MainWindow(QMainWindow):
             status_layout
         )
 
-        self.apply_page_list_display_mode()        
+        self.apply_page_list_display_mode()
+
+        # ---------------------------------
+        # 起動直後の空状態
+        #
+        # 画像またはPDFが読み込まれるまでは、
+        # 画像を必要とする編集・書き出し操作を
+        # 無効にしておく。
+        # ---------------------------------
+        self.edit_group.setEnabled(
+            False
+        )
+
+        self.save_button.setEnabled(
+            False
+        )
+
+        self.save_project_button.setEnabled(
+            False
+        )
+
+        self.save_project_as_button.setEnabled(
+            False
+        )
+
+        self.save_action.setEnabled(
+            False
+        )
+
+        self.save_as_action.setEnabled(
+            False
+        )
+
+        self.zoom_out_button.setEnabled(
+            False
+        )
+
+        self.zoom_in_button.setEnabled(
+            False
+        )
+
+        self.fit_button.setEnabled(
+            False
+        )
+
+        self.export_all_on_button.setEnabled(
+            False
+        )
+
+        self.export_all_off_button.setEnabled(
+            False
+        )
+
+        # 起動直後のページ移動状態を反映
+        self.update_page_label()
 
     def update_export_progress(
         self,
@@ -3342,6 +3402,9 @@ class MainWindow(QMainWindow):
         self.generate_rects_button.setEnabled(
             enabled
         )
+
+        if enabled:
+            self.update_page_label()
 
     def detection_finished(
         self,
@@ -5012,15 +5075,102 @@ class MainWindow(QMainWindow):
             ]
         )
 
+    def update_bulk_paste_actions_state(self):
+        # コピー済みの切り抜き枠があるか
+        has_copied_rects = bool(
+            self.preview_area.copied_rects
+        )
+
+        source_page_index = -1
+
+        saved_source_index = (
+            self.copied_rects_source_page_index
+        )
+
+        saved_source_path = (
+            self.copied_rects_source_image_path
+        )
+
+        # コピー後にページ削除などで
+        # ページ番号が変わっていない場合
+        if (
+            0 <= saved_source_index
+            < len(self.image_paths)
+            and saved_source_path is not None
+            and self.image_paths[
+                saved_source_index
+            ] == saved_source_path
+        ):
+            source_page_index = (
+                saved_source_index
+            )
+
+        # ページ番号が変わった場合は、
+        # 画像パスからコピー元を探し直す
+        elif (
+            saved_source_path is not None
+            and saved_source_path
+            in self.image_paths
+        ):
+            source_page_index = (
+                self.image_paths.index(
+                    saved_source_path
+                )
+            )
+
+        selected_target_exists = any(
+            self.page_list.row(item)
+            != source_page_index
+            for item
+            in self.page_list.selectedItems()
+        )
+
+        all_target_exists = any(
+            row != source_page_index
+            for row in range(
+                len(self.image_paths)
+            )
+        )
+
+        self.paste_selected_pages_action.setEnabled(
+            has_copied_rects
+            and selected_target_exists
+        )
+
+        self.paste_all_pages_action.setEnabled(
+            has_copied_rects
+            and all_target_exists
+        )
+
     def update_page_label(self):
         total = len(self.image_paths)
 
         if total == 0 or self.current_page_index < 0:
-            self.page_label.setText("0 / 0")
+            self.page_label.setText(
+                "0 / 0"
+            )
+
+            self.prev_button.setEnabled(
+                False
+            )
+
+            self.next_button.setEnabled(
+                False
+            )
+
             return
 
         self.page_label.setText(
             f"{self.current_page_index + 1} / {total}"
+        )
+
+        self.prev_button.setEnabled(
+            self.current_page_index > 0
+        )
+
+        self.next_button.setEnabled(
+            self.current_page_index
+            < total - 1
         )
 
     def has_bulk_paste_undo(
@@ -7716,6 +7866,53 @@ class MainWindow(QMainWindow):
                 False
             )
 
+            # ---------------------------------
+            # 全ページ削除後は空状態へ戻す
+            # ---------------------------------
+            self.edit_group.setEnabled(
+                False
+            )
+
+            self.save_button.setEnabled(
+                False
+            )
+
+            self.save_project_button.setEnabled(
+                False
+            )
+
+            self.save_project_as_button.setEnabled(
+                False
+            )
+
+            self.save_action.setEnabled(
+                False
+            )
+
+            self.save_as_action.setEnabled(
+                False
+            )
+
+            self.zoom_out_button.setEnabled(
+                False
+            )
+
+            self.zoom_in_button.setEnabled(
+                False
+            )
+
+            self.fit_button.setEnabled(
+                False
+            )
+
+            self.export_all_on_button.setEnabled(
+                False
+            )
+
+            self.export_all_off_button.setEnabled(
+                False
+            )
+
             self.project_modified = True
 
             self.page_list.viewport().update()
@@ -8489,6 +8686,53 @@ class MainWindow(QMainWindow):
             []
         )
 
+        # ---------------------------------
+        # 画像読み込み後は編集・書き出しを有効化
+        # ---------------------------------
+        self.edit_group.setEnabled(
+            True
+        )
+
+        self.save_button.setEnabled(
+            True
+        )
+
+        self.save_project_button.setEnabled(
+            True
+        )
+
+        self.save_project_as_button.setEnabled(
+            True
+        )
+
+        self.save_action.setEnabled(
+            True
+        )
+
+        self.save_as_action.setEnabled(
+            True
+        )
+
+        self.zoom_out_button.setEnabled(
+            True
+        )
+
+        self.zoom_in_button.setEnabled(
+            True
+        )
+
+        self.fit_button.setEnabled(
+            True
+        )
+
+        self.export_all_on_button.setEnabled(
+            True
+        )
+
+        self.export_all_off_button.setEnabled(
+            True
+        )
+
         self.update_current_rect_count_status()
 
         if hasattr(
@@ -9111,7 +9355,14 @@ class MainWindow(QMainWindow):
                 )
             )
 
-            self.save_button.setEnabled(True)
+            self.save_button.setEnabled(
+                True
+            )
+
+            self.save_button.setText(
+                self.tr("切り抜き")
+            )
+
             return
 
         self.status_label.setText(
