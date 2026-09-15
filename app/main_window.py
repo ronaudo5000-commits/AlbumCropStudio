@@ -14,6 +14,7 @@ import time
 from PySide6.QtCore import (
     Qt,
     QSize,
+    QRectF,
     QProcess,
     QThread,
     QTimer,
@@ -625,6 +626,18 @@ class PageListWidget(QListWidget):
             margin = self.control_margin
 
             # ---------------------------------
+            # ページ操作コントロール
+            #
+            # クリック領域は従来の24pxを維持し、
+            # 描画だけ少し小さくして
+            # 中央キャンバスの操作UIに合わせる。
+            # ---------------------------------
+            visual_inset = 1
+            visual_size = (
+                size - visual_inset * 2
+            )
+
+            # ---------------------------------
             # 書き出し対象チェック
             # ---------------------------------
             check_x = (
@@ -643,77 +656,153 @@ class PageListWidget(QListWidget):
                 )
             )
 
-            painter.setPen(
-                QColor(80, 80, 80)
-            )
-
             check_hovered = (
                 self.hover_control
                 == ("check", row)
             )
 
-            if checked:
-                if check_hovered:
-                    check_color = QColor(
-                        80,
-                        190,
-                        240,
-                    )
-                else:
-                    check_color = QColor(
-                        60,
-                        170,
-                        220,
-                    )
+            check_visual_x = (
+                check_x + visual_inset
+            )
 
-                painter.setBrush(
-                    check_color
+            check_visual_y = (
+                check_y + visual_inset
+            )
+
+            painter.save()
+
+            if check_hovered and checked:
+                check_background = QColor(
+                    47,
+                    128,
+                    237,
+                    245,
+                )
+
+                check_border = QColor(
+                    47,
+                    128,
+                    237,
+                    255,
+                )
+
+                check_text_color = QColor(
+                    255,
+                    255,
+                    255,
+                )
+
+            elif check_hovered:
+                check_background = QColor(
+                    55,
+                    55,
+                    55,
+                    245,
+                )
+
+                check_border = QColor(
+                    125,
+                    175,
+                    255,
+                    255,
+                )
+
+                check_text_color = QColor(
+                    125,
+                    175,
+                    255,
+                )
+
+            elif checked:
+                check_background = QColor(
+                    45,
+                    45,
+                    45,
+                    235,
+                )
+
+                check_border = QColor(
+                    47,
+                    128,
+                    237,
+                    230,
+                )
+
+                check_text_color = QColor(
+                    125,
+                    175,
+                    255,
                 )
 
             else:
-                if check_hovered:
-                    painter.setBrush(
-                        QColor(
-                            225,
-                            240,
-                            250,
-                        )
-                    )
-                else:
-                    painter.setBrush(
-                        QColor(
-                            255,
-                            255,
-                            255,
-                        )
-                    )
+                check_background = QColor(
+                    45,
+                    45,
+                    45,
+                    210,
+                )
 
-            painter.drawRect(
-                check_x,
-                check_y,
-                size - 1,
-                size - 1,
+                check_border = QColor(
+                    95,
+                    95,
+                    95,
+                    220,
+                )
+
+                check_text_color = QColor(
+                    125,
+                    175,
+                    255,
+                )
+
+            painter.setPen(
+                QPen(
+                    check_border,
+                    1,
+                )
+            )
+
+            painter.setBrush(
+                check_background
+            )
+
+            painter.drawRoundedRect(
+                QRectF(
+                    check_visual_x,
+                    check_visual_y,
+                    visual_size,
+                    visual_size,
+                ),
+                4,
+                4,
             )
 
             if checked:
                 painter.setPen(
-                    QColor(255, 255, 255)
+                    check_text_color
                 )
 
                 painter.drawText(
-                    check_x,
-                    check_y,
-                    size,
-                    size,
+                    check_visual_x,
+                    check_visual_y,
+                    visual_size,
+                    visual_size,
                     Qt.AlignmentFlag.AlignCenter,
                     "✓",
                 )
 
+            painter.restore()
+
             # ---------------------------------
             # ページ削除ボタン
             # ---------------------------------
+            delete_right = min(
+                item_rect.right(),
+                self.viewport().rect().right(),
+            )
+
             delete_x = (
-                self.viewport().width()
+                delete_right
                 - size
                 - margin
             )
@@ -728,39 +817,77 @@ class PageListWidget(QListWidget):
                 == ("delete", row)
             )
 
+            delete_visual_x = (
+                delete_x + visual_inset
+            )
+
+            delete_visual_y = (
+                delete_y + visual_inset
+            )
+
+            painter.save()
+
+            painter.setPen(
+                Qt.PenStyle.NoPen
+            )
+
             if delete_hovered:
-                delete_color = QColor(
-                    240,
-                    80,
-                    80,
-                )
-            else:
-                delete_color = QColor(
-                    220,
+                delete_background = QColor(
+                    190,
                     60,
                     60,
+                    245,
                 )
 
-            painter.fillRect(
-                delete_x,
-                delete_y,
-                size,
-                size,
-                delete_color,
+                delete_text_color = QColor(
+                    255,
+                    255,
+                    255,
+                )
+
+            else:
+                delete_background = QColor(
+                    45,
+                    45,
+                    45,
+                    235,
+                )
+
+                delete_text_color = QColor(
+                    255,
+                    125,
+                    125,
+                )
+
+            painter.setBrush(
+                delete_background
+            )
+
+            painter.drawRoundedRect(
+                QRectF(
+                    delete_visual_x,
+                    delete_visual_y,
+                    visual_size,
+                    visual_size,
+                ),
+                4,
+                4,
             )
 
             painter.setPen(
-                QColor(255, 255, 255)
+                delete_text_color
             )
 
             painter.drawText(
-                delete_x,
-                delete_y,
-                size,
-                size,
+                delete_visual_x,
+                delete_visual_y,
+                visual_size,
+                visual_size,
                 Qt.AlignmentFlag.AlignCenter,
                 "×",
             )
+
+            painter.restore()
 
             # ---------------------------------
             # 切り抜き枠数バッジ
@@ -775,8 +902,27 @@ class PageListWidget(QListWidget):
                     self.rect_count_callback(row)
                 )
 
-                badge_width = 72
-                badge_height = 22
+                badge_text = (
+                    self.tr(
+                        "{count}枠"
+                    ).format(
+                        count=rect_count
+                    )
+                )
+
+                font_metrics = (
+                    painter.fontMetrics()
+                )
+
+                badge_width = max(
+                    34,
+                    font_metrics.horizontalAdvance(
+                        badge_text
+                    )
+                    + 14,
+                )
+
+                badge_height = 20
 
                 badge_x = (
                     item_rect.right()
@@ -829,13 +975,8 @@ class PageListWidget(QListWidget):
                     badge_width,
                     badge_height,
                     Qt.AlignmentFlag.AlignCenter,
-                    self.tr(
-                        "{count}枠"
-                    ).format(
-                        count=rect_count
-                    ),
+                    badge_text,
                 )
-
                 painter.restore()
 
     def mouseMoveEvent(self, event):
@@ -875,8 +1016,13 @@ class PageListWidget(QListWidget):
                 + margin
             )
 
+            delete_right = min(
+                item_rect.right(),
+                self.viewport().rect().right(),
+            )
+
             delete_x = (
-                self.viewport().width()
+                delete_right
                 - size
                 - margin
             )
@@ -980,8 +1126,13 @@ class PageListWidget(QListWidget):
             ):
                 continue
 
+            delete_right = min(
+                item_rect.right(),
+                self.viewport().rect().right(),
+            )
+
             delete_x = (
-                self.viewport().width()
+                delete_right
                 - size
                 - margin
             )
@@ -1275,9 +1426,10 @@ class MainWindow(QMainWindow):
             }
 
             QListWidget::item:selected {
-                background-color: #cfe8ff;
-                border: 3px solid #2f80ed;
-                color: #111111;
+                background-color: #263442;
+                border: 2px solid #2f80ed;
+                border-radius: 4px;
+                color: #ffffff;
             }
         """)
         self.page_list.setSelectionMode(
@@ -4622,9 +4774,10 @@ class MainWindow(QMainWindow):
                 }
 
                 QListWidget::item:selected {
-                    background-color: #cfe8ff;
-                    border: 3px solid #2f80ed;
-                    color: #111111;
+                    background-color: #263442;
+                    border: 2px solid #2f80ed;
+                    border-radius: 4px;
+                    color: #ffffff;
                 }
             """)
 
@@ -4674,9 +4827,10 @@ class MainWindow(QMainWindow):
                 }
 
                 QListWidget::item:selected {
-                    background-color: #cfe8ff;
-                    border: 3px solid #2f80ed;
-                    color: #111111;
+                    background-color: #263442;
+                    border: 2px solid #2f80ed;
+                    border-radius: 4px;
+                    color: #ffffff;
                 }
             """)
 
@@ -10429,10 +10583,17 @@ class MainWindow(QMainWindow):
                 Qt.AlignmentFlag.AlignCenter,
             )
 
-            preview_row_layout.addWidget(
-                title_label,
-                1,
-            )
+            if narrow_preview:
+                preview_row_layout.addWidget(
+                    title_label,
+                    0,
+                    Qt.AlignmentFlag.AlignCenter,
+                )
+            else:
+                preview_row_layout.addWidget(
+                    title_label,
+                    1,
+                )
 
             self.crop_preview_rows.append(
                 {
