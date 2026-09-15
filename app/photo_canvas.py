@@ -1601,10 +1601,10 @@ class PhotoCanvas(QWidget):
 
             if is_selected_mosaic:
                 fill_color = QColor(
-                    170,
-                    90,
-                    220,
-                    85,
+                    150,
+                    80,
+                    200,
+                    60,
                 )
 
                 border_color = QColor(
@@ -1614,16 +1614,17 @@ class PhotoCanvas(QWidget):
                 )
             else:
                 fill_color = QColor(
-                    150,
-                    70,
-                    200,
-                    55,
+                    140,
+                    80,
+                    180,
+                    35,
                 )
 
                 border_color = QColor(
-                    150,
-                    70,
-                    200,
+                    165,
+                    105,
+                    205,
+                    210,
                 )
 
             painter.fillRect(
@@ -1639,14 +1640,18 @@ class PhotoCanvas(QWidget):
                 mosaic_pen.setWidthF(
                     1.8
                 )
+
+                mosaic_pen.setStyle(
+                    Qt.PenStyle.SolidLine
+                )
             else:
                 mosaic_pen.setWidthF(
                     1.2
                 )
 
-            mosaic_pen.setStyle(
-                Qt.PenStyle.DashLine
-            )
+                mosaic_pen.setStyle(
+                    Qt.PenStyle.DashLine
+                )
 
             painter.setPen(
                 mosaic_pen
@@ -1656,57 +1661,103 @@ class PhotoCanvas(QWidget):
                 mosaic_rect
             )
 
-            label_rect = QRectF(
-                screen_x,
-                screen_y,
-                72,
-                24,
+            # ---------------------------------
+            # モザイクラベル
+            #
+            # 固定サイズの長方形ではなく、
+            # 文字幅に応じて変化する
+            # 小型の角丸バッジとして表示する。
+            # ---------------------------------
+            mosaic_label_text = self.tr(
+                "モザイク"
+            )
+
+            painter.setFont(
+                QFont(
+                    "Arial",
+                    10,
+                )
+            )
+
+            mosaic_font_metrics = (
+                painter.fontMetrics()
+            )
+
+            mosaic_label_width = max(
+                40,
+                mosaic_font_metrics.horizontalAdvance(
+                    mosaic_label_text
+                )
+                + 14,
+            )
+
+            mosaic_label_height = 20
+
+            mosaic_label_x = int(
+                screen_x
+            )
+
+            mosaic_label_y = int(
+                screen_y
+            )
+
+            painter.save()
+
+            painter.setPen(
+                Qt.PenStyle.NoPen
             )
 
             if is_selected_mosaic:
-                label_color = QColor(
-                    255,
-                    200,
-                    0,
-                    230,
-                )
-
-                label_text_color = QColor(
-                    0,
-                    0,
-                    0,
-                )
-            else:
-                label_color = QColor(
+                mosaic_label_background = QColor(
                     150,
                     70,
                     200,
-                    220,
+                    235,
+                )
+            else:
+                mosaic_label_background = QColor(
+                    35,
+                    35,
+                    35,
+                    215,
                 )
 
-                label_text_color = QColor(
-                    255,
-                    255,
-                    255,
-                )
+            painter.setBrush(
+                mosaic_label_background
+            )
 
-            painter.fillRect(
-                label_rect,
-                label_color,
+            painter.drawRoundedRect(
+                QRectF(
+                    mosaic_label_x,
+                    mosaic_label_y,
+                    mosaic_label_width,
+                    mosaic_label_height,
+                ),
+                4,
+                4,
             )
 
             painter.setPen(
-                label_text_color
+                QColor(
+                    255,
+                    255,
+                    255,
+                )
             )
 
             painter.drawText(
-                label_rect,
+                mosaic_label_x,
+                mosaic_label_y,
+                mosaic_label_width,
+                mosaic_label_height,
                 Qt.AlignmentFlag.AlignCenter,
-                self.tr("モザイク"),
+                mosaic_label_text,
             )
 
+            painter.restore()
+
             if is_selected_mosaic:
-                mosaic_handle_size = 8
+                mosaic_handle_size = 7
 
                 for (
                     handle_x,
