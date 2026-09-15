@@ -794,6 +794,141 @@ class PageListWidget(QListWidget):
             painter.restore()
 
             # ---------------------------------
+            # コンパクト表示用メタ情報
+            #
+            # ページ番号と枠数を
+            # QListWidget の文字列から分離して描画する。
+            # これによりファイル名が省略されても
+            # 枠数は常に表示される。
+            # ---------------------------------
+            if (
+                self.viewMode()
+                == QListView.ViewMode.ListMode
+                and self.rect_count_callback
+                is not None
+            ):
+                compact_rect_count = (
+                    self.rect_count_callback(row)
+                )
+
+                compact_page_text = (
+                    f"{row + 1:03d}"
+                )
+
+                compact_page_x = (
+                    check_x
+                    + size
+                    + 4
+                )
+
+                compact_page_width = 28
+
+                compact_meta_y = (
+                    item_rect.top()
+                    + 2
+                )
+
+                compact_meta_height = (
+                    item_rect.height()
+                    - 4
+                )
+
+                painter.save()
+
+                painter.setPen(
+                    QColor(
+                        210,
+                        210,
+                        210,
+                    )
+                )
+
+                painter.drawText(
+                    compact_page_x,
+                    compact_meta_y,
+                    compact_page_width,
+                    compact_meta_height,
+                    Qt.AlignmentFlag.AlignCenter,
+                    compact_page_text,
+                )
+
+                compact_badge_text = str(
+                    compact_rect_count
+                )
+
+                compact_font_metrics = (
+                    painter.fontMetrics()
+                )
+
+                compact_badge_width = max(
+                    22,
+                    compact_font_metrics.horizontalAdvance(
+                        compact_badge_text
+                    )
+                    + 10,
+                )
+
+                compact_badge_height = 20
+
+                compact_badge_x = (
+                    compact_page_x
+                    + compact_page_width
+                    + 4
+                )
+
+                compact_badge_y = (
+                    item_rect.top()
+                    + (
+                        item_rect.height()
+                        - compact_badge_height
+                    )
+                    // 2
+                )
+
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                painter.setBrush(
+                    QColor(
+                        55,
+                        55,
+                        55,
+                        230,
+                    )
+                )
+
+                painter.drawRoundedRect(
+                    QRectF(
+                        compact_badge_x,
+                        compact_badge_y,
+                        compact_badge_width,
+                        compact_badge_height,
+                    ),
+                    4,
+                    4,
+                )
+
+                painter.setPen(
+                    QColor(
+                        255,
+                        255,
+                        255,
+                    )
+                )
+
+                painter.drawText(
+                    compact_badge_x,
+                    compact_badge_y,
+                    compact_badge_width,
+                    compact_badge_height,
+                    Qt.AlignmentFlag.AlignCenter,
+                    compact_badge_text,
+                )
+
+                painter.restore()
+
+            # ---------------------------------
             # ページ削除ボタン
             # ---------------------------------
             delete_right = min(
@@ -1423,6 +1558,7 @@ class MainWindow(QMainWindow):
                 padding-bottom: 4px;
                 margin: 2px;
                 border: 2px solid transparent;
+                color: #d0d0d0;
             }
 
             QListWidget::item:selected {
@@ -4697,15 +4833,7 @@ class MainWindow(QMainWindow):
 
         if mode == "compact":
             item.setText(
-                (
-                    f"{row + 1:03d}  "
-                    f"{file_name}  "
-                    + self.tr(
-                        "{count}枠"
-                    ).format(
-                        count=rect_count
-                    )
-                )
+                file_name
             )
         else:
             # サムネイル表示では枠数は
@@ -4766,7 +4894,7 @@ class MainWindow(QMainWindow):
             self.page_list.setStyleSheet("""
                 QListWidget::item {
                     padding-top: 4px;
-                    padding-left: 36px;
+                    padding-left: 92px;
                     padding-right: 36px;
                     padding-bottom: 4px;
                     margin: 2px;
@@ -4797,7 +4925,7 @@ class MainWindow(QMainWindow):
                 ).name
 
                 item.setText(
-                    f"{row + 1:03d}  {file_name}"
+                    file_name
                 )
 
         else:
@@ -4824,6 +4952,7 @@ class MainWindow(QMainWindow):
                     padding-bottom: 4px;
                     margin: 2px;
                     border: 2px solid transparent;
+                    color: #d0d0d0;
                 }
 
                 QListWidget::item:selected {
@@ -4855,15 +4984,7 @@ class MainWindow(QMainWindow):
 
             if mode == "compact":
                 item.setText(
-                    (
-                        f"{row + 1:03d}  "
-                        f"{file_name}  "
-                        + self.tr(
-                            "{count}枠"
-                        ).format(
-                            count=rect_count
-                        )
-                    )
+                    file_name
                 )
             else:
                 item.setText(
