@@ -24,6 +24,7 @@ class PhotoCanvas(QWidget):
     zoom_changed = Signal(float)
     rects_changed = Signal()
     selected_rect_changed = Signal(int)
+    selection_changed = Signal()
     composite_create_finished = Signal()
     copied_rects_changed = Signal()
     mosaic_create_finished = Signal()
@@ -696,6 +697,49 @@ class PhotoCanvas(QWidget):
             valid_indexes
         )
 
+    def get_rotation_target_indexes(self):
+        if (
+            self.selected_rect < 0
+            or self.selected_rect
+            >= len(self.rects)
+        ):
+            return []
+
+        # 構成領域編集モードでは、
+        # 選択中の1領域だけを回転する
+        if self.composite_member_edit_mode:
+            return [
+                self.selected_rect
+            ]
+
+        group_id = None
+
+        if self.selected_rect < len(
+            self.rect_group_ids
+        ):
+            group_id = (
+                self.rect_group_ids[
+                    self.selected_rect
+                ]
+            )
+
+        # 通常の独立枠
+        if group_id is None:
+            return [
+                self.selected_rect
+            ]
+
+        # 通常モードでグループを選択した場合は、
+        # グループ全構成枠を同じ回転対象とする
+        return [
+            index
+            for index, current_group_id
+            in enumerate(
+                self.rect_group_ids
+            )
+            if current_group_id == group_id
+        ]
+
     def group_selected_rects(self):
         # 枠数に合わせてgroup ID情報を補完する
         while (
@@ -763,10 +807,47 @@ class PhotoCanvas(QWidget):
 
         new_group_id = self.next_group_id()
 
+        # ---------------------------------
+        # グループ共通角度
+        #
+        # 操作の基準になっている枠の角度を
+        # 新しいグループ全体の角度として採用する。
+        # ---------------------------------
+        reference_index = (
+            self.selected_rect
+        )
+
+        if (
+            reference_index
+            not in expanded_indexes
+        ):
+            reference_index = (
+                expanded_indexes[-1]
+            )
+
+        while len(
+            self.rect_angles
+        ) < len(
+            self.rects
+        ):
+            self.rect_angles.append(
+                0.0
+            )
+
+        group_angle = float(
+            self.rect_angles[
+                reference_index
+            ]
+        )
+
         for index in expanded_indexes:
             self.rect_group_ids[
                 index
             ] = new_group_id
+
+            self.rect_angles[
+                index
+            ] = group_angle
 
         self.selected_rects = set(
             expanded_indexes
@@ -2614,9 +2695,14 @@ class PhotoCanvas(QWidget):
                     0.0
                 )
 
-            self.rect_angles[
-                self.selected_rect
-            ] = 0.0
+            rotation_targets = (
+                self.get_rotation_target_indexes()
+            )
+
+            for target_index in rotation_targets:
+                self.rect_angles[
+                    target_index
+                ] = 0.0
 
             self.rotating = False
 
@@ -2748,6 +2834,8 @@ class PhotoCanvas(QWidget):
             self.selected_rect_changed.emit(
                 self.selected_rect
             )
+
+            self.selection_changed.emit()
 
             self.update()
             return
@@ -4270,6 +4358,8 @@ class PhotoCanvas(QWidget):
                         self.selected_rect
                     )
 
+                self.selection_changed.emit()
+
                 # Ctrlクリックは選択だけ行い、
                 # そのままドラッグ移動は開始しない
                 self.dragging = not ctrl_pressed
@@ -4966,12 +5056,23 @@ class PhotoCanvas(QWidget):
                 (angle + 180.0) % 360.0
             ) - 180.0
 
-            while len(self.rect_angles) < len(self.rects):
-                self.rect_angles.append(0.0)
+            while len(
+                self.rect_angles
+            ) < len(
+                self.rects
+            ):
+                self.rect_angles.append(
+                    0.0
+                )
 
-            self.rect_angles[
-                self.selected_rect
-            ] = angle
+            rotation_targets = (
+                self.get_rotation_target_indexes()
+            )
+
+            for target_index in rotation_targets:
+                self.rect_angles[
+                    target_index
+                ] = angle
 
             self.update()
             return
@@ -6454,6 +6555,8 @@ class PhotoCanvas(QWidget):
             else:
                 self.selected_rect = -1
                 self.selected_rects.clear()
+
+            self.selection_changed.emit()
 
             self.dragging = False
             self.drag_undo_saved = False

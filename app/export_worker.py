@@ -659,6 +659,430 @@ class CropExportWorker(QObject):
             )
         )
 
+    def create_unrotated_group_crop_image(
+        self,
+        image,
+        prepared_members,
+        page_mosaic_rects,
+    ):
+        if not prepared_members:
+            raise ValueError(
+                "グループ枠の構成領域がありません"
+            )
+
+        left = min(
+            member["x"]
+            for member in prepared_members
+        )
+
+        top = min(
+            member["y"]
+            for member in prepared_members
+        )
+
+        right = max(
+            member["x"] + member["w"]
+            for member in prepared_members
+        )
+
+        bottom = max(
+            member["y"] + member["h"]
+            for member in prepared_members
+        )
+
+        group_left = int(left)
+        group_top = int(top)
+        group_right = int(right)
+        group_bottom = int(bottom)
+
+        if (
+            group_right <= group_left
+            or group_bottom <= group_top
+        ):
+            raise ValueError(
+                "グループ枠の切り抜き範囲が不正です"
+            )
+
+        group_image = image.crop(
+            (
+                group_left,
+                group_top,
+                group_right,
+                group_bottom,
+            )
+        )
+
+        transformed_mosaic_rects = []
+
+        for mosaic_rect in page_mosaic_rects:
+            if (
+                not isinstance(
+                    mosaic_rect,
+                    (list, tuple),
+                )
+                or len(mosaic_rect) != 4
+            ):
+                continue
+
+            try:
+                (
+                    mosaic_x,
+                    mosaic_y,
+                    mosaic_w,
+                    mosaic_h,
+                ) = (
+                    float(value)
+                    for value in mosaic_rect
+                )
+
+            except (
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
+                continue
+
+            transformed_mosaic_rects.append(
+                (
+                    mosaic_x - group_left,
+                    mosaic_y - group_top,
+                    mosaic_w,
+                    mosaic_h,
+                )
+            )
+
+        group_image = self.apply_mosaic_rects(
+            group_image,
+            transformed_mosaic_rects,
+        )
+
+        mask = Image.new(
+            "L",
+            group_image.size,
+            0,
+        )
+
+        for member in prepared_members:
+            member_left = int(
+                member["x"] - group_left
+            )
+
+            member_top = int(
+                member["y"] - group_top
+            )
+
+            member_right = int(
+                member["x"]
+                + member["w"]
+                - group_left
+            )
+
+            member_bottom = int(
+                member["y"]
+                + member["h"]
+                - group_top
+            )
+
+            mask.paste(
+                255,
+                (
+                    member_left,
+                    member_top,
+                    member_right,
+                    member_bottom,
+                ),
+            )
+
+        white_background = Image.new(
+            "RGB",
+            group_image.size,
+            (
+                255,
+                255,
+                255,
+            ),
+        )
+
+        white_background.paste(
+            group_image,
+            (
+                0,
+                0,
+            ),
+            mask,
+        )
+
+        return white_background
+
+    def create_group_crop_image_from_source(
+        self,
+        image,
+        prepared_members,
+        page_mosaic_rects,
+    ):
+        if not prepared_members:
+            raise ValueError(
+                "グループ枠の構成領域がありません"
+            )
+
+        # グループ化時に共通化された角度を使用する
+        group_angle = float(
+            prepared_members[0]["angle"]
+        )
+
+        angle_rad = math.radians(
+            -group_angle
+        )
+
+        cos_a = math.cos(
+            angle_rad
+        )
+
+        sin_a = math.sin(
+            angle_rad
+        )
+
+        transformed_members = []
+
+        # ---------------------------------
+        # グループ全構成枠を、
+        # 共通角度で補正した座標系へ変換する
+        # ---------------------------------
+        for member in prepared_members:
+            center_x = (
+                member["x"]
+                + member["w"] / 2
+            )
+
+            center_y = (
+                member["y"]
+                + member["h"] / 2
+            )
+
+            transformed_center_x = (
+                center_x * cos_a
+                - center_y * sin_a
+            )
+
+            transformed_center_y = (
+                center_x * sin_a
+                + center_y * cos_a
+            )
+
+            transformed_members.append(
+                {
+                    "left": (
+                        transformed_center_x
+                        - member["w"] / 2
+                    ),
+                    "top": (
+                        transformed_center_y
+                        - member["h"] / 2
+                    ),
+                    "right": (
+                        transformed_center_x
+                        + member["w"] / 2
+                    ),
+                    "bottom": (
+                        transformed_center_y
+                        + member["h"] / 2
+                    ),
+                }
+            )
+
+        left = int(
+            math.floor(
+                min(
+                    member["left"]
+                    for member
+                    in transformed_members
+                )
+            )
+        )
+
+        top = int(
+            math.floor(
+                min(
+                    member["top"]
+                    for member
+                    in transformed_members
+                )
+            )
+        )
+
+        right = int(
+            math.ceil(
+                max(
+                    member["right"]
+                    for member
+                    in transformed_members
+                )
+            )
+        )
+
+        bottom = int(
+            math.ceil(
+                max(
+                    member["bottom"]
+                    for member
+                    in transformed_members
+                )
+            )
+        )
+
+        output_width = (
+            right - left
+        )
+
+        output_height = (
+            bottom - top
+        )
+
+        if (
+            output_width <= 0
+            or output_height <= 0
+        ):
+            raise ValueError(
+                "グループ枠の切り抜き範囲が不正です"
+            )
+
+        # ---------------------------------
+        # モザイクは元画像へ一度だけ適用する
+        # ---------------------------------
+        source_image = image.copy()
+
+        source_image = self.apply_mosaic_rects(
+            source_image,
+            page_mosaic_rects,
+        )
+
+        # ---------------------------------
+        # PillowのAFFINEは、
+        # 出力座標から元画像座標への
+        # 逆変換を指定する。
+        #
+        # グループ全体を1回だけ補正するため、
+        # 構成枠ごとの回転は行わない。
+        # ---------------------------------
+        source_angle_rad = math.radians(
+            group_angle
+        )
+
+        source_cos = math.cos(
+            source_angle_rad
+        )
+
+        source_sin = math.sin(
+            source_angle_rad
+        )
+
+        affine_data = (
+            source_cos,
+            -source_sin,
+            (
+                source_cos * left
+                - source_sin * top
+            ),
+            source_sin,
+            source_cos,
+            (
+                source_sin * left
+                + source_cos * top
+            ),
+        )
+
+        transformed_image = (
+            source_image.transform(
+                (
+                    output_width,
+                    output_height,
+                ),
+                Image.Transform.AFFINE,
+                affine_data,
+                resample=Image.Resampling.BICUBIC,
+                fillcolor=(
+                    255,
+                    255,
+                    255,
+                ),
+            )
+        )
+
+        # ---------------------------------
+        # G1-A / G1-Bなどの構成領域を
+        # 1つの和集合マスクへまとめる。
+        #
+        # 重なり領域も255のままなので、
+        # 同じ文字を二重に貼ることはない。
+        # ---------------------------------
+        mask = Image.new(
+            "L",
+            (
+                output_width,
+                output_height,
+            ),
+            0,
+        )
+
+        for member in transformed_members:
+            member_left = int(
+                math.floor(
+                    member["left"] - left
+                )
+            )
+
+            member_top = int(
+                math.floor(
+                    member["top"] - top
+                )
+            )
+
+            member_right = int(
+                math.ceil(
+                    member["right"] - left
+                )
+            )
+
+            member_bottom = int(
+                math.ceil(
+                    member["bottom"] - top
+                )
+            )
+
+            mask.paste(
+                255,
+                (
+                    member_left,
+                    member_top,
+                    member_right,
+                    member_bottom,
+                ),
+            )
+
+        white_background = Image.new(
+            "RGB",
+            (
+                output_width,
+                output_height,
+            ),
+            (
+                255,
+                255,
+                255,
+            ),
+        )
+
+        white_background.paste(
+            transformed_image,
+            (
+                0,
+                0,
+            ),
+            mask,
+        )
+
+        return white_background
+
     def build_crop_units(
         self,
         page_rects,
@@ -947,6 +1371,7 @@ class CropExportWorker(QObject):
                                     "y": crop_y,
                                     "w": crop_w,
                                     "h": crop_h,
+                                    "angle": angle,
                                     "image": crop,
                                 }
                             )
@@ -961,77 +1386,13 @@ class CropExportWorker(QObject):
                             )
 
                         else:
-                            left = min(
-                                member["x"]
-                                for member
-                                in prepared_members
-                            )
-
-                            top = min(
-                                member["y"]
-                                for member
-                                in prepared_members
-                            )
-
-                            right = max(
-                                member["x"]
-                                + member["w"]
-                                for member
-                                in prepared_members
-                            )
-
-                            bottom = max(
-                                member["y"]
-                                + member["h"]
-                                for member
-                                in prepared_members
-                            )
-
-                            canvas_width = max(
-                                1,
-                                int(round(
-                                    right - left
-                                )),
-                            )
-
-                            canvas_height = max(
-                                1,
-                                int(round(
-                                    bottom - top
-                                )),
-                            )
-
-                            output_image = Image.new(
-                                "RGB",
-                                (
-                                    canvas_width,
-                                    canvas_height,
-                                ),
-                                (
-                                    255,
-                                    255,
-                                    255,
-                                ),
-                            )
-
-                            for member in prepared_members:
-                                paste_x = int(round(
-                                    member["x"]
-                                    - left
-                                ))
-
-                                paste_y = int(round(
-                                    member["y"]
-                                    - top
-                                ))
-
-                                output_image.paste(
-                                    member["image"],
-                                    (
-                                        paste_x,
-                                        paste_y,
-                                    ),
+                            output_image = (
+                                self.create_group_crop_image_from_source(
+                                    image,
+                                    prepared_members,
+                                    page_mosaic_rects,
                                 )
+                            )
 
                         output_path = (
                             self.output_dir

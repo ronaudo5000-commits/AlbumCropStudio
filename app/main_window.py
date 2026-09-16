@@ -30,6 +30,7 @@ from PySide6.QtGui import (
     QImageReader,
     QIcon,
     QKeySequence,
+    QRegion,
 )
 
 from PySide6.QtWidgets import (
@@ -1994,6 +1995,10 @@ class MainWindow(QMainWindow):
             self.on_zoom_changed
         )
 
+        self.preview_area.selection_changed.connect(
+            self.update_group_action_states
+        )
+
         self.preview_area.rects_changed.connect(
             self.update_crop_preview
         )
@@ -2004,6 +2009,10 @@ class MainWindow(QMainWindow):
 
         self.preview_area.rects_changed.connect(
             self.update_current_page_list_item_text
+        )
+
+        self.preview_area.rects_changed.connect(
+            self.update_group_action_states
         )
 
         self.preview_area.rects_changed.connect(
@@ -2665,24 +2674,31 @@ class MainWindow(QMainWindow):
             40
         )
 
-        self.composite_create_button.setCheckable(
-            True
-        )
-
-        self.composite_create_button.toggled.connect(
-            self.toggle_composite_create_mode
-        )
-
-        self.preview_area.composite_create_finished.connect(
-            lambda:
-            self.composite_create_button.setChecked(
-                False
-            )
+        self.composite_create_button.clicked.connect(
+            self.group_selected_rects_from_button
         )
 
         self.composite_create_button.setToolTip(
             self.tr(
-                "複数の領域を1つのグループ枠として作成します"
+                "選択した複数の枠を1つのグループにします"
+            )
+        )
+
+        self.composite_ungroup_button = QPushButton(
+            self.tr("グループ解除")
+        )
+
+        self.composite_ungroup_button.setMinimumHeight(
+            40
+        )
+
+        self.composite_ungroup_button.clicked.connect(
+            self.ungroup_selected_rect_from_button
+        )
+
+        self.composite_ungroup_button.setToolTip(
+            self.tr(
+                "選択したグループ枠を解除します"
             )
         )
 
@@ -4805,6 +4821,100 @@ class MainWindow(QMainWindow):
             + len(grouped_ids)
         )
 
+    def update_group_action_states(
+        self,
+        *args,
+    ):
+        selected_indexes = set(
+            self.preview_area.selected_rects
+        )
+
+        if (
+            not selected_indexes
+            and 0 <= self.preview_area.selected_rect
+            < len(self.preview_area.rects)
+        ):
+            selected_indexes.add(
+                self.preview_area.selected_rect
+            )
+
+        valid_indexes = {
+            index
+            for index in selected_indexes
+            if (
+                0 <= index
+                < len(self.preview_area.rects)
+            )
+        }
+
+        selected_group_ids = {
+            self.preview_area.rect_group_ids[index]
+            for index in valid_indexes
+            if (
+                index
+                < len(
+                    self.preview_area.rect_group_ids
+                )
+                and self.preview_area.rect_group_ids[
+                    index
+                ]
+                is not None
+            )
+        }
+
+        has_independent_rect = any(
+            (
+                index
+                >= len(
+                    self.preview_area.rect_group_ids
+                )
+                or self.preview_area.rect_group_ids[
+                    index
+                ]
+                is None
+            )
+            for index in valid_indexes
+        )
+
+        # 2個以上選択され、
+        # 既存の同一グループだけではない場合に
+        # グループ化できる
+        can_group = (
+            len(valid_indexes) >= 2
+            and (
+                has_independent_rect
+                or len(selected_group_ids) >= 2
+            )
+        )
+
+        selected_rect = (
+            self.preview_area.selected_rect
+        )
+
+        selected_is_grouped = (
+            0 <= selected_rect
+            < len(
+                self.preview_area.rect_group_ids
+            )
+            and self.preview_area.rect_group_ids[
+                selected_rect
+            ]
+            is not None
+        )
+
+        self.composite_create_button.setEnabled(
+            can_group
+        )
+
+        self.composite_ungroup_button.setEnabled(
+            selected_is_grouped
+        )
+
+        self.composite_member_edit_button.setEnabled(
+            selected_is_grouped
+            or self.composite_member_edit_button.isChecked()
+        )
+
     def update_current_rect_count_status(
         self,
     ):
@@ -4820,6 +4930,9 @@ class MainWindow(QMainWindow):
                     count=0
                 )
             )
+
+            self.update_group_action_states()
+
             return
 
         crop_count = self.count_crop_units(
@@ -4834,6 +4947,8 @@ class MainWindow(QMainWindow):
                 count=crop_count
             )
         )
+
+        self.update_group_action_states()
 
     def get_page_rect_count(
         self,
@@ -9135,6 +9250,24 @@ class MainWindow(QMainWindow):
             Qt.FocusReason.OtherFocusReason
         )
 
+    def group_selected_rects_from_button(
+        self,
+    ):
+        self.preview_area.group_selected_rects()
+
+        self.preview_area.setFocus(
+            Qt.FocusReason.OtherFocusReason
+        )
+
+    def ungroup_selected_rect_from_button(
+        self,
+    ):
+        self.preview_area.ungroup_selected_rect()
+
+        self.preview_area.setFocus(
+            Qt.FocusReason.OtherFocusReason
+        )
+
     def toggle_composite_create_mode(
         self,
         enabled,
@@ -9759,6 +9892,7 @@ class MainWindow(QMainWindow):
             self.mosaic_create_button,
             self.edit_separator_2,
             self.composite_create_button,
+            self.composite_ungroup_button,
             self.composite_member_edit_button,
             self.edit_separator_3,
             self.aspect_ratio_widget,
@@ -9769,7 +9903,7 @@ class MainWindow(QMainWindow):
                 widget
             )
 
-        for column in range(11):
+        for column in range(12):
             self.edit_layout.setColumnStretch(
                 column,
                 0,
@@ -9819,37 +9953,43 @@ class MainWindow(QMainWindow):
             )
 
             self.edit_layout.addWidget(
-                self.composite_member_edit_button,
+                self.composite_ungroup_button,
                 0,
                 5,
             )
 
             self.edit_layout.addWidget(
-                self.edit_separator_2,
+                self.composite_member_edit_button,
                 0,
                 6,
             )
 
             self.edit_layout.addWidget(
-                self.aspect_ratio_widget,
+                self.edit_separator_2,
                 0,
                 7,
             )
 
             self.edit_layout.addWidget(
-                self.edit_separator_3,
+                self.aspect_ratio_widget,
                 0,
                 8,
             )
 
             self.edit_layout.addWidget(
-                self.mosaic_create_button,
+                self.edit_separator_3,
                 0,
                 9,
             )
 
-            self.edit_layout.setColumnStretch(
+            self.edit_layout.addWidget(
+                self.mosaic_create_button,
+                0,
                 10,
+            )
+
+            self.edit_layout.setColumnStretch(
+                11,
                 1,
             )
 
@@ -9891,25 +10031,31 @@ class MainWindow(QMainWindow):
             )
 
             self.edit_layout.addWidget(
-                self.composite_member_edit_button,
+                self.composite_ungroup_button,
                 1,
                 1,
             )
 
             self.edit_layout.addWidget(
-                self.aspect_ratio_widget,
+                self.composite_member_edit_button,
                 1,
                 2,
             )
 
             self.edit_layout.addWidget(
-                self.mosaic_create_button,
+                self.aspect_ratio_widget,
                 1,
                 3,
             )
 
-            self.edit_layout.setColumnStretch(
+            self.edit_layout.addWidget(
+                self.mosaic_create_button,
+                1,
                 4,
+            )
+
+            self.edit_layout.setColumnStretch(
+                5,
                 1,
             )
 
@@ -9933,6 +10079,7 @@ class MainWindow(QMainWindow):
             self.generate_rects_button,
             self.mosaic_create_button,
             self.composite_create_button,
+            self.composite_ungroup_button,
             self.composite_member_edit_button,
             self.aspect_ratio_widget,
         ]
@@ -10392,6 +10539,228 @@ class MainWindow(QMainWindow):
 
         return units
 
+    def create_group_preview_pixmap_from_source(
+        self,
+        valid_members,
+    ):
+        if not valid_members:
+            return QPixmap()
+
+        if (
+            self.current_pixmap is None
+            or self.current_pixmap.isNull()
+        ):
+            return QPixmap()
+
+        # グループ化時に共通化された角度を使用する
+        group_angle = float(
+            valid_members[0]["angle"]
+        )
+
+        # ---------------------------------
+        # グループ全体を共通座標系へ変換する
+        #
+        # 各構成枠を個別回転するのではなく、
+        # 全枠に同じ逆回転を適用したときの
+        # 位置を計算する。
+        # ---------------------------------
+        angle_rad = math.radians(
+            -group_angle
+        )
+
+        cos_a = math.cos(
+            angle_rad
+        )
+
+        sin_a = math.sin(
+            angle_rad
+        )
+
+        transformed_members = []
+
+        for member in valid_members:
+            center_x = (
+                member["x"]
+                + member["w"] / 2
+            )
+
+            center_y = (
+                member["y"]
+                + member["h"] / 2
+            )
+
+            transformed_center_x = (
+                center_x * cos_a
+                - center_y * sin_a
+            )
+
+            transformed_center_y = (
+                center_x * sin_a
+                + center_y * cos_a
+            )
+
+            transformed_members.append(
+                {
+                    "left": (
+                        transformed_center_x
+                        - member["w"] / 2
+                    ),
+                    "top": (
+                        transformed_center_y
+                        - member["h"] / 2
+                    ),
+                    "right": (
+                        transformed_center_x
+                        + member["w"] / 2
+                    ),
+                    "bottom": (
+                        transformed_center_y
+                        + member["h"] / 2
+                    ),
+                }
+            )
+
+        min_x = min(
+            member["left"]
+            for member in transformed_members
+        )
+
+        min_y = min(
+            member["top"]
+            for member in transformed_members
+        )
+
+        max_x = max(
+            member["right"]
+            for member in transformed_members
+        )
+
+        max_y = max(
+            member["bottom"]
+            for member in transformed_members
+        )
+
+        left = int(
+            math.floor(min_x)
+        )
+
+        top = int(
+            math.floor(min_y)
+        )
+
+        right = int(
+            math.ceil(max_x)
+        )
+
+        bottom = int(
+            math.ceil(max_y)
+        )
+
+        if (
+            right <= left
+            or bottom <= top
+        ):
+            return QPixmap()
+
+        result = QPixmap(
+            right - left,
+            bottom - top,
+        )
+
+        result.fill(
+            Qt.GlobalColor.white
+        )
+
+        # ---------------------------------
+        # グループ構成領域を
+        # 1つの和集合マスクへまとめる
+        # ---------------------------------
+        group_region = QRegion()
+
+        for member in transformed_members:
+            member_left = int(
+                math.floor(
+                    member["left"] - left
+                )
+            )
+
+            member_top = int(
+                math.floor(
+                    member["top"] - top
+                )
+            )
+
+            member_right = int(
+                math.ceil(
+                    member["right"] - left
+                )
+            )
+
+            member_bottom = int(
+                math.ceil(
+                    member["bottom"] - top
+                )
+            )
+
+            member_region = QRegion(
+                member_left,
+                member_top,
+                member_right - member_left,
+                member_bottom - member_top,
+            )
+
+            group_region = (
+                group_region.united(
+                    member_region
+                )
+            )
+
+        # モザイクは元画像座標で一度だけ適用する
+        source_pixmap = (
+            self.apply_mosaic_to_preview_pixmap(
+                self.current_pixmap,
+                self.preview_area.mosaic_rects,
+            )
+        )
+
+        painter = QPainter(
+            result
+        )
+
+        painter.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform,
+            True,
+        )
+
+        painter.setClipRegion(
+            group_region
+        )
+
+        # ---------------------------------
+        # 元画像全体を共通中心ではなく、
+        # 同一の座標変換で1回だけ回転する。
+        #
+        # 構成枠ごとの回転処理は行わない。
+        # ---------------------------------
+        painter.translate(
+            -left,
+            -top,
+        )
+
+        painter.rotate(
+            -group_angle
+        )
+
+        painter.drawPixmap(
+            0,
+            0,
+            source_pixmap,
+        )
+
+        painter.end()
+
+        return result
+
     def create_composite_crop_preview_pixmap(
         self,
         member_indexes,
@@ -10399,11 +10768,13 @@ class MainWindow(QMainWindow):
         if not member_indexes:
             return QPixmap()
 
-        valid_members = []
+        if (
+            self.current_pixmap is None
+            or self.current_pixmap.isNull()
+        ):
+            return QPixmap()
 
-        mosaic_rects = (
-            self.preview_area.mosaic_rects
-        )
+        valid_members = []
 
         for index in member_indexes:
             if (
@@ -10426,57 +10797,163 @@ class MainWindow(QMainWindow):
             if index < len(
                 self.preview_area.rect_angles
             ):
-                angle = (
+                angle = float(
                     self.preview_area.rect_angles[
                         index
                     ]
                 )
 
-            crop_pixmap = (
-                self.create_rotated_crop_pixmap(
-                    x,
-                    y,
-                    w,
-                    h,
-                    angle,
-                    self.current_pixmap,
-                )
-            )
-
-            transformed_mosaic_rects = (
-                self.transform_mosaic_rects_for_preview(
-                    mosaic_rects,
-                    x,
-                    y,
-                    w,
-                    h,
-                    angle,
-                )
-            )
-
-            crop_pixmap = (
-                self.apply_mosaic_to_preview_pixmap(
-                    crop_pixmap,
-                    transformed_mosaic_rects,
-                )
-            )
-
-            if crop_pixmap.isNull():
-                continue
-
             valid_members.append(
                 {
-                    "x": x,
-                    "y": y,
-                    "w": w,
-                    "h": h,
-                    "pixmap": crop_pixmap,
+                    "x": float(x),
+                    "y": float(y),
+                    "w": float(w),
+                    "h": float(h),
+                    "angle": angle,
                 }
             )
 
         if not valid_members:
             return QPixmap()
 
+        # ---------------------------------
+        # グループは0度・回転ありを問わず、
+        # 元画像を1回だけ描画する共通方式を使う。
+        # ---------------------------------
+        return (
+            self.create_group_preview_pixmap_from_source(
+                valid_members
+            )
+        )
+
+        group_has_rotation = any(
+            abs(
+                member["angle"]
+            ) >= 0.001
+            for member in valid_members
+        )
+
+        # 回転を含むグループは、
+        # 今回は従来方式を残す。
+        if group_has_rotation:
+            prepared_members = []
+
+            mosaic_rects = (
+                self.preview_area.mosaic_rects
+            )
+
+            for member in valid_members:
+                crop_pixmap = (
+                    self.create_rotated_crop_pixmap(
+                        member["x"],
+                        member["y"],
+                        member["w"],
+                        member["h"],
+                        member["angle"],
+                        self.current_pixmap,
+                    )
+                )
+
+                transformed_mosaic_rects = (
+                    self.transform_mosaic_rects_for_preview(
+                        mosaic_rects,
+                        member["x"],
+                        member["y"],
+                        member["w"],
+                        member["h"],
+                        member["angle"],
+                    )
+                )
+
+                crop_pixmap = (
+                    self.apply_mosaic_to_preview_pixmap(
+                        crop_pixmap,
+                        transformed_mosaic_rects,
+                    )
+                )
+
+                if crop_pixmap.isNull():
+                    continue
+
+                prepared_members.append(
+                    {
+                        **member,
+                        "pixmap": crop_pixmap,
+                    }
+                )
+
+            if not prepared_members:
+                return QPixmap()
+
+            min_x = min(
+                member["x"]
+                for member in prepared_members
+            )
+
+            min_y = min(
+                member["y"]
+                for member in prepared_members
+            )
+
+            max_x = max(
+                member["x"] + member["w"]
+                for member in prepared_members
+            )
+
+            max_y = max(
+                member["y"] + member["h"]
+                for member in prepared_members
+            )
+
+            result = QPixmap(
+                max(
+                    1,
+                    int(round(
+                        max_x - min_x
+                    )),
+                ),
+                max(
+                    1,
+                    int(round(
+                        max_y - min_y
+                    )),
+                ),
+            )
+
+            result.fill(
+                Qt.GlobalColor.white
+            )
+
+            painter = QPainter(
+                result
+            )
+
+            for member in prepared_members:
+                painter.drawPixmap(
+                    int(round(
+                        member["x"] - min_x
+                    )),
+                    int(round(
+                        member["y"] - min_y
+                    )),
+                    member["pixmap"],
+                )
+
+            painter.end()
+
+            return result
+
+        # ---------------------------------
+        # 0度グループ
+        #
+        # 各枠を別々に切り抜いて貼らず、
+        # 元画像を1回だけ切り抜き、
+        # 枠領域の和集合をマスクとして使う。
+        #
+        # 重なり部分も同じ元画像を
+        # 1回だけ表示するため、
+        # 文字や罫線が二重にならない。
+        # ---------------------------------
         min_x = min(
             member["x"]
             for member in valid_members
@@ -10497,54 +10974,157 @@ class MainWindow(QMainWindow):
             for member in valid_members
         )
 
-        canvas_width = max(
-            1,
-            int(round(max_x - min_x)),
+        left = int(
+            math.floor(min_x)
         )
 
-        canvas_height = max(
-            1,
-            int(round(max_y - min_y)),
+        top = int(
+            math.floor(min_y)
         )
 
-        result = QPixmap(
-            canvas_width,
-            canvas_height,
+        right = int(
+            math.ceil(max_x)
         )
 
-        result.fill(
+        bottom = int(
+            math.ceil(max_y)
+        )
+
+        if (
+            right <= left
+            or bottom <= top
+        ):
+            return QPixmap()
+
+        source_rect = QRectF(
+            left,
+            top,
+            right - left,
+            bottom - top,
+        )
+
+        source_image = (
+            self.current_pixmap.toImage()
+        )
+
+        group_image = source_image.copy(
+            source_rect.toRect()
+        )
+
+        if group_image.isNull():
+            return QPixmap()
+
+        result_image = QImage(
+            group_image.size(),
+            QImage.Format.Format_RGB32,
+        )
+
+        result_image.fill(
             Qt.GlobalColor.white
         )
 
-        painter = QPainter(
-            result
-        )
-
-        painter.setRenderHint(
-            QPainter.RenderHint.SmoothPixmapTransform,
-            True,
-        )
+        group_region = QRegion()
 
         for member in valid_members:
-            paste_x = int(
-                round(
-                    member["x"] - min_x
+            member_left = int(
+                math.floor(
+                    member["x"] - left
                 )
             )
 
-            paste_y = int(
-                round(
-                    member["y"] - min_y
+            member_top = int(
+                math.floor(
+                    member["y"] - top
                 )
             )
 
-            painter.drawPixmap(
-                paste_x,
-                paste_y,
-                member["pixmap"],
+            member_right = int(
+                math.ceil(
+                    member["x"]
+                    + member["w"]
+                    - left
+                )
             )
+
+            member_bottom = int(
+                math.ceil(
+                    member["y"]
+                    + member["h"]
+                    - top
+                )
+            )
+
+            member_region = QRegion(
+                member_left,
+                member_top,
+                member_right - member_left,
+                member_bottom - member_top,
+            )
+
+            group_region = (
+                group_region.united(
+                    member_region
+                )
+            )
+
+        painter = QPainter(
+            result_image
+        )
+
+        painter.setClipRegion(
+            group_region
+        )
+
+        painter.drawImage(
+            0,
+            0,
+            group_image,
+        )
 
         painter.end()
+
+        result = QPixmap.fromImage(
+            result_image
+        )
+
+        mosaic_rects = (
+            self.preview_area.mosaic_rects
+        )
+
+        transformed_mosaic_rects = []
+
+        for mosaic_rect in mosaic_rects:
+            if (
+                not isinstance(
+                    mosaic_rect,
+                    (list, tuple),
+                )
+                or len(mosaic_rect) != 4
+            ):
+                continue
+
+            (
+                mosaic_x,
+                mosaic_y,
+                mosaic_w,
+                mosaic_h,
+            ) = mosaic_rect
+
+            transformed_mosaic_rects.append(
+                (
+                    mosaic_x - left,
+                    mosaic_y - top,
+                    mosaic_w,
+                    mosaic_h,
+                )
+            )
+
+        result = (
+            self.apply_mosaic_to_preview_pixmap(
+                result,
+                transformed_mosaic_rects,
+            )
+        )
 
         return result
 
