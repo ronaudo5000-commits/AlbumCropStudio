@@ -31,6 +31,7 @@ from PySide6.QtGui import (
     QIcon,
     QKeySequence,
     QRegion,
+    QPainterPath,
 )
 
 from PySide6.QtWidgets import (
@@ -1466,6 +1467,7 @@ class MainWindow(QMainWindow):
         self.page_aspect_modes = {}
         self.page_group_ids = {}
         self.page_mosaic_rects = {}
+        self.page_mosaic_angles = {}
         self.deleted_pages_stack = []
 
         self.page_export_enabled = []
@@ -6250,6 +6252,12 @@ class MainWindow(QMainWindow):
             for rect in self.preview_area.mosaic_rects
         ]
 
+        self.page_mosaic_angles[
+            self.current_page_index
+        ] = list(
+            self.preview_area.mosaic_rect_angles
+        )
+
         self.update_current_page_list_item_text()
 
     def build_project_data(self):
@@ -6291,6 +6299,13 @@ class MainWindow(QMainWindow):
                 )
             )
 
+            mosaic_angles = (
+                self.page_mosaic_angles.get(
+                    page_index,
+                    [],
+                )
+            )
+
             if (
                 page_index
                 < len(self.page_export_enabled)
@@ -6322,6 +6337,9 @@ class MainWindow(QMainWindow):
                         list(rect)
                         for rect in mosaic_rects
                     ],
+                    "mosaic_angles": list(
+                        mosaic_angles
+                    ),
                     "export_enabled": (
                         export_enabled
                     ),
@@ -6385,6 +6403,7 @@ class MainWindow(QMainWindow):
     ):
         if self.current_page_index < 0:
             self.preview_area.mosaic_rects = []
+            self.preview_area.mosaic_rect_angles = []
             self.preview_area.selected_mosaic_rect = -1
             return
 
@@ -6395,10 +6414,52 @@ class MainWindow(QMainWindow):
             )
         )
 
+        saved_mosaic_angles = (
+            self.page_mosaic_angles.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
         self.preview_area.mosaic_rects = [
             tuple(rect)
             for rect in saved_mosaic_rects
         ]
+
+        self.preview_area.mosaic_rect_angles = [
+            float(angle)
+            for angle in saved_mosaic_angles
+        ]
+
+        # 旧プロジェクトには角度情報がないため、
+        # 足りない分は0度で補完する。
+        while (
+            len(
+                self.preview_area.mosaic_rect_angles
+            )
+            < len(
+                self.preview_area.mosaic_rects
+            )
+        ):
+            self.preview_area.mosaic_rect_angles.append(
+                0.0
+            )
+
+        if (
+            len(
+                self.preview_area.mosaic_rect_angles
+            )
+            > len(
+                self.preview_area.mosaic_rects
+            )
+        ):
+            self.preview_area.mosaic_rect_angles = (
+                self.preview_area.mosaic_rect_angles[
+                    :len(
+                        self.preview_area.mosaic_rects
+                    )
+                ]
+            )
 
         self.preview_area.selected_mosaic_rect = -1
         self.preview_area.adding_mosaic_rect = False
@@ -6408,6 +6469,17 @@ class MainWindow(QMainWindow):
         self.preview_area.mosaic_resize_handle = None
         self.preview_area.mosaic_resize_start_rect = None
         self.preview_area.mosaic_resize_undo_saved = False
+
+        self.preview_area.mosaic_rotating = False
+        self.preview_area.mosaic_rotation_start_pointer_angle = (
+            None
+        )
+        self.preview_area.mosaic_rotation_start_rect_angle = (
+            0.0
+        )
+        self.preview_area.mosaic_rotation_undo_saved = False
+        self.preview_area.mosaic_rotation_changed = False
+        self.preview_area.hover_mosaic_rotate_handle = False
 
         self.preview_area.update()
 
@@ -7261,6 +7333,7 @@ class MainWindow(QMainWindow):
         self.page_aspect_modes = {}
         self.page_group_ids = {}
         self.page_mosaic_rects = {}
+        self.page_mosaic_angles = {}
         self.deleted_pages_stack = []
         self.page_export_enabled = []
 
@@ -7297,6 +7370,11 @@ class MainWindow(QMainWindow):
 
             mosaic_rects = page_data.get(
                 "mosaic_rects",
+                [],
+            )
+
+            mosaic_angles = page_data.get(
+                "mosaic_angles",
                 [],
             )
 
@@ -7342,6 +7420,48 @@ class MainWindow(QMainWindow):
                 normalized_group_ids = (
                     normalized_group_ids[
                         :len(rects)
+                    ]
+                )
+
+            normalized_mosaic_angles = []
+
+            for angle in mosaic_angles:
+                try:
+                    normalized_angle = float(
+                        angle
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                    OverflowError,
+                ):
+                    normalized_angle = 0.0
+
+                if not math.isfinite(
+                    normalized_angle
+                ):
+                    normalized_angle = 0.0
+
+                normalized_mosaic_angles.append(
+                    normalized_angle
+                )
+
+            while (
+                len(normalized_mosaic_angles)
+                < len(mosaic_rects)
+            ):
+                normalized_mosaic_angles.append(
+                    0.0
+                )
+
+            if (
+                len(normalized_mosaic_angles)
+                > len(mosaic_rects)
+            ):
+                normalized_mosaic_angles = (
+                    normalized_mosaic_angles[
+                        :len(mosaic_rects)
                     ]
                 )
 
@@ -7392,6 +7512,36 @@ class MainWindow(QMainWindow):
                 for rect in mosaic_rects
                 if len(rect) >= 4
             ]
+
+            self.page_mosaic_angles[
+                page_index
+            ] = list(
+                normalized_mosaic_angles[
+                    :len(
+                        self.page_mosaic_rects[
+                            page_index
+                        ]
+                    )
+                ]
+            )
+
+            while (
+                len(
+                    self.page_mosaic_angles[
+                        page_index
+                    ]
+                )
+                < len(
+                    self.page_mosaic_rects[
+                        page_index
+                    ]
+                )
+            ):
+                self.page_mosaic_angles[
+                    page_index
+                ].append(
+                    0.0
+                )
 
             # サムネイルを作成
             item_name = Path(
@@ -7706,6 +7856,10 @@ class MainWindow(QMainWindow):
             self.page_mosaic_rects
         )
 
+        old_page_mosaic_angles = dict(
+            self.page_mosaic_angles
+        )
+
         delete_row_set = set(
             selected_rows
         )
@@ -7770,6 +7924,12 @@ class MainWindow(QMainWindow):
                     ),
                     "mosaic_rects": list(
                         old_page_mosaic_rects.get(
+                            delete_index,
+                            [],
+                        )
+                    ),
+                    "mosaic_angles": list(
+                        old_page_mosaic_angles.get(
                             delete_index,
                             [],
                         )
@@ -7904,6 +8064,18 @@ class MainWindow(QMainWindow):
             for old_index, new_index
             in index_map.items()
             if old_index in old_page_mosaic_rects
+        }
+
+        self.page_mosaic_angles = {
+            new_index: list(
+                old_page_mosaic_angles.get(
+                    old_index,
+                    [],
+                )
+            )
+            for old_index, new_index
+            in index_map.items()
+            if old_index in old_page_mosaic_angles
         }
 
         self.image_paths = (
@@ -8174,6 +8346,11 @@ class MainWindow(QMainWindow):
                     [],
                 )
 
+                restore_mosaic_angles = page.get(
+                    "mosaic_angles",
+                    [],
+                )
+
                 restore_export_enabled = bool(
                     page.get(
                         "export_enabled",
@@ -8298,6 +8475,31 @@ class MainWindow(QMainWindow):
 
                 self.page_mosaic_rects = (
                     new_page_mosaic_rects
+                )
+
+                new_page_mosaic_angles = {}
+
+                for (
+                    old_index,
+                    mosaic_angles,
+                ) in self.page_mosaic_angles.items():
+                    if old_index >= restore_index:
+                        new_page_mosaic_angles[
+                            old_index + 1
+                        ] = mosaic_angles
+                    else:
+                        new_page_mosaic_angles[
+                            old_index
+                        ] = mosaic_angles
+
+                new_page_mosaic_angles[
+                    restore_index
+                ] = list(
+                    restore_mosaic_angles
+                )
+
+                self.page_mosaic_angles = (
+                    new_page_mosaic_angles
                 )
 
                 self.page_rects = new_page_rects
@@ -9633,6 +9835,9 @@ class MainWindow(QMainWindow):
             jpeg_quality,
             total_crops,
             export_page_indexes,
+            page_mosaic_angles=(
+                self.page_mosaic_angles
+            ),
         )
 
         self.export_worker.moveToThread(
@@ -10309,6 +10514,7 @@ class MainWindow(QMainWindow):
         self,
         pixmap,
         mosaic_rects,
+        mosaic_angles=None,
     ):
         if (
             pixmap is None
@@ -10319,33 +10525,160 @@ class MainWindow(QMainWindow):
 
         result = pixmap.copy()
 
-        painter = QPainter(
-            result
-        )
+        if mosaic_angles is None:
+            mosaic_angles = []
 
         block_size = 36
 
-        for rect in mosaic_rects:
-            x, y, w, h = rect
+        for mosaic_index, rect in enumerate(
+            mosaic_rects
+        ):
+            if (
+                not isinstance(
+                    rect,
+                    (list, tuple),
+                )
+                or len(rect) != 4
+            ):
+                continue
+
+            try:
+                x, y, w, h = (
+                    float(value)
+                    for value in rect
+                )
+
+            except (
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
+                continue
+
+            if not all(
+                math.isfinite(value)
+                for value in (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+            ):
+                continue
+
+            if w <= 0 or h <= 0:
+                continue
+
+            angle = 0.0
+
+            if mosaic_index < len(
+                mosaic_angles
+            ):
+                try:
+                    angle = float(
+                        mosaic_angles[
+                            mosaic_index
+                        ]
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                    OverflowError,
+                ):
+                    angle = 0.0
+
+            if not math.isfinite(angle):
+                angle = 0.0
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+
+            angle_rad = math.radians(
+                angle
+            )
+
+            cos_a = math.cos(
+                angle_rad
+            )
+
+            sin_a = math.sin(
+                angle_rad
+            )
+
+            corners = []
+
+            for local_x, local_y in (
+                (-w / 2, -h / 2),
+                (w / 2, -h / 2),
+                (w / 2, h / 2),
+                (-w / 2, h / 2),
+            ):
+                rotated_x = (
+                    center_x
+                    + local_x * cos_a
+                    - local_y * sin_a
+                )
+
+                rotated_y = (
+                    center_y
+                    + local_x * sin_a
+                    + local_y * cos_a
+                )
+
+                corners.append(
+                    (
+                        rotated_x,
+                        rotated_y,
+                    )
+                )
 
             left = max(
                 0,
-                int(round(x)),
+                int(
+                    math.floor(
+                        min(
+                            point[0]
+                            for point in corners
+                        )
+                    )
+                ),
             )
 
             top = max(
                 0,
-                int(round(y)),
+                int(
+                    math.floor(
+                        min(
+                            point[1]
+                            for point in corners
+                        )
+                    )
+                ),
             )
 
             right = min(
                 result.width(),
-                int(round(x + w)),
+                int(
+                    math.ceil(
+                        max(
+                            point[0]
+                            for point in corners
+                        )
+                    )
+                ),
             )
 
             bottom = min(
                 result.height(),
-                int(round(y + h)),
+                int(
+                    math.ceil(
+                        max(
+                            point[1]
+                            for point in corners
+                        )
+                    )
+                ),
             )
 
             if (
@@ -10393,13 +10726,38 @@ class MainWindow(QMainWindow):
                 Qt.TransformationMode.FastTransformation,
             )
 
+            mosaic_path = QPainterPath()
+
+            mosaic_path.moveTo(
+                corners[0][0],
+                corners[0][1],
+            )
+
+            for point_x, point_y in corners[
+                1:
+            ]:
+                mosaic_path.lineTo(
+                    point_x,
+                    point_y,
+                )
+
+            mosaic_path.closeSubpath()
+
+            painter = QPainter(
+                result
+            )
+
+            painter.setClipPath(
+                mosaic_path
+            )
+
             painter.drawPixmap(
                 left,
                 top,
                 pixelated,
             )
 
-        painter.end()
+            painter.end()
 
         return result
 
@@ -10552,10 +10910,171 @@ class MainWindow(QMainWindow):
         ):
             return QPixmap()
 
-        # グループ化時に共通化された角度を使用する
-        group_angle = float(
+        # ---------------------------------
+        # グループ構成枠が
+        # それぞれ異なる回転角度を持つか判定する
+        # ---------------------------------
+        reference_angle = float(
             valid_members[0]["angle"]
         )
+
+        has_mixed_angles = False
+
+        for member in valid_members[1:]:
+            member_angle = float(
+                member["angle"]
+            )
+
+            angle_difference = (
+                (
+                    member_angle
+                    - reference_angle
+                    + 180.0
+                )
+                % 360.0
+            ) - 180.0
+
+            if abs(
+                angle_difference
+            ) > 0.001:
+                has_mixed_angles = True
+                break
+
+        # ---------------------------------
+        # 構成枠ごとに角度が違う場合
+        #
+        # 各構成枠を独立して回転補正し、
+        # 元画像上の位置関係を維持したまま
+        # 1枚のグループ画像へ合成する。
+        #
+        # 同じ角度の場合はこの処理を使わず、
+        # 下にある従来の和集合処理を使用する。
+        # ---------------------------------
+        if has_mixed_angles:
+            left = int(
+                math.floor(
+                    min(
+                        member["x"]
+                        for member
+                        in valid_members
+                    )
+                )
+            )
+
+            top = int(
+                math.floor(
+                    min(
+                        member["y"]
+                        for member
+                        in valid_members
+                    )
+                )
+            )
+
+            right = int(
+                math.ceil(
+                    max(
+                        member["x"]
+                        + member["w"]
+                        for member
+                        in valid_members
+                    )
+                )
+            )
+
+            bottom = int(
+                math.ceil(
+                    max(
+                        member["y"]
+                        + member["h"]
+                        for member
+                        in valid_members
+                    )
+                )
+            )
+
+            if (
+                right <= left
+                or bottom <= top
+            ):
+                return QPixmap()
+
+            result = QPixmap(
+                right - left,
+                bottom - top,
+            )
+
+            result.fill(
+                Qt.GlobalColor.white
+            )
+
+            # モザイクは元画像座標で
+            # 一度だけ適用してから、
+            # 各構成枠を切り抜く。
+            source_pixmap = (
+                self.apply_mosaic_to_preview_pixmap(
+                    self.current_pixmap,
+                    self.preview_area.mosaic_rects,
+                    self.preview_area.mosaic_rect_angles,
+                )
+            )
+
+            painter = QPainter(
+                result
+            )
+
+            painter.setRenderHint(
+                QPainter.RenderHint.SmoothPixmapTransform,
+                True,
+            )
+
+            for member in valid_members:
+                member_pixmap = (
+                    self.create_rotated_crop_pixmap(
+                        member["x"],
+                        member["y"],
+                        member["w"],
+                        member["h"],
+                        member["angle"],
+                        source_pixmap,
+                    )
+                )
+
+                if member_pixmap.isNull():
+                    continue
+
+                destination_x = int(
+                    round(
+                        member["x"] - left
+                    )
+                )
+
+                destination_y = int(
+                    round(
+                        member["y"] - top
+                    )
+                )
+
+                painter.drawPixmap(
+                    destination_x,
+                    destination_y,
+                    member_pixmap,
+                )
+
+            painter.end()
+
+            return result
+
+        # ---------------------------------
+        # 全構成枠が同じ角度の場合
+        #
+        # 従来どおりグループ全体を
+        # 1回だけ変換する。
+        #
+        # これにより重なり領域の
+        # 継ぎ目を発生させない。
+        # ---------------------------------
+        group_angle = reference_angle
 
         # ---------------------------------
         # グループ全体を共通座標系へ変換する
@@ -10720,6 +11239,7 @@ class MainWindow(QMainWindow):
             self.apply_mosaic_to_preview_pixmap(
                 self.current_pixmap,
                 self.preview_area.mosaic_rects,
+                self.preview_area.mosaic_rect_angles,
             )
         )
 
@@ -10816,317 +11336,11 @@ class MainWindow(QMainWindow):
         if not valid_members:
             return QPixmap()
 
-        # ---------------------------------
-        # グループは0度・回転ありを問わず、
-        # 元画像を1回だけ描画する共通方式を使う。
-        # ---------------------------------
         return (
             self.create_group_preview_pixmap_from_source(
                 valid_members
             )
         )
-
-        group_has_rotation = any(
-            abs(
-                member["angle"]
-            ) >= 0.001
-            for member in valid_members
-        )
-
-        # 回転を含むグループは、
-        # 今回は従来方式を残す。
-        if group_has_rotation:
-            prepared_members = []
-
-            mosaic_rects = (
-                self.preview_area.mosaic_rects
-            )
-
-            for member in valid_members:
-                crop_pixmap = (
-                    self.create_rotated_crop_pixmap(
-                        member["x"],
-                        member["y"],
-                        member["w"],
-                        member["h"],
-                        member["angle"],
-                        self.current_pixmap,
-                    )
-                )
-
-                transformed_mosaic_rects = (
-                    self.transform_mosaic_rects_for_preview(
-                        mosaic_rects,
-                        member["x"],
-                        member["y"],
-                        member["w"],
-                        member["h"],
-                        member["angle"],
-                    )
-                )
-
-                crop_pixmap = (
-                    self.apply_mosaic_to_preview_pixmap(
-                        crop_pixmap,
-                        transformed_mosaic_rects,
-                    )
-                )
-
-                if crop_pixmap.isNull():
-                    continue
-
-                prepared_members.append(
-                    {
-                        **member,
-                        "pixmap": crop_pixmap,
-                    }
-                )
-
-            if not prepared_members:
-                return QPixmap()
-
-            min_x = min(
-                member["x"]
-                for member in prepared_members
-            )
-
-            min_y = min(
-                member["y"]
-                for member in prepared_members
-            )
-
-            max_x = max(
-                member["x"] + member["w"]
-                for member in prepared_members
-            )
-
-            max_y = max(
-                member["y"] + member["h"]
-                for member in prepared_members
-            )
-
-            result = QPixmap(
-                max(
-                    1,
-                    int(round(
-                        max_x - min_x
-                    )),
-                ),
-                max(
-                    1,
-                    int(round(
-                        max_y - min_y
-                    )),
-                ),
-            )
-
-            result.fill(
-                Qt.GlobalColor.white
-            )
-
-            painter = QPainter(
-                result
-            )
-
-            for member in prepared_members:
-                painter.drawPixmap(
-                    int(round(
-                        member["x"] - min_x
-                    )),
-                    int(round(
-                        member["y"] - min_y
-                    )),
-                    member["pixmap"],
-                )
-
-            painter.end()
-
-            return result
-
-        # ---------------------------------
-        # 0度グループ
-        #
-        # 各枠を別々に切り抜いて貼らず、
-        # 元画像を1回だけ切り抜き、
-        # 枠領域の和集合をマスクとして使う。
-        #
-        # 重なり部分も同じ元画像を
-        # 1回だけ表示するため、
-        # 文字や罫線が二重にならない。
-        # ---------------------------------
-        min_x = min(
-            member["x"]
-            for member in valid_members
-        )
-
-        min_y = min(
-            member["y"]
-            for member in valid_members
-        )
-
-        max_x = max(
-            member["x"] + member["w"]
-            for member in valid_members
-        )
-
-        max_y = max(
-            member["y"] + member["h"]
-            for member in valid_members
-        )
-
-        left = int(
-            math.floor(min_x)
-        )
-
-        top = int(
-            math.floor(min_y)
-        )
-
-        right = int(
-            math.ceil(max_x)
-        )
-
-        bottom = int(
-            math.ceil(max_y)
-        )
-
-        if (
-            right <= left
-            or bottom <= top
-        ):
-            return QPixmap()
-
-        source_rect = QRectF(
-            left,
-            top,
-            right - left,
-            bottom - top,
-        )
-
-        source_image = (
-            self.current_pixmap.toImage()
-        )
-
-        group_image = source_image.copy(
-            source_rect.toRect()
-        )
-
-        if group_image.isNull():
-            return QPixmap()
-
-        result_image = QImage(
-            group_image.size(),
-            QImage.Format.Format_RGB32,
-        )
-
-        result_image.fill(
-            Qt.GlobalColor.white
-        )
-
-        group_region = QRegion()
-
-        for member in valid_members:
-            member_left = int(
-                math.floor(
-                    member["x"] - left
-                )
-            )
-
-            member_top = int(
-                math.floor(
-                    member["y"] - top
-                )
-            )
-
-            member_right = int(
-                math.ceil(
-                    member["x"]
-                    + member["w"]
-                    - left
-                )
-            )
-
-            member_bottom = int(
-                math.ceil(
-                    member["y"]
-                    + member["h"]
-                    - top
-                )
-            )
-
-            member_region = QRegion(
-                member_left,
-                member_top,
-                member_right - member_left,
-                member_bottom - member_top,
-            )
-
-            group_region = (
-                group_region.united(
-                    member_region
-                )
-            )
-
-        painter = QPainter(
-            result_image
-        )
-
-        painter.setClipRegion(
-            group_region
-        )
-
-        painter.drawImage(
-            0,
-            0,
-            group_image,
-        )
-
-        painter.end()
-
-        result = QPixmap.fromImage(
-            result_image
-        )
-
-        mosaic_rects = (
-            self.preview_area.mosaic_rects
-        )
-
-        transformed_mosaic_rects = []
-
-        for mosaic_rect in mosaic_rects:
-            if (
-                not isinstance(
-                    mosaic_rect,
-                    (list, tuple),
-                )
-                or len(mosaic_rect) != 4
-            ):
-                continue
-
-            (
-                mosaic_x,
-                mosaic_y,
-                mosaic_w,
-                mosaic_h,
-            ) = mosaic_rect
-
-            transformed_mosaic_rects.append(
-                (
-                    mosaic_x - left,
-                    mosaic_y - top,
-                    mosaic_w,
-                    mosaic_h,
-                )
-            )
-
-        result = (
-            self.apply_mosaic_to_preview_pixmap(
-                result,
-                transformed_mosaic_rects,
-            )
-        )
-
-        return result
 
     def clear_crop_preview(self):
         while self.crop_preview_list_layout.count():
@@ -11343,6 +11557,14 @@ class MainWindow(QMainWindow):
                         ]
                     )
 
+                source_pixmap = (
+                    self.apply_mosaic_to_preview_pixmap(
+                        self.current_pixmap,
+                        mosaic_rects,
+                        self.preview_area.mosaic_rect_angles,
+                    )
+                )
+
                 crop_pixmap = (
                     self.create_rotated_crop_pixmap(
                         x,
@@ -11350,25 +11572,7 @@ class MainWindow(QMainWindow):
                         w,
                         h,
                         angle,
-                        self.current_pixmap,
-                    )
-                )
-
-                transformed_mosaic_rects = (
-                    self.transform_mosaic_rects_for_preview(
-                        mosaic_rects,
-                        x,
-                        y,
-                        w,
-                        h,
-                        angle,
-                    )
-                )
-
-                crop_pixmap = (
-                    self.apply_mosaic_to_preview_pixmap(
-                        crop_pixmap,
-                        transformed_mosaic_rects,
+                        source_pixmap,
                     )
                 )
 

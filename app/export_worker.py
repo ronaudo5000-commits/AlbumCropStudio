@@ -1,7 +1,10 @@
 import math
 import time
 
-from PIL import Image
+from PIL import (
+    Image,
+    ImageDraw,
+)
 
 from PySide6.QtCore import (
     QObject,
@@ -30,6 +33,7 @@ class CropExportWorker(QObject):
         jpeg_quality,
         total_crops,
         export_page_indexes=None,
+        page_mosaic_angles=None,
     ):
         super().__init__()
 
@@ -62,6 +66,17 @@ class CropExportWorker(QObject):
             ]
             for page_index, mosaic_rects
             in page_mosaic_rects.items()
+        }
+
+        if page_mosaic_angles is None:
+            page_mosaic_angles = {}
+
+        self.page_mosaic_angles = {
+            page_index: list(
+                angles
+            )
+            for page_index, angles
+            in page_mosaic_angles.items()
         }
 
         self.output_dir = output_dir
@@ -396,14 +411,24 @@ class CropExportWorker(QObject):
         self,
         image,
         mosaic_rects,
+        mosaic_angles=None,
     ):
         if not mosaic_rects:
             return image
 
+        if mosaic_angles is None:
+            mosaic_angles = []
+
         image_width = image.width
         image_height = image.height
 
-        for rect in mosaic_rects:
+        # モザイク1ブロックを
+        # おおよそ36px程度にする
+        block_size = 36
+
+        for mosaic_index, rect in enumerate(
+            mosaic_rects
+        ):
             if (
                 not isinstance(
                     rect,
@@ -440,24 +465,122 @@ class CropExportWorker(QObject):
             if w <= 0 or h <= 0:
                 continue
 
+            angle = 0.0
+
+            if mosaic_index < len(
+                mosaic_angles
+            ):
+                try:
+                    angle = float(
+                        mosaic_angles[
+                            mosaic_index
+                        ]
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                    OverflowError,
+                ):
+                    angle = 0.0
+
+            if not math.isfinite(
+                angle
+            ):
+                angle = 0.0
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+
+            angle_rad = math.radians(
+                angle
+            )
+
+            cos_a = math.cos(
+                angle_rad
+            )
+
+            sin_a = math.sin(
+                angle_rad
+            )
+
+            rotated_corners = []
+
+            for local_x, local_y in (
+                (-w / 2, -h / 2),
+                (w / 2, -h / 2),
+                (w / 2, h / 2),
+                (-w / 2, h / 2),
+            ):
+                rotated_x = (
+                    center_x
+                    + local_x * cos_a
+                    - local_y * sin_a
+                )
+
+                rotated_y = (
+                    center_y
+                    + local_x * sin_a
+                    + local_y * cos_a
+                )
+
+                rotated_corners.append(
+                    (
+                        rotated_x,
+                        rotated_y,
+                    )
+                )
+
             left = max(
                 0,
-                int(round(x)),
+                int(
+                    math.floor(
+                        min(
+                            point[0]
+                            for point
+                            in rotated_corners
+                        )
+                    )
+                ),
             )
 
             top = max(
                 0,
-                int(round(y)),
+                int(
+                    math.floor(
+                        min(
+                            point[1]
+                            for point
+                            in rotated_corners
+                        )
+                    )
+                ),
             )
 
             right = min(
                 image_width,
-                int(round(x + w)),
+                int(
+                    math.ceil(
+                        max(
+                            point[0]
+                            for point
+                            in rotated_corners
+                        )
+                    )
+                ),
             )
 
             bottom = min(
                 image_height,
-                int(round(y + h)),
+                int(
+                    math.ceil(
+                        max(
+                            point[1]
+                            for point
+                            in rotated_corners
+                        )
+                    )
+                ),
             )
 
             if (
@@ -465,15 +588,6 @@ class CropExportWorker(QObject):
                 or bottom <= top
             ):
                 continue
-
-            mosaic_region = image.crop(
-                (
-                    left,
-                    top,
-                    right,
-                    bottom,
-                )
-            )
 
             region_width = (
                 right - left
@@ -483,9 +597,14 @@ class CropExportWorker(QObject):
                 bottom - top
             )
 
-            # モザイク1ブロックを
-            # おおよそ36px程度にする
-            block_size = 36
+            mosaic_region = image.crop(
+                (
+                    left,
+                    top,
+                    right,
+                    bottom,
+                )
+            )
 
             reduced_width = max(
                 1,
@@ -513,12 +632,48 @@ class CropExportWorker(QObject):
                 Image.Resampling.NEAREST,
             )
 
+            mask = Image.new(
+                "L",
+                (
+                    region_width,
+                    region_height,
+                ),
+                0,
+            )
+
+            mask_draw = ImageDraw.Draw(
+                mask
+            )
+
+            local_polygon = [
+                (
+                    int(
+                        round(
+                            point_x - left
+                        )
+                    ),
+                    int(
+                        round(
+                            point_y - top
+                        )
+                    ),
+                )
+                for point_x, point_y
+                in rotated_corners
+            ]
+
+            mask_draw.polygon(
+                local_polygon,
+                fill=255,
+            )
+
             image.paste(
                 pixelated,
                 (
                     left,
                     top,
                 ),
+                mask,
             )
 
         return image
@@ -825,10 +980,162 @@ class CropExportWorker(QObject):
                 "グループ枠の構成領域がありません"
             )
 
-        # グループ化時に共通化された角度を使用する
-        group_angle = float(
+        # ---------------------------------
+        # 構成枠ごとに
+        # 異なる回転角度を持つか確認する
+        # ---------------------------------
+        reference_angle = float(
             prepared_members[0]["angle"]
         )
+
+        has_mixed_angles = False
+
+        for member in prepared_members[1:]:
+            member_angle = float(
+                member["angle"]
+            )
+
+            angle_difference = (
+                (
+                    member_angle
+                    - reference_angle
+                    + 180.0
+                )
+                % 360.0
+            ) - 180.0
+
+            if abs(
+                angle_difference
+            ) > 0.001:
+                has_mixed_angles = True
+                break
+
+        # ---------------------------------
+        # 構成枠ごとに角度が異なる場合
+        #
+        # 各枠をそれぞれの角度で
+        # 独立して回転補正したあと、
+        # 元画像上の位置関係を保ったまま
+        # 1枚のグループ画像へ合成する。
+        # ---------------------------------
+        if has_mixed_angles:
+            source_image = image.copy()
+
+            source_image = self.apply_mosaic_rects(
+                source_image,
+                page_mosaic_rects,
+            )
+
+            left = int(
+                math.floor(
+                    min(
+                        member["x"]
+                        for member
+                        in prepared_members
+                    )
+                )
+            )
+
+            top = int(
+                math.floor(
+                    min(
+                        member["y"]
+                        for member
+                        in prepared_members
+                    )
+                )
+            )
+
+            right = int(
+                math.ceil(
+                    max(
+                        member["x"]
+                        + member["w"]
+                        for member
+                        in prepared_members
+                    )
+                )
+            )
+
+            bottom = int(
+                math.ceil(
+                    max(
+                        member["y"]
+                        + member["h"]
+                        for member
+                        in prepared_members
+                    )
+                )
+            )
+
+            output_width = (
+                right - left
+            )
+
+            output_height = (
+                bottom - top
+            )
+
+            if (
+                output_width <= 0
+                or output_height <= 0
+            ):
+                raise ValueError(
+                    "グループ枠の切り抜き範囲が不正です"
+                )
+
+            output_image = Image.new(
+                "RGB",
+                (
+                    output_width,
+                    output_height,
+                ),
+                (
+                    255,
+                    255,
+                    255,
+                ),
+            )
+
+            for member in prepared_members:
+                member_image = (
+                    self.create_rotated_crop_image(
+                        source_image,
+                        member["x"],
+                        member["y"],
+                        member["w"],
+                        member["h"],
+                        member["angle"],
+                    )
+                )
+
+                destination_x = int(
+                    round(
+                        member["x"] - left
+                    )
+                )
+
+                destination_y = int(
+                    round(
+                        member["y"] - top
+                    )
+                )
+
+                output_image.paste(
+                    member_image,
+                    (
+                        destination_x,
+                        destination_y,
+                    ),
+                )
+
+            return output_image
+
+        # ---------------------------------
+        # 全構成枠が同じ角度の場合は、
+        # 従来の共通変換処理を使用する
+        # ---------------------------------
+        group_angle = reference_angle
 
         angle_rad = math.radians(
             -group_angle
@@ -1177,6 +1484,13 @@ class CropExportWorker(QObject):
                 )
             )
 
+            page_mosaic_angles = (
+                self.page_mosaic_angles.get(
+                    page_index,
+                    [],
+                )
+            )
+
             if not page_rects:
                 continue
 
@@ -1196,6 +1510,21 @@ class CropExportWorker(QObject):
                     image_width = image.width
                     image_height = image.height
 
+                    # ---------------------------------
+                    # モザイクはページ元画像へ
+                    # 一度だけ適用する。
+                    #
+                    # 各切り抜き枠ごとに
+                    # 同じ処理を繰り返さない。
+                    # ---------------------------------
+                    mosaic_source_image = (
+                        self.apply_mosaic_rects(
+                            image.copy(),
+                            page_mosaic_rects,
+                            page_mosaic_angles,
+                        )
+                    )
+
                     for (
                         crop_index,
                         member_indexes,
@@ -1204,6 +1533,10 @@ class CropExportWorker(QObject):
                         start=1,
                     ):
                         prepared_members = []
+
+                        is_group_unit = (
+                            len(member_indexes) > 1
+                        )
 
                         for rect_index in member_indexes:
                             rect = page_rects[
@@ -1307,33 +1640,38 @@ class CropExportWorker(QObject):
                                     )
                                 ) from e
 
-                            start_time = time.perf_counter()
+                            member_data = {
+                                "x": crop_x,
+                                "y": crop_y,
+                                "w": crop_w,
+                                "h": crop_h,
+                                "angle": angle,
+                            }
+
+                            # グループは個別画像を作らず、
+                            # 座標情報だけを準備する。
+                            if is_group_unit:
+                                prepared_members.append(
+                                    member_data
+                                )
+
+                                continue
+
+                            # 単独枠だけ従来の
+                            # 個別切り抜き処理を行う。
+                            start_time = (
+                                time.perf_counter()
+                            )
 
                             crop = (
                                 self.create_rotated_crop_image(
-                                    image,
+                                    mosaic_source_image,
                                     crop_x,
                                     crop_y,
                                     crop_w,
                                     crop_h,
                                     angle,
                                 )
-                            )
-
-                            transformed_mosaic_rects = (
-                                self.transform_mosaic_rects_for_crop(
-                                    page_mosaic_rects,
-                                    crop_x,
-                                    crop_y,
-                                    crop_w,
-                                    crop_h,
-                                    angle,
-                                )
-                            )
-
-                            crop = self.apply_mosaic_rects(
-                                crop,
-                                transformed_mosaic_rects,
                             )
 
                             elapsed_time = (
@@ -1365,33 +1703,30 @@ class CropExportWorker(QObject):
                                     )
                                 )
 
+                            member_data[
+                                "image"
+                            ] = crop
+
                             prepared_members.append(
-                                {
-                                    "x": crop_x,
-                                    "y": crop_y,
-                                    "w": crop_w,
-                                    "h": crop_h,
-                                    "angle": angle,
-                                    "image": crop,
-                                }
+                                member_data
                             )
 
-                        if len(prepared_members) == 1:
+                        if is_group_unit:
+                            output_image = (
+                                self.create_group_crop_image_from_source(
+                                    mosaic_source_image,
+                                    prepared_members,
+                                    [],
+                                )
+                            )
+
+                        else:
                             output_image = (
                                 prepared_members[
                                     0
                                 ][
                                     "image"
                                 ]
-                            )
-
-                        else:
-                            output_image = (
-                                self.create_group_crop_image_from_source(
-                                    image,
-                                    prepared_members,
-                                    page_mosaic_rects,
-                                )
                             )
 
                         output_path = (

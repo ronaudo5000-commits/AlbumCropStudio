@@ -41,6 +41,10 @@ class PhotoCanvas(QWidget):
         # モザイク枠は通常の切り抜き枠とは
         # 独立して管理する
         self.mosaic_rects = []
+
+        # モザイク枠専用の回転角度
+        self.mosaic_rect_angles = []
+
         self.mosaic_create_mode = False
         self.adding_mosaic_rect = False
         self.mosaic_add_start_x = 0
@@ -58,6 +62,23 @@ class PhotoCanvas(QWidget):
         self.mosaic_resize_handle = None
         self.mosaic_resize_start_rect = None
         self.mosaic_resize_undo_saved = False
+
+        # ---------------------------------
+        # モザイク枠専用の回転操作
+        # ---------------------------------
+        self.mosaic_rotating = False
+        self.mosaic_rotation_start_pointer_angle = None
+        self.mosaic_rotation_start_rect_angle = 0.0
+        self.mosaic_rotation_undo_saved = False
+        self.mosaic_rotation_changed = False
+
+        # モザイク専用回転ハンドルのホバー
+        self.hover_mosaic_rotate_handle = False
+
+        # モザイク専用
+        # コピー / 削除ボタンのホバー
+        # None / "copy" / "delete"
+        self.hover_mosaic_operation_control = None
 
         # 単一操作の基準になる枠
         self.selected_rect = -1
@@ -162,6 +183,8 @@ class PhotoCanvas(QWidget):
         self.rect_group_ids = []
 
         self.mosaic_rects = []
+        self.mosaic_rect_angles = []
+
         self.adding_mosaic_rect = False
         self.selected_mosaic_rect = -1
         self.mosaic_dragging = False
@@ -280,6 +303,9 @@ class PhotoCanvas(QWidget):
                     tuple(rect)
                     for rect in self.mosaic_rects
                 ],
+                "mosaic_angles": list(
+                    self.mosaic_rect_angles
+                ),
             }
         )
 
@@ -315,6 +341,9 @@ class PhotoCanvas(QWidget):
                     tuple(rect)
                     for rect in self.mosaic_rects
                 ],
+                "mosaic_angles": list(
+                    self.mosaic_rect_angles
+                ),
             }
         )
 
@@ -356,6 +385,31 @@ class PhotoCanvas(QWidget):
                 [],
             )
         ]
+
+        self.mosaic_rect_angles = list(
+            state.get(
+                "mosaic_angles",
+                [],
+            )
+        )
+
+        while (
+            len(self.mosaic_rect_angles)
+            < len(self.mosaic_rects)
+        ):
+            self.mosaic_rect_angles.append(
+                0.0
+            )
+
+        if (
+            len(self.mosaic_rect_angles)
+            > len(self.mosaic_rects)
+        ):
+            self.mosaic_rect_angles = (
+                self.mosaic_rect_angles[
+                    :len(self.mosaic_rects)
+                ]
+            )
 
         while len(self.rect_angles) < len(self.rects):
             self.rect_angles.append(0.0)
@@ -447,6 +501,9 @@ class PhotoCanvas(QWidget):
                     tuple(rect)
                     for rect in self.mosaic_rects
                 ],
+                "mosaic_angles": list(
+                    self.mosaic_rect_angles
+                ),
             }
         )
 
@@ -488,6 +545,31 @@ class PhotoCanvas(QWidget):
                 [],
             )
         ]
+
+        self.mosaic_rect_angles = list(
+            state.get(
+                "mosaic_angles",
+                [],
+            )
+        )
+
+        while (
+            len(self.mosaic_rect_angles)
+            < len(self.mosaic_rects)
+        ):
+            self.mosaic_rect_angles.append(
+                0.0
+            )
+
+        if (
+            len(self.mosaic_rect_angles)
+            > len(self.mosaic_rects)
+        ):
+            self.mosaic_rect_angles = (
+                self.mosaic_rect_angles[
+                    :len(self.mosaic_rects)
+                ]
+            )
 
         while len(self.rect_angles) < len(self.rects):
             self.rect_angles.append(0.0)
@@ -705,8 +787,12 @@ class PhotoCanvas(QWidget):
         ):
             return []
 
-        # 構成領域編集モードでは、
-        # 選択中の1領域だけを回転する
+        # ---------------------------------
+        # グループ構成領域編集モード
+        #
+        # このモードでは、
+        # 選択中の構成枠だけを回転する。
+        # ---------------------------------
         if self.composite_member_edit_mode:
             return [
                 self.selected_rect
@@ -723,14 +809,14 @@ class PhotoCanvas(QWidget):
                 ]
             )
 
-        # 通常の独立枠
+        # 独立枠は、その枠だけを回転する
         if group_id is None:
             return [
                 self.selected_rect
             ]
 
         # 通常モードでグループを選択した場合は、
-        # グループ全構成枠を同じ回転対象とする
+        # グループ全構成枠を同じ回転対象にする
         return [
             index
             for index, current_group_id
@@ -1305,6 +1391,147 @@ class PhotoCanvas(QWidget):
             bottom,
         )
 
+    def mosaic_rotation_control_geometry(
+        self,
+        x,
+        y,
+        w,
+        h,
+        angle,
+        x_offset,
+        y_offset,
+        scale_x,
+        scale_y,
+    ):
+        rotate_handle_size = 12
+        rotate_distance = 30
+        edge_margin = 4
+
+        screen_center_x = (
+            x_offset
+            + (x + w / 2) * scale_x
+        )
+
+        screen_center_y = (
+            y_offset
+            + (y + h / 2) * scale_y
+        )
+
+        screen_h = h * scale_y
+
+        angle_rad = math.radians(
+            angle
+        )
+
+        # 枠の上→下方向
+        down_axis_x = -math.sin(
+            angle_rad
+        )
+
+        down_axis_y = math.cos(
+            angle_rad
+        )
+
+        half_h = screen_h / 2
+
+        top_center_x = (
+            screen_center_x
+            - down_axis_x * half_h
+        )
+
+        top_center_y = (
+            screen_center_y
+            - down_axis_y * half_h
+        )
+
+        bottom_center_x = (
+            screen_center_x
+            + down_axis_x * half_h
+        )
+
+        bottom_center_y = (
+            screen_center_y
+            + down_axis_y * half_h
+        )
+
+        required_space = (
+            rotate_distance
+            + rotate_handle_size / 2
+        )
+
+        available_top = (
+            top_center_y - edge_margin
+        )
+
+        available_bottom = (
+            self.height()
+            - edge_margin
+            - bottom_center_y
+        )
+
+        if available_top >= required_space:
+            place_below = False
+
+        elif available_bottom >= required_space:
+            place_below = True
+
+        else:
+            place_below = (
+                available_bottom
+                > available_top
+            )
+
+        if place_below:
+            line_anchor_x = bottom_center_x
+            line_anchor_y = bottom_center_y
+
+            rotate_center_x = (
+                bottom_center_x
+                + down_axis_x
+                * rotate_distance
+            )
+
+            rotate_center_y = (
+                bottom_center_y
+                + down_axis_y
+                * rotate_distance
+            )
+
+        else:
+            line_anchor_x = top_center_x
+            line_anchor_y = top_center_y
+
+            rotate_center_x = (
+                top_center_x
+                - down_axis_x
+                * rotate_distance
+            )
+
+            rotate_center_y = (
+                top_center_y
+                - down_axis_y
+                * rotate_distance
+            )
+
+        return {
+            "rotate_handle_size": (
+                rotate_handle_size
+            ),
+            "rotate_center_x": (
+                rotate_center_x
+            ),
+            "rotate_center_y": (
+                rotate_center_y
+            ),
+            "line_anchor_x": (
+                line_anchor_x
+            ),
+            "line_anchor_y": (
+                line_anchor_y
+            ),
+            "place_below": place_below,
+        }
+
     def operation_control_geometry(
         self,
         x,
@@ -1652,6 +1879,17 @@ class PhotoCanvas(QWidget):
         ) in enumerate(
             self.mosaic_rects
         ):
+            angle = 0.0
+
+            if mosaic_index < len(
+                self.mosaic_rect_angles
+            ):
+                angle = float(
+                    self.mosaic_rect_angles[
+                        mosaic_index
+                    ]
+                )
+
             screen_x = (
                 x_offset + x * scale_x
             )
@@ -1668,9 +1906,17 @@ class PhotoCanvas(QWidget):
                 h * scale_y
             )
 
+            screen_center_x = (
+                screen_x + screen_w / 2
+            )
+
+            screen_center_y = (
+                screen_y + screen_h / 2
+            )
+
             mosaic_rect = QRectF(
-                screen_x,
-                screen_y,
+                -screen_w / 2,
+                -screen_h / 2,
                 screen_w,
                 screen_h,
             )
@@ -1708,6 +1954,17 @@ class PhotoCanvas(QWidget):
                     210,
                 )
 
+            painter.save()
+
+            painter.translate(
+                screen_center_x,
+                screen_center_y,
+            )
+
+            painter.rotate(
+                angle
+            )
+
             painter.fillRect(
                 mosaic_rect,
                 fill_color,
@@ -1742,6 +1999,8 @@ class PhotoCanvas(QWidget):
                 mosaic_rect
             )
 
+            painter.restore()
+
             # ---------------------------------
             # モザイクラベル
             #
@@ -1774,12 +2033,35 @@ class PhotoCanvas(QWidget):
 
             mosaic_label_height = 20
 
+            mosaic_center_x = (
+                x + w / 2
+            )
+
+            mosaic_center_y = (
+                y + h / 2
+            )
+
+            (
+                rotated_label_x,
+                rotated_label_y,
+            ) = self.rotate_point(
+                x,
+                y,
+                mosaic_center_x,
+                mosaic_center_y,
+                angle,
+            )
+
             mosaic_label_x = int(
-                screen_x
+                x_offset
+                + rotated_label_x
+                * scale_x
             )
 
             mosaic_label_y = int(
-                screen_y
+                y_offset
+                + rotated_label_y
+                * scale_y
             )
 
             painter.save()
@@ -1840,6 +2122,9 @@ class PhotoCanvas(QWidget):
             if is_selected_mosaic:
                 mosaic_handle_size = 7
 
+                center_x = x + w / 2
+                center_y = y + h / 2
+
                 for (
                     handle_x,
                     handle_y,
@@ -1849,14 +2134,27 @@ class PhotoCanvas(QWidget):
                     w,
                     h,
                 ).values():
+                    (
+                        rotated_handle_x,
+                        rotated_handle_y,
+                    ) = self.rotate_point(
+                        handle_x,
+                        handle_y,
+                        center_x,
+                        center_y,
+                        angle,
+                    )
+
                     handle_screen_x = (
                         x_offset
-                        + handle_x * scale_x
+                        + rotated_handle_x
+                        * scale_x
                     )
 
                     handle_screen_y = (
                         y_offset
-                        + handle_y * scale_y
+                        + rotated_handle_y
+                        * scale_y
                     )
 
                     painter.fillRect(
@@ -1876,6 +2174,319 @@ class PhotoCanvas(QWidget):
                             0,
                         ),
                     )
+
+                # ---------------------------------
+                # モザイク専用
+                # コピー / 削除ボタン
+                #
+                # ボタン位置については、
+                # 通常の切り抜き枠と
+                # 同じレイアウト計算を使用する。
+                # ---------------------------------
+                action_controls = (
+                    self.operation_control_geometry(
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                        x_offset,
+                        y_offset,
+                        scale_x,
+                        scale_y,
+                    )
+                )
+
+                button_size = action_controls[
+                    "button_size"
+                ]
+
+                copy_x = action_controls[
+                    "copy_x"
+                ]
+
+                copy_y = action_controls[
+                    "copy_y"
+                ]
+
+                delete_x = action_controls[
+                    "delete_x"
+                ]
+
+                delete_y = action_controls[
+                    "delete_y"
+                ]
+
+                painter.save()
+
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                control_background = QColor(
+                    45,
+                    45,
+                    45,
+                    235,
+                )
+
+                copy_background = (
+                    QColor(
+                        47,
+                        128,
+                        237,
+                        245,
+                    )
+                    if (
+                        self.hover_mosaic_operation_control
+                        == "copy"
+                    )
+                    else control_background
+                )
+
+                delete_background = (
+                    QColor(
+                        190,
+                        60,
+                        60,
+                        245,
+                    )
+                    if (
+                        self.hover_mosaic_operation_control
+                        == "delete"
+                    )
+                    else control_background
+                )
+
+                # ---------------------------------
+                # コピーボタン
+                # ---------------------------------
+                painter.setBrush(
+                    copy_background
+                )
+
+                painter.drawRoundedRect(
+                    QRectF(
+                        copy_x,
+                        copy_y,
+                        button_size,
+                        button_size,
+                    ),
+                    4,
+                    4,
+                )
+
+                painter.setPen(
+                    QColor(
+                        255,
+                        255,
+                        255,
+                    )
+                    if (
+                        self.hover_mosaic_operation_control
+                        == "copy"
+                    )
+                    else QColor(
+                        125,
+                        175,
+                        255,
+                    )
+                )
+
+                painter.drawText(
+                    copy_x,
+                    copy_y,
+                    button_size,
+                    button_size,
+                    Qt.AlignmentFlag.AlignCenter,
+                    "⧉",
+                )
+
+                # ---------------------------------
+                # 削除ボタン
+                # ---------------------------------
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                painter.setBrush(
+                    delete_background
+                )
+
+                painter.drawRoundedRect(
+                    QRectF(
+                        delete_x,
+                        delete_y,
+                        button_size,
+                        button_size,
+                    ),
+                    4,
+                    4,
+                )
+
+                painter.setPen(
+                    QColor(
+                        255,
+                        255,
+                        255,
+                    )
+                    if (
+                        self.hover_mosaic_operation_control
+                        == "delete"
+                    )
+                    else QColor(
+                        255,
+                        125,
+                        125,
+                    )
+                )
+
+                painter.drawText(
+                    delete_x,
+                    delete_y,
+                    button_size,
+                    button_size,
+                    Qt.AlignmentFlag.AlignCenter,
+                    "×",
+                )
+
+                painter.restore()
+
+                # ---------------------------------
+                # モザイク専用回転ハンドル
+                # ---------------------------------
+                mosaic_controls = (
+                    self.mosaic_rotation_control_geometry(
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                        x_offset,
+                        y_offset,
+                        scale_x,
+                        scale_y,
+                    )
+                )
+
+                rotate_handle_size = (
+                    mosaic_controls[
+                        "rotate_handle_size"
+                    ]
+                )
+
+                rotate_center_x = (
+                    mosaic_controls[
+                        "rotate_center_x"
+                    ]
+                )
+
+                rotate_center_y = (
+                    mosaic_controls[
+                        "rotate_center_y"
+                    ]
+                )
+
+                line_anchor_x = (
+                    mosaic_controls[
+                        "line_anchor_x"
+                    ]
+                )
+
+                line_anchor_y = (
+                    mosaic_controls[
+                        "line_anchor_y"
+                    ]
+                )
+
+                painter.save()
+
+                painter.setPen(
+                    QPen(
+                        QColor(
+                            120,
+                            55,
+                            170,
+                        ),
+                        2,
+                    )
+                )
+
+                painter.setBrush(
+                    Qt.BrushStyle.NoBrush
+                )
+
+                painter.drawLine(
+                    int(line_anchor_x),
+                    int(line_anchor_y),
+                    int(rotate_center_x),
+                    int(rotate_center_y),
+                )
+
+                if self.hover_mosaic_rotate_handle:
+                    hover_size = (
+                        rotate_handle_size + 8
+                    )
+
+                    painter.setPen(
+                        QPen(
+                            QColor(
+                                185,
+                                95,
+                                230,
+                            ),
+                            2,
+                        )
+                    )
+
+                    painter.setBrush(
+                        QColor(
+                            185,
+                            95,
+                            230,
+                            70,
+                        )
+                    )
+
+                    painter.drawEllipse(
+                        int(
+                            rotate_center_x
+                            - hover_size / 2
+                        ),
+                        int(
+                            rotate_center_y
+                            - hover_size / 2
+                        ),
+                        hover_size,
+                        hover_size,
+                    )
+
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                painter.setBrush(
+                    QColor(
+                        155,
+                        75,
+                        205,
+                    )
+                )
+
+                painter.drawEllipse(
+                    int(
+                        rotate_center_x
+                        - rotate_handle_size / 2
+                    ),
+                    int(
+                        rotate_center_y
+                        - rotate_handle_size / 2
+                    ),
+                    rotate_handle_size,
+                    rotate_handle_size,
+                )
+
+                painter.restore()
 
         for index, (x, y, w, h) in enumerate(self.rects):
             is_selected = (
@@ -2594,15 +3205,10 @@ class PhotoCanvas(QWidget):
         if self.pixmap is None:
             return
 
-        if self.selected_rect < 0:
-            return
-
-        if self.selected_rect >= len(
-            self.rects
+        if (
+            event.button()
+            != Qt.MouseButton.LeftButton
         ):
-            return
-
-        if event.button() != Qt.MouseButton.LeftButton:
             return
 
         info = self.image_display_info()
@@ -2619,6 +3225,134 @@ class PhotoCanvas(QWidget):
         ) = info
 
         pos = event.position()
+
+        # ---------------------------------
+        # モザイク専用回転ハンドル
+        # ダブルクリックで0度へ戻す
+        # ---------------------------------
+        if (
+            0 <= self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+        ):
+            mosaic_index = (
+                self.selected_mosaic_rect
+            )
+
+            x, y, w, h = (
+                self.mosaic_rects[
+                    mosaic_index
+                ]
+            )
+
+            angle = 0.0
+
+            if mosaic_index < len(
+                self.mosaic_rect_angles
+            ):
+                angle = float(
+                    self.mosaic_rect_angles[
+                        mosaic_index
+                    ]
+                )
+
+            controls = (
+                self.mosaic_rotation_control_geometry(
+                    x,
+                    y,
+                    w,
+                    h,
+                    angle,
+                    x_offset,
+                    y_offset,
+                    scale_x,
+                    scale_y,
+                )
+            )
+
+            rotate_handle_size = controls[
+                "rotate_handle_size"
+            ]
+
+            rotate_center_x = controls[
+                "rotate_center_x"
+            ]
+
+            rotate_center_y = controls[
+                "rotate_center_y"
+            ]
+
+            rotate_hit_margin = 12
+
+            if (
+                rotate_center_x
+                - rotate_handle_size / 2
+                - rotate_hit_margin
+                <= pos.x()
+                <= rotate_center_x
+                + rotate_handle_size / 2
+                + rotate_hit_margin
+                and
+                rotate_center_y
+                - rotate_handle_size / 2
+                - rotate_hit_margin
+                <= pos.y()
+                <= rotate_center_y
+                + rotate_handle_size / 2
+                + rotate_hit_margin
+            ):
+                while (
+                    len(
+                        self.mosaic_rect_angles
+                    )
+                    < len(
+                        self.mosaic_rects
+                    )
+                ):
+                    self.mosaic_rect_angles.append(
+                        0.0
+                    )
+
+                current_angle = float(
+                    self.mosaic_rect_angles[
+                        mosaic_index
+                    ]
+                )
+
+                if abs(current_angle) > 0.001:
+                    self.save_undo_state()
+
+                    self.mosaic_rect_angles[
+                        mosaic_index
+                    ] = 0.0
+
+                    self.rects_changed.emit()
+
+                self.mosaic_rotating = False
+                self.mosaic_rotation_start_pointer_angle = (
+                    None
+                )
+                self.mosaic_rotation_start_rect_angle = (
+                    0.0
+                )
+                self.mosaic_rotation_undo_saved = False
+                self.mosaic_rotation_changed = False
+
+                self.update()
+
+                event.accept()
+                return
+
+        # ---------------------------------
+        # 通常の切り抜き枠
+        # 回転ハンドルのダブルクリック
+        # ---------------------------------
+        if self.selected_rect < 0:
+            return
+
+        if self.selected_rect >= len(
+            self.rects
+        ):
+            return
 
         x, y, w, h = self.rects[
             self.selected_rect
@@ -3634,6 +4368,10 @@ class PhotoCanvas(QWidget):
                 )
             )
 
+            self.mosaic_rect_angles.append(
+                0.0
+            )
+
             self.selected_mosaic_rect = (
                 len(self.mosaic_rects) - 1
             )
@@ -3643,6 +4381,275 @@ class PhotoCanvas(QWidget):
 
             self.update()
             return
+
+        # -------------------------------------------------
+        # 選択中のモザイク枠の
+        # コピー / 削除ボタンを判定
+        # -------------------------------------------------
+        if (
+            self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+        ):
+            mosaic_index = (
+                self.selected_mosaic_rect
+            )
+
+            x, y, w, h = (
+                self.mosaic_rects[
+                    mosaic_index
+                ]
+            )
+
+            angle = 0.0
+
+            if mosaic_index < len(
+                self.mosaic_rect_angles
+            ):
+                angle = float(
+                    self.mosaic_rect_angles[
+                        mosaic_index
+                    ]
+                )
+
+            action_controls = (
+                self.operation_control_geometry(
+                    x,
+                    y,
+                    w,
+                    h,
+                    angle,
+                    x_offset,
+                    y_offset,
+                    scale_x,
+                    scale_y,
+                )
+            )
+
+            button_size = action_controls[
+                "button_size"
+            ]
+
+            copy_x = action_controls[
+                "copy_x"
+            ]
+
+            copy_y = action_controls[
+                "copy_y"
+            ]
+
+            delete_x = action_controls[
+                "delete_x"
+            ]
+
+            delete_y = action_controls[
+                "delete_y"
+            ]
+
+            # ---------------------------------
+            # コピーボタン
+            # ---------------------------------
+            if (
+                copy_x
+                <= pos.x()
+                <= copy_x + button_size
+                and copy_y
+                <= pos.y()
+                <= copy_y + button_size
+            ):
+                self.save_undo_state()
+
+                offset = 30
+
+                copied_rect = (
+                    x + offset,
+                    y + offset,
+                    w,
+                    h,
+                )
+
+                self.mosaic_rects.append(
+                    copied_rect
+                )
+
+                # 元モザイクの角度も
+                # そのままコピーする
+                self.mosaic_rect_angles.append(
+                    angle
+                )
+
+                self.selected_mosaic_rect = (
+                    len(self.mosaic_rects) - 1
+                )
+
+                self.selected_rect = -1
+                self.selected_rects.clear()
+
+                self.mosaic_dragging = False
+                self.mosaic_drag_undo_saved = False
+                self.mosaic_resizing = False
+                self.mosaic_resize_handle = None
+                self.mosaic_resize_start_rect = None
+                self.mosaic_resize_undo_saved = False
+                self.mosaic_rotating = False
+                self.mosaic_rotation_start_pointer_angle = (
+                    None
+                )
+                self.mosaic_rotation_start_rect_angle = (
+                    0.0
+                )
+                self.mosaic_rotation_undo_saved = False
+                self.mosaic_rotation_changed = False
+
+                self.rects_changed.emit()
+                self.update()
+
+                event.accept()
+                return
+
+            # ---------------------------------
+            # 削除ボタン
+            #
+            # 既存のDeleteキー処理を再利用する。
+            # ---------------------------------
+            if (
+                delete_x
+                <= pos.x()
+                <= delete_x + button_size
+                and delete_y
+                <= pos.y()
+                <= delete_y + button_size
+            ):
+                delete_event = QKeyEvent(
+                    QKeyEvent.Type.KeyPress,
+                    Qt.Key.Key_Delete,
+                    Qt.KeyboardModifier.NoModifier,
+                )
+
+                self.keyPressEvent(
+                    delete_event
+                )
+
+                event.accept()
+                return
+
+        # -------------------------------------------------
+        # 選択中のモザイク枠の
+        # 専用回転ハンドルを判定
+        # -------------------------------------------------
+        if (
+            self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+        ):
+            mosaic_index = (
+                self.selected_mosaic_rect
+            )
+
+            x, y, w, h = (
+                self.mosaic_rects[
+                    mosaic_index
+                ]
+            )
+
+            angle = 0.0
+
+            if mosaic_index < len(
+                self.mosaic_rect_angles
+            ):
+                angle = float(
+                    self.mosaic_rect_angles[
+                        mosaic_index
+                    ]
+                )
+
+            mosaic_controls = (
+                self.mosaic_rotation_control_geometry(
+                    x,
+                    y,
+                    w,
+                    h,
+                    angle,
+                    x_offset,
+                    y_offset,
+                    scale_x,
+                    scale_y,
+                )
+            )
+
+            rotate_handle_size = (
+                mosaic_controls[
+                    "rotate_handle_size"
+                ]
+            )
+
+            rotate_center_x = (
+                mosaic_controls[
+                    "rotate_center_x"
+                ]
+            )
+
+            rotate_center_y = (
+                mosaic_controls[
+                    "rotate_center_y"
+                ]
+            )
+
+            rotate_hit_margin = 12
+
+            if (
+                rotate_center_x
+                - rotate_handle_size / 2
+                - rotate_hit_margin
+                <= pos.x()
+                <= rotate_center_x
+                + rotate_handle_size / 2
+                + rotate_hit_margin
+                and
+                rotate_center_y
+                - rotate_handle_size / 2
+                - rotate_hit_margin
+                <= pos.y()
+                <= rotate_center_y
+                + rotate_handle_size / 2
+                + rotate_hit_margin
+            ):
+                center_x = x + w / 2
+                center_y = y + h / 2
+
+                start_dx = (
+                    image_x - center_x
+                )
+
+                start_dy = (
+                    image_y - center_y
+                )
+
+                self.mosaic_rotation_start_pointer_angle = (
+                    math.degrees(
+                        math.atan2(
+                            start_dy,
+                            start_dx,
+                        )
+                    )
+                )
+
+                self.mosaic_rotation_start_rect_angle = (
+                    angle
+                )
+
+                self.mosaic_rotating = True
+                self.mosaic_rotation_undo_saved = False
+                self.mosaic_rotation_changed = False
+
+                self.mosaic_dragging = False
+                self.mosaic_resizing = False
+                self.dragging = False
+                self.resizing = False
+                self.rotating = False
+
+                event.accept()
+                return
 
         # -------------------------------------------------
         # 選択中のモザイク枠の
@@ -3673,14 +4680,44 @@ class PhotoCanvas(QWidget):
                 w,
                 h,
             ).items():
+                angle = 0.0
+
+                if (
+                    self.selected_mosaic_rect
+                    < len(
+                        self.mosaic_rect_angles
+                    )
+                ):
+                    angle = float(
+                        self.mosaic_rect_angles[
+                            self.selected_mosaic_rect
+                        ]
+                    )
+
+                center_x = x + w / 2
+                center_y = y + h / 2
+
+                (
+                    rotated_handle_x,
+                    rotated_handle_y,
+                ) = self.rotate_point(
+                    handle_x,
+                    handle_y,
+                    center_x,
+                    center_y,
+                    angle,
+                )
+
                 handle_screen_x = (
                     x_offset
-                    + handle_x * scale_x
+                    + rotated_handle_x
+                    * scale_x
                 )
 
                 handle_screen_y = (
                     y_offset
-                    + handle_y * scale_y
+                    + rotated_handle_y
+                    * scale_y
                 )
 
                 if (
@@ -4124,10 +5161,35 @@ class PhotoCanvas(QWidget):
                 ]
             )
 
+            angle = 0.0
+
+            if mosaic_index < len(
+                self.mosaic_rect_angles
+            ):
+                angle = float(
+                    self.mosaic_rect_angles[
+                        mosaic_index
+                    ]
+                )
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+
+            (
+                local_x,
+                local_y,
+            ) = self.rotate_point(
+                image_x,
+                image_y,
+                center_x,
+                center_y,
+                -angle,
+            )
+
             if (
-                x <= image_x <= x + w
+                x <= local_x <= x + w
                 and
-                y <= image_y <= y + h
+                y <= local_y <= y + h
             ):
                 mosaic_hit_index = (
                     mosaic_index
@@ -4428,8 +5490,24 @@ class PhotoCanvas(QWidget):
         self.update()
 
     def leaveEvent(self, event):
+        needs_update = False
+
         if self.hover_operation_control is not None:
             self.hover_operation_control = None
+            needs_update = True
+
+        if (
+            self.hover_mosaic_operation_control
+            is not None
+        ):
+            self.hover_mosaic_operation_control = None
+            needs_update = True
+
+        if self.hover_mosaic_rotate_handle:
+            self.hover_mosaic_rotate_handle = False
+            needs_update = True
+
+        if needs_update:
             self.update()
 
         super().leaveEvent(
@@ -4438,6 +5516,190 @@ class PhotoCanvas(QWidget):
 
     def mouseMoveEvent(self, event):
         new_hover_control = None
+        new_mosaic_operation_control = None
+        new_mosaic_rotate_hover = False
+
+        if (
+            self.pixmap is not None
+            and self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+            and not self.panning
+            and not self.mosaic_dragging
+            and not self.mosaic_resizing
+            and not self.mosaic_rotating
+            and not self.adding_mosaic_rect
+        ):
+            info = self.image_display_info()
+
+            if info is not None:
+                (
+                    _,
+                    x_offset,
+                    y_offset,
+                    scale_x,
+                    scale_y,
+                ) = info
+
+                mosaic_index = (
+                    self.selected_mosaic_rect
+                )
+
+                x, y, w, h = (
+                    self.mosaic_rects[
+                        mosaic_index
+                    ]
+                )
+
+                angle = 0.0
+
+                if mosaic_index < len(
+                    self.mosaic_rect_angles
+                ):
+                    angle = float(
+                        self.mosaic_rect_angles[
+                            mosaic_index
+                        ]
+                    )
+
+                pos = event.position()
+
+                # ---------------------------------
+                # モザイク
+                # コピー / 削除ボタン
+                # ---------------------------------
+                action_controls = (
+                    self.operation_control_geometry(
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                        x_offset,
+                        y_offset,
+                        scale_x,
+                        scale_y,
+                    )
+                )
+
+                button_size = action_controls[
+                    "button_size"
+                ]
+
+                copy_x = action_controls[
+                    "copy_x"
+                ]
+
+                copy_y = action_controls[
+                    "copy_y"
+                ]
+
+                delete_x = action_controls[
+                    "delete_x"
+                ]
+
+                delete_y = action_controls[
+                    "delete_y"
+                ]
+
+                if (
+                    copy_x
+                    <= pos.x()
+                    <= copy_x + button_size
+                    and copy_y
+                    <= pos.y()
+                    <= copy_y + button_size
+                ):
+                    new_mosaic_operation_control = (
+                        "copy"
+                    )
+
+                elif (
+                    delete_x
+                    <= pos.x()
+                    <= delete_x + button_size
+                    and delete_y
+                    <= pos.y()
+                    <= delete_y + button_size
+                ):
+                    new_mosaic_operation_control = (
+                        "delete"
+                    )
+
+                # ---------------------------------
+                # モザイク回転ハンドル
+                # ---------------------------------
+                controls = (
+                    self.mosaic_rotation_control_geometry(
+                        x,
+                        y,
+                        w,
+                        h,
+                        angle,
+                        x_offset,
+                        y_offset,
+                        scale_x,
+                        scale_y,
+                    )
+                )
+
+                rotate_handle_size = controls[
+                    "rotate_handle_size"
+                ]
+
+                rotate_center_x = controls[
+                    "rotate_center_x"
+                ]
+
+                rotate_center_y = controls[
+                    "rotate_center_y"
+                ]
+
+                rotate_hit_margin = 12
+
+                if (
+                    rotate_center_x
+                    - rotate_handle_size / 2
+                    - rotate_hit_margin
+                    <= pos.x()
+                    <= rotate_center_x
+                    + rotate_handle_size / 2
+                    + rotate_hit_margin
+                    and
+                    rotate_center_y
+                    - rotate_handle_size / 2
+                    - rotate_hit_margin
+                    <= pos.y()
+                    <= rotate_center_y
+                    + rotate_handle_size / 2
+                    + rotate_hit_margin
+                ):
+                    new_mosaic_rotate_hover = True
+
+        mosaic_hover_changed = False
+
+        if (
+            new_mosaic_operation_control
+            != self.hover_mosaic_operation_control
+        ):
+            self.hover_mosaic_operation_control = (
+                new_mosaic_operation_control
+            )
+
+            mosaic_hover_changed = True
+
+        if (
+            new_mosaic_rotate_hover
+            != self.hover_mosaic_rotate_handle
+        ):
+            self.hover_mosaic_rotate_handle = (
+                new_mosaic_rotate_hover
+            )
+
+            mosaic_hover_changed = True
+
+        if mosaic_hover_changed:
+            self.update()
 
         if (
             self.pixmap is not None
@@ -4725,6 +5987,39 @@ class PhotoCanvas(QWidget):
                 start_h,
             ) = self.mosaic_resize_start_rect
 
+            angle = 0.0
+
+            if (
+                self.selected_mosaic_rect
+                < len(
+                    self.mosaic_rect_angles
+                )
+            ):
+                angle = float(
+                    self.mosaic_rect_angles[
+                        self.selected_mosaic_rect
+                    ]
+                )
+
+            start_center_x = (
+                start_x + start_w / 2
+            )
+
+            start_center_y = (
+                start_y + start_h / 2
+            )
+
+            (
+                image_x,
+                image_y,
+            ) = self.rotate_point(
+                image_x,
+                image_y,
+                start_center_x,
+                start_center_y,
+                -angle,
+            )
+
             left = start_x
             top = start_y
             right = start_x + start_w
@@ -4973,6 +6268,135 @@ class PhotoCanvas(QWidget):
                 self.last_image_y = (
                     image_y
                 )
+
+            return
+
+        # ---------------------------------
+        # モザイク専用回転ハンドルを
+        # ドラッグ中
+        # ---------------------------------
+        if (
+            self.mosaic_rotating
+            and self.selected_mosaic_rect >= 0
+            and self.selected_mosaic_rect
+            < len(self.mosaic_rects)
+        ):
+            info = self.image_display_info()
+
+            if info is None:
+                return
+
+            (
+                _,
+                x_offset,
+                y_offset,
+                scale_x,
+                scale_y,
+            ) = info
+
+            pos = event.position()
+
+            image_x = (
+                pos.x() - x_offset
+            ) / scale_x
+
+            image_y = (
+                pos.y() - y_offset
+            ) / scale_y
+
+            x, y, w, h = (
+                self.mosaic_rects[
+                    self.selected_mosaic_rect
+                ]
+            )
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+
+            dx = image_x - center_x
+            dy = image_y - center_y
+
+            pointer_angle = math.degrees(
+                math.atan2(
+                    dy,
+                    dx,
+                )
+            )
+
+            if (
+                self.mosaic_rotation_start_pointer_angle
+                is None
+            ):
+                self.mosaic_rotation_start_pointer_angle = (
+                    pointer_angle
+                )
+
+            angle_delta = (
+                pointer_angle
+                - self.mosaic_rotation_start_pointer_angle
+            )
+
+            angle_delta = (
+                (angle_delta + 180.0)
+                % 360.0
+            ) - 180.0
+
+            shift_pressed = bool(
+                event.modifiers()
+                & Qt.KeyboardModifier.ShiftModifier
+            )
+
+            if shift_pressed:
+                sensitivity = (
+                    self.rotation_fine_sensitivity
+                )
+            else:
+                sensitivity = (
+                    self.rotation_sensitivity
+                )
+
+            angle = (
+                self.mosaic_rotation_start_rect_angle
+                + angle_delta
+                * sensitivity
+            )
+
+            angle = (
+                (angle + 180.0)
+                % 360.0
+            ) - 180.0
+
+            while (
+                len(self.mosaic_rect_angles)
+                < len(self.mosaic_rects)
+            ):
+                self.mosaic_rect_angles.append(
+                    0.0
+                )
+
+            old_angle = (
+                self.mosaic_rect_angles[
+                    self.selected_mosaic_rect
+                ]
+            )
+
+            if abs(
+                angle - old_angle
+            ) >= 0.0001:
+                if (
+                    not
+                    self.mosaic_rotation_undo_saved
+                ):
+                    self.save_undo_state()
+                    self.mosaic_rotation_undo_saved = True
+
+                self.mosaic_rect_angles[
+                    self.selected_mosaic_rect
+                ] = angle
+
+                self.mosaic_rotation_changed = True
+
+                self.update()
 
             return
 
@@ -6036,6 +7460,10 @@ class PhotoCanvas(QWidget):
                     or h < minimum_size
                 ):
                     self.mosaic_rects.pop()
+
+                    if self.mosaic_rect_angles:
+                        self.mosaic_rect_angles.pop()
+
                     self.selected_mosaic_rect = -1
                 else:
                     mosaic_created = True
@@ -6045,6 +7473,32 @@ class PhotoCanvas(QWidget):
             self.mosaic_create_finished.emit()
 
             if mosaic_created:
+                self.rects_changed.emit()
+
+            self.update()
+
+            event.accept()
+            return
+
+        # ---------------------------------
+        # モザイク枠回転終了
+        # ---------------------------------
+        if (
+            self.mosaic_rotating
+            and event.button()
+            == Qt.MouseButton.LeftButton
+        ):
+            rotation_changed = (
+                self.mosaic_rotation_changed
+            )
+
+            self.mosaic_rotating = False
+            self.mosaic_rotation_start_pointer_angle = None
+            self.mosaic_rotation_start_rect_angle = 0.0
+            self.mosaic_rotation_undo_saved = False
+            self.mosaic_rotation_changed = False
+
+            if rotation_changed:
                 self.rects_changed.emit()
 
             self.update()
@@ -6828,9 +8282,20 @@ class PhotoCanvas(QWidget):
         ):
             self.save_undo_state()
 
-            del self.mosaic_rects[
+            delete_index = (
                 self.selected_mosaic_rect
+            )
+
+            del self.mosaic_rects[
+                delete_index
             ]
+
+            if delete_index < len(
+                self.mosaic_rect_angles
+            ):
+                del self.mosaic_rect_angles[
+                    delete_index
+                ]
 
             self.selected_mosaic_rect = -1
             self.mosaic_dragging = False
