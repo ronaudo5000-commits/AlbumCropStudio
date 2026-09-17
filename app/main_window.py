@@ -76,7 +76,10 @@ from app.edition import (
     is_multi_page_export_enabled,
 )
 
-from app.export_worker import CropExportWorker
+from app.export_worker import (
+    CropExportWorker,
+    build_export_filename,
+)
 from app.detection_worker import DetectionWorker
 from app.thumbnail_worker import ThumbnailWorker
 
@@ -9554,6 +9557,11 @@ class MainWindow(QMainWindow):
             )
 
             self.save_button.setEnabled(True)
+
+            self.save_button.setText(
+                self.tr("切り抜き")
+            )
+
             return
 
         output_dir = Path(
@@ -9566,6 +9574,9 @@ class MainWindow(QMainWindow):
 
         existing_files = []
 
+        planned_output_names = set()
+        duplicate_output_names = set()
+
         for page_index in sorted(
             export_page_indexes
         ):
@@ -9574,22 +9585,90 @@ class MainWindow(QMainWindow):
                 [],
             )
 
+            page_group_ids = (
+                self.page_group_ids.get(
+                    page_index,
+                    [],
+                )
+            )
+
+            crop_count = self.count_crop_units(
+                page_rects,
+                page_group_ids,
+            )
+
+            image_path = self.image_paths[
+                page_index
+            ]
+
             for crop_index in range(
                 1,
-                len(page_rects) + 1,
+                crop_count + 1,
             ):
+                output_filename = (
+                    build_export_filename(
+                        image_path,
+                        crop_index,
+                    )
+                )
+
+                output_name_key = (
+                    output_filename.casefold()
+                )
+
+                if (
+                    output_name_key
+                    in planned_output_names
+                ):
+                    duplicate_output_names.add(
+                        output_filename
+                    )
+                else:
+                    planned_output_names.add(
+                        output_name_key
+                    )
+
                 output_path = (
                     output_dir
-                    / (
-                        f"page_{page_index + 1:03}_"
-                        f"photo_{crop_index:03}.jpg"
-                    )
+                    / output_filename
                 )
 
                 if output_path.exists():
                     existing_files.append(
                         output_path
                     )
+
+        if duplicate_output_names:
+            duplicate_text = "\n".join(
+                sorted(
+                    duplicate_output_names
+                )
+            )
+
+            QMessageBox.warning(
+                self,
+                self.tr(
+                    "書き出しファイル名の重複"
+                ),
+                self.tr(
+                    "同じ書き出しファイル名が"
+                    "複数の元画像から生成されます。\n\n"
+                    "{files}\n\n"
+                    "元画像のファイル名を変更してから、"
+                    "もう一度書き出してください。"
+                ).format(
+                    files=duplicate_text
+                ),
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "書き出しをキャンセルしました"
+                )
+            )
+
+            self.save_button.setEnabled(True)
+            return
 
         if existing_files:
             reply = QMessageBox.warning(
@@ -9621,6 +9700,11 @@ class MainWindow(QMainWindow):
                 )
 
                 self.save_button.setEnabled(True)
+
+                self.save_button.setText(
+                    self.tr("切り抜き")
+                )
+
                 return
 
         dpi = self.dpi_spin.value()

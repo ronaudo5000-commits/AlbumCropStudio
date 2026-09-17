@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 from PIL import (
     Image,
@@ -9,6 +10,21 @@ from PySide6.QtCore import (
     QObject,
     Signal,
 )
+
+
+def build_export_filename(
+    image_path,
+    crop_index,
+):
+    source_name = Path(
+        image_path
+    ).stem
+
+    return (
+        f"{source_name}_"
+        f"{crop_index:03}.jpg"
+    )
+
 
 class CropExportWorker(QObject):
     progress = Signal(
@@ -1377,9 +1393,9 @@ class CropExportWorker(QObject):
 
                         output_path = (
                             self.output_dir
-                            / (
-                                f"page_{page_index + 1:03}_"
-                                f"photo_{crop_index:03}.jpg"
+                            / build_export_filename(
+                                image_path,
+                                crop_index,
                             )
                         )
 
