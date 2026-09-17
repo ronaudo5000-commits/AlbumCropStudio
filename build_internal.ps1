@@ -40,27 +40,27 @@ $OriginalEditionContent = Get-Content `
     -Raw `
     -Encoding UTF8
 
+$EditionPattern = '(?m)^\s*CURRENT_EDITION\s*=\s*EDITION_(?:FREE|INTERNAL)\s*$'
+
+if ($OriginalEditionContent -notmatch $EditionPattern) {
+    throw "CURRENT_EDITION の定義を見つけられませんでした。"
+}
+
+$InternalEditionContent = $OriginalEditionContent -replace `
+    $EditionPattern, `
+    'CURRENT_EDITION = EDITION_INTERNAL'
+
+$FreeEditionContent = $OriginalEditionContent -replace `
+    $EditionPattern, `
+    'CURRENT_EDITION = EDITION_FREE'
+
 try {
     Write-Host "[1/7] Internal版へ一時切り替え..."
 
-    $InternalEditionContent = $OriginalEditionContent -replace `
-        'CURRENT_EDITION\s*=\s*EDITION_FREE', `
-        'CURRENT_EDITION = EDITION_INTERNAL'
-
-    if ($InternalEditionContent -eq $OriginalEditionContent) {
-        if (
-            $OriginalEditionContent -notmatch
-            'CURRENT_EDITION\s*=\s*EDITION_INTERNAL'
-        ) {
-            throw "CURRENT_EDITION の定義を見つけられませんでした。"
-        }
-    }
-    else {
-        Set-Content `
-            -Path $EditionFile `
-            -Value $InternalEditionContent `
-            -Encoding UTF8
-    }
+    Set-Content `
+        -Path $EditionFile `
+        -Value $InternalEditionContent `
+        -Encoding UTF8
 
     Write-Host "[2/7] edition.py 構文確認..."
     python -m py_compile app\edition.py
@@ -123,12 +123,12 @@ finally {
 
     Set-Content `
         -Path $EditionFile `
-        -Value $OriginalEditionContent `
+        -Value $FreeEditionContent `
         -Encoding UTF8
 
     try {
         python -m py_compile app\edition.py
-        Write-Host "元のFree版設定へ復帰しました。"
+        Write-Host "Free版設定へ復帰しました。"
     }
     catch {
         Write-Warning "edition.py の復帰後構文確認に失敗しました。"

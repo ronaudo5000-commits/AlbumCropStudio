@@ -12,9 +12,7 @@ EDITION_INTERNAL = "internal"
 # 仲間内/Internal版を作るとき:
 # CURRENT_EDITION = EDITION_INTERNAL
 #
-CURRENT_EDITION = EDITION_INTERNAL
-
-
+CURRENT_EDITION = EDITION_FREE
 # ---------------------------------
 # エディション別機能
 # ---------------------------------
@@ -38,6 +36,9 @@ def get_max_pages():
 
 def is_multi_page_export_enabled():
     return is_internal_edition()
+
+
+
 
 
 
