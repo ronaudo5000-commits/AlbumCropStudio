@@ -10,7 +10,6 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QColor,
-    QPixmap,
     QFont,
     QKeyEvent,
 )
@@ -25,7 +24,6 @@ class PhotoCanvas(QWidget):
     rects_changed = Signal()
     selected_rect_changed = Signal(int)
     selection_changed = Signal()
-    composite_create_finished = Signal()
     copied_rects_changed = Signal()
     mosaic_create_finished = Signal()
 
@@ -136,9 +134,6 @@ class PhotoCanvas(QWidget):
         self.add_start_x = 0
         self.add_start_y = 0
 
-        self.composite_create_mode = False
-        self.composite_create_indexes = []
-
         self.composite_member_edit_mode = False
 
         self.resizing = False
@@ -194,8 +189,6 @@ class PhotoCanvas(QWidget):
 
         self.selected_rect = -1
         self.selected_rects.clear()
-
-        self.composite_create_indexes.clear()
 
         self.zoom_factor = 1.0
         self.pan_x = 0.0
@@ -662,26 +655,6 @@ class PhotoCanvas(QWidget):
 
         self.update()
         
-    def set_composite_create_mode(
-        self,
-        enabled,
-    ):
-        self.composite_create_mode = bool(
-            enabled
-        )
-
-        self.composite_create_indexes.clear()
-
-        self.adding_rect = False
-        self.dragging = False
-        self.resizing = False
-        self.rotating = False
-
-        self.selected_rect = -1
-        self.selected_rects.clear()
-
-        self.update()
-
     def set_composite_member_edit_mode(
         self,
         enabled,
@@ -7684,21 +7657,6 @@ class PhotoCanvas(QWidget):
                 return
 
         if (
-            was_adding_rect
-            and self.composite_create_mode
-            and self.selected_rect >= 0
-            and self.selected_rect
-            < len(self.rects)
-        ):
-            if (
-                self.selected_rect
-                not in self.composite_create_indexes
-            ):
-                self.composite_create_indexes.append(
-                    self.selected_rect
-                )
-
-        if (
             was_resizing_rect
             and self.selected_rect >= 0
             and self.selected_rect
@@ -7923,44 +7881,6 @@ class PhotoCanvas(QWidget):
                 self.setCursor(
                     Qt.CursorShape.OpenHandCursor
                 )
-
-            event.accept()
-            return
-
-        if (
-            self.composite_create_mode
-            and event.key()
-            in (
-                Qt.Key.Key_Return,
-                Qt.Key.Key_Enter,
-            )
-        ):
-            valid_indexes = [
-                index
-                for index
-                in self.composite_create_indexes
-                if (
-                    0 <= index
-                    < len(self.rects)
-                )
-            ]
-
-            if len(valid_indexes) >= 2:
-                self.selected_rects = set(
-                    valid_indexes
-                )
-
-                self.selected_rect = (
-                    valid_indexes[-1]
-                )
-
-                self.group_selected_rects()
-
-            self.composite_create_indexes.clear()
-
-            self.composite_create_mode = False
-
-            self.composite_create_finished.emit()
 
             event.accept()
             return

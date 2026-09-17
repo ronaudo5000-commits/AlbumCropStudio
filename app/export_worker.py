@@ -1,5 +1,4 @@
 import math
-import time
 
 from PIL import (
     Image,
@@ -227,185 +226,6 @@ class CropExportWorker(QObject):
             right - left,
             bottom - top,
         )
-
-    def transform_mosaic_rects_for_crop(
-        self,
-        mosaic_rects,
-        crop_x,
-        crop_y,
-        crop_w,
-        crop_h,
-        angle,
-    ):
-        if not mosaic_rects:
-            return []
-
-        crop_center_x = (
-            crop_x + crop_w / 2
-        )
-
-        crop_center_y = (
-            crop_y + crop_h / 2
-        )
-
-        angle_rad = math.radians(
-            -angle
-        )
-
-        cos_a = math.cos(
-            angle_rad
-        )
-
-        sin_a = math.sin(
-            angle_rad
-        )
-
-        transformed_rects = []
-
-        for rect in mosaic_rects:
-            if (
-                not isinstance(
-                    rect,
-                    (list, tuple),
-                )
-                or len(rect) != 4
-            ):
-                continue
-
-            try:
-                x, y, w, h = (
-                    float(value)
-                    for value in rect
-                )
-
-            except (
-                TypeError,
-                ValueError,
-                OverflowError,
-            ):
-                continue
-
-            if not all(
-                math.isfinite(value)
-                for value in (
-                    x,
-                    y,
-                    w,
-                    h,
-                )
-            ):
-                continue
-
-            if w <= 0 or h <= 0:
-                continue
-
-            corners = (
-                (x, y),
-                (x + w, y),
-                (x + w, y + h),
-                (x, y + h),
-            )
-
-            transformed_points = []
-
-            for point_x, point_y in corners:
-                dx = (
-                    point_x
-                    - crop_center_x
-                )
-
-                dy = (
-                    point_y
-                    - crop_center_y
-                )
-
-                rotated_x = (
-                    crop_center_x
-                    + dx * cos_a
-                    - dy * sin_a
-                )
-
-                rotated_y = (
-                    crop_center_y
-                    + dx * sin_a
-                    + dy * cos_a
-                )
-
-                transformed_points.append(
-                    (
-                        rotated_x - crop_x,
-                        rotated_y - crop_y,
-                    )
-                )
-
-            left = max(
-                0,
-                int(
-                    math.floor(
-                        min(
-                            point[0]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            top = max(
-                0,
-                int(
-                    math.floor(
-                        min(
-                            point[1]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            right = min(
-                int(round(crop_w)),
-                int(
-                    math.ceil(
-                        max(
-                            point[0]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            bottom = min(
-                int(round(crop_h)),
-                int(
-                    math.ceil(
-                        max(
-                            point[1]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            if (
-                right <= left
-                or bottom <= top
-            ):
-                continue
-
-            transformed_rects.append(
-                (
-                    left,
-                    top,
-                    right - left,
-                    bottom - top,
-                )
-            )
-
-        return transformed_rects
 
     def apply_mosaic_rects(
         self,
@@ -813,161 +633,6 @@ class CropExportWorker(QObject):
                 local_bottom,
             )
         )
-
-    def create_unrotated_group_crop_image(
-        self,
-        image,
-        prepared_members,
-        page_mosaic_rects,
-    ):
-        if not prepared_members:
-            raise ValueError(
-                "グループ枠の構成領域がありません"
-            )
-
-        left = min(
-            member["x"]
-            for member in prepared_members
-        )
-
-        top = min(
-            member["y"]
-            for member in prepared_members
-        )
-
-        right = max(
-            member["x"] + member["w"]
-            for member in prepared_members
-        )
-
-        bottom = max(
-            member["y"] + member["h"]
-            for member in prepared_members
-        )
-
-        group_left = int(left)
-        group_top = int(top)
-        group_right = int(right)
-        group_bottom = int(bottom)
-
-        if (
-            group_right <= group_left
-            or group_bottom <= group_top
-        ):
-            raise ValueError(
-                "グループ枠の切り抜き範囲が不正です"
-            )
-
-        group_image = image.crop(
-            (
-                group_left,
-                group_top,
-                group_right,
-                group_bottom,
-            )
-        )
-
-        transformed_mosaic_rects = []
-
-        for mosaic_rect in page_mosaic_rects:
-            if (
-                not isinstance(
-                    mosaic_rect,
-                    (list, tuple),
-                )
-                or len(mosaic_rect) != 4
-            ):
-                continue
-
-            try:
-                (
-                    mosaic_x,
-                    mosaic_y,
-                    mosaic_w,
-                    mosaic_h,
-                ) = (
-                    float(value)
-                    for value in mosaic_rect
-                )
-
-            except (
-                TypeError,
-                ValueError,
-                OverflowError,
-            ):
-                continue
-
-            transformed_mosaic_rects.append(
-                (
-                    mosaic_x - group_left,
-                    mosaic_y - group_top,
-                    mosaic_w,
-                    mosaic_h,
-                )
-            )
-
-        group_image = self.apply_mosaic_rects(
-            group_image,
-            transformed_mosaic_rects,
-        )
-
-        mask = Image.new(
-            "L",
-            group_image.size,
-            0,
-        )
-
-        for member in prepared_members:
-            member_left = int(
-                member["x"] - group_left
-            )
-
-            member_top = int(
-                member["y"] - group_top
-            )
-
-            member_right = int(
-                member["x"]
-                + member["w"]
-                - group_left
-            )
-
-            member_bottom = int(
-                member["y"]
-                + member["h"]
-                - group_top
-            )
-
-            mask.paste(
-                255,
-                (
-                    member_left,
-                    member_top,
-                    member_right,
-                    member_bottom,
-                ),
-            )
-
-        white_background = Image.new(
-            "RGB",
-            group_image.size,
-            (
-                255,
-                255,
-                255,
-            ),
-        )
-
-        white_background.paste(
-            group_image,
-            (
-                0,
-                0,
-            ),
-            mask,
-        )
-
-        return white_background
 
     def create_group_crop_image_from_source(
         self,
@@ -1447,7 +1112,6 @@ class CropExportWorker(QObject):
 
     def export_images(self):
         saved_count = 0
-        timing_results = []
 
         for page_index, image_path in enumerate(
             self.image_paths
@@ -1659,10 +1323,6 @@ class CropExportWorker(QObject):
 
                             # 単独枠だけ従来の
                             # 個別切り抜き処理を行う。
-                            start_time = (
-                                time.perf_counter()
-                            )
-
                             crop = (
                                 self.create_rotated_crop_image(
                                     mosaic_source_image,
@@ -1671,20 +1331,6 @@ class CropExportWorker(QObject):
                                     crop_w,
                                     crop_h,
                                     angle,
-                                )
-                            )
-
-                            elapsed_time = (
-                                time.perf_counter()
-                                - start_time
-                            )
-
-                            timing_results.append(
-                                (
-                                    page_index + 1,
-                                    rect_index + 1,
-                                    angle,
-                                    elapsed_time,
                                 )
                             )
 
@@ -1776,61 +1422,6 @@ class CropExportWorker(QObject):
                         f"詳細: {e}"
                     )
                 ) from e
-
-        if timing_results:
-            total_time = sum(
-                result[3]
-                for result in timing_results
-            )
-
-            average_time = (
-                total_time
-                / len(timing_results)
-            )
-
-            timing_path = (
-                self.output_dir
-                / "crop_timing.txt"
-            )
-
-            with open(
-                timing_path,
-                "w",
-                encoding="utf-8",
-            ) as timing_file:
-                for (
-                    page_number,
-                    photo_number,
-                    angle,
-                    elapsed_time,
-                ) in timing_results:
-                    timing_file.write(
-                        f"page={page_number} "
-                        f"photo={photo_number} "
-                        f"angle={angle:.2f} "
-                        f"time={elapsed_time:.6f}s\n"
-                    )
-
-                timing_file.write(
-                    "\n"
-                )
-
-                timing_file.write(
-                    f"count="
-                    f"{len(timing_results)}\n"
-                )
-
-                timing_file.write(
-                    f"total="
-                    f"{total_time:.6f}s\n"
-                )
-
-                timing_file.write(
-                    f"average="
-                    f"{average_time:.6f}s\n"
-                )
-
-        return saved_count
 
         return saved_count
 

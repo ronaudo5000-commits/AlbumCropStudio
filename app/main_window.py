@@ -27,7 +27,6 @@ from PySide6.QtGui import (
     QPen,
     QColor,
     QImage,
-    QImageReader,
     QIcon,
     QKeySequence,
     QRegion,
@@ -62,8 +61,6 @@ from PySide6.QtWidgets import (
     QGraphicsView,
 )
 
-from core.photo_detector import detect_photos
-
 from app.photo_canvas import PhotoCanvas
 from app.version import (
     APP_NAME,
@@ -75,10 +72,7 @@ from app.config import Config
 from app.settings_dialog import SettingsDialog
 
 from app.edition import (
-    CURRENT_EDITION,
     get_max_pages,
-    is_free_edition,
-    is_internal_edition,
     is_multi_page_export_enabled,
 )
 
@@ -4252,35 +4246,8 @@ class MainWindow(QMainWindow):
         if not file_paths:
             return
 
-        total_start = time.perf_counter()
-
-        print(
-            "",
-            flush=True,
-        )
-
-        print(
-            "ADD_IMAGES DIAGNOSTIC START",
-            flush=True,
-        )
-
-        print(
-            f"input files: {len(file_paths)}",
-            flush=True,
-        )
-
-        save_state_start = (
-            time.perf_counter()
-        )
-
         if self.image_paths:
             self.save_current_page_rects()
-
-        print(
-            "save_current_page_rects: "
-            f"{time.perf_counter() - save_state_start:.3f}s",
-            flush=True,
-        )
 
         was_empty = len(self.image_paths) == 0
 
@@ -4318,10 +4285,6 @@ class MainWindow(QMainWindow):
         new_file_paths = []
         skipped_by_limit = 0
 
-        registration_start = (
-            time.perf_counter()
-        )
-
         # ---------------------------------
         # まずファイル情報だけ登録する
         # ---------------------------------
@@ -4348,12 +4311,6 @@ class MainWindow(QMainWindow):
             new_file_paths.append(
                 file_path
             )
-
-        print(
-            "file_registration: "
-            f"{time.perf_counter() - registration_start:.3f}s",
-            flush=True,
-        )
 
         if (
             max_pages is not None
@@ -4383,10 +4340,6 @@ class MainWindow(QMainWindow):
         if was_empty and self.image_paths:
             self.current_page_index = 0
 
-        list_items_start = (
-            time.perf_counter()
-        )
-
         # ---------------------------------
         # サムネイルを待たず、
         # ページ一覧の項目を先に追加する
@@ -4409,25 +4362,10 @@ class MainWindow(QMainWindow):
                 item
             )
 
-        print(
-            "page_list_items: "
-            f"{time.perf_counter() - list_items_start:.3f}s",
-            flush=True,
-        )
-
         # ---------------------------------
         # 最初のページはすぐ表示する
         # ---------------------------------
-        first_image_start = (
-            time.perf_counter()
-        )
-
         if was_empty and self.image_paths:
-            print(
-                "first load_image START",
-                flush=True,
-            )
-
             self.page_list.setCurrentRow(
                 0
             )
@@ -4438,17 +4376,6 @@ class MainWindow(QMainWindow):
                 ]
             )
 
-            print(
-                "first load_image END",
-                flush=True,
-            )
-
-        print(
-            "first_image_load: "
-            f"{time.perf_counter() - first_image_start:.3f}s",
-            flush=True,
-        )
-
         self.delete_page_button.setEnabled(
             len(self.image_paths) > 0
         )
@@ -4456,63 +4383,17 @@ class MainWindow(QMainWindow):
         if new_file_paths:
             self.project_modified = True
 
-        page_update_start = (
-            time.perf_counter()
-        )
-
         self.update_page_label()
         self.apply_page_list_display_mode()
-
-        print(
-            "page_list_update: "
-            f"{time.perf_counter() - page_update_start:.3f}s",
-            flush=True,
-        )
 
         # ---------------------------------
         # サムネイル生成は
         # バックグラウンドで開始する
         # ---------------------------------
-        thumbnail_start = (
-            time.perf_counter()
-        )
-
         if new_file_paths:
-            print(
-                "start_thumbnail_generation START",
-                flush=True,
-            )
-
             self.start_thumbnail_generation(
                 new_file_paths
             )
-
-            print(
-                "start_thumbnail_generation END",
-                flush=True,
-            )
-
-        print(
-            "thumbnail_start: "
-            f"{time.perf_counter() - thumbnail_start:.3f}s",
-            flush=True,
-        )
-
-        print(
-            "ADD_IMAGES TOTAL: "
-            f"{time.perf_counter() - total_start:.3f}s",
-            flush=True,
-        )
-
-        print(
-            "ADD_IMAGES DIAGNOSTIC END",
-            flush=True,
-        )
-
-        print(
-            "",
-            flush=True,
-        )
 
     def start_thumbnail_generation(
         self,
@@ -5005,10 +4886,6 @@ class MainWindow(QMainWindow):
             self.image_paths[row]
         ).name
 
-        rect_count = self.get_page_rect_count(
-            row
-        )
-
         mode = self.page_list_display_mode
 
         if mode == "compact":
@@ -5021,8 +4898,6 @@ class MainWindow(QMainWindow):
             item.setText(
                 file_name
             )
-
-        self.page_list.viewport().update()
         self.update_current_rect_count_status()
 
     def set_page_list_display_mode(
@@ -6129,16 +6004,6 @@ class MainWindow(QMainWindow):
                 )
             )
             return
-
-        bulk_total_start = time.perf_counter()
-
-        bulk_before_states_time = 0.0
-        bulk_image_size_time = 0.0
-        bulk_data_time = 0.0
-        bulk_process_events_time = 0.0
-        bulk_after_states_time = 0.0
-        bulk_restore_time = 0.0
-        bulk_page_list_time = 0.0
 
         if not self.preview_area.copied_rects:
             self.status_label.setText(
@@ -9422,13 +9287,6 @@ class MainWindow(QMainWindow):
     ):
         if enabled:
             if (
-                self.composite_create_button.isChecked()
-            ):
-                self.composite_create_button.setChecked(
-                    False
-                )
-
-            if (
                 self.composite_member_edit_button.isChecked()
             ):
                 self.composite_member_edit_button.setChecked(
@@ -9470,46 +9328,10 @@ class MainWindow(QMainWindow):
             Qt.FocusReason.OtherFocusReason
         )
 
-    def toggle_composite_create_mode(
-        self,
-        enabled,
-    ):
-
-        if enabled:
-            if (
-                self.composite_member_edit_button.isChecked()
-            ):
-                self.composite_member_edit_button.setChecked(
-                    False
-                )
-
-        self.preview_area.set_composite_create_mode(
-            enabled
-        )
-
-        if enabled:
-            self.status_label.setText(
-                self.tr(
-                    "グループ枠作成モード"
-                )
-            )
-        else:
-            self.update_current_rect_count_status()
-
-        self.preview_area.setFocus(
-            Qt.FocusReason.OtherFocusReason
-        )
-
     def toggle_composite_member_edit_mode(
         self,
         enabled,
     ):
-        if enabled:
-            if self.composite_create_button.isChecked():
-                self.composite_create_button.setChecked(
-                    False
-                )
-
         self.preview_area.set_composite_member_edit_mode(
             enabled
         )
@@ -10352,163 +10174,6 @@ class MainWindow(QMainWindow):
             return
 
         super().keyPressEvent(event)
-
-    def transform_mosaic_rects_for_preview(
-        self,
-        mosaic_rects,
-        crop_x,
-        crop_y,
-        crop_w,
-        crop_h,
-        angle,
-    ):
-        if not mosaic_rects:
-            return []
-
-        crop_center_x = (
-            crop_x + crop_w / 2
-        )
-
-        crop_center_y = (
-            crop_y + crop_h / 2
-        )
-
-        angle_rad = math.radians(
-            -angle
-        )
-
-        cos_a = math.cos(
-            angle_rad
-        )
-
-        sin_a = math.sin(
-            angle_rad
-        )
-
-        transformed_rects = []
-
-        for rect in mosaic_rects:
-            if (
-                not isinstance(
-                    rect,
-                    (list, tuple),
-                )
-                or len(rect) != 4
-            ):
-                continue
-
-            x, y, w, h = (
-                float(value)
-                for value in rect
-            )
-
-            corners = (
-                (x, y),
-                (x + w, y),
-                (x + w, y + h),
-                (x, y + h),
-            )
-
-            transformed_points = []
-
-            for point_x, point_y in corners:
-                dx = (
-                    point_x
-                    - crop_center_x
-                )
-
-                dy = (
-                    point_y
-                    - crop_center_y
-                )
-
-                rotated_x = (
-                    crop_center_x
-                    + dx * cos_a
-                    - dy * sin_a
-                )
-
-                rotated_y = (
-                    crop_center_y
-                    + dx * sin_a
-                    + dy * cos_a
-                )
-
-                transformed_points.append(
-                    (
-                        rotated_x - crop_x,
-                        rotated_y - crop_y,
-                    )
-                )
-
-            left = max(
-                0,
-                int(
-                    math.floor(
-                        min(
-                            point[0]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            top = max(
-                0,
-                int(
-                    math.floor(
-                        min(
-                            point[1]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            right = min(
-                int(round(crop_w)),
-                int(
-                    math.ceil(
-                        max(
-                            point[0]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            bottom = min(
-                int(round(crop_h)),
-                int(
-                    math.ceil(
-                        max(
-                            point[1]
-                            for point
-                            in transformed_points
-                        )
-                    )
-                ),
-            )
-
-            if (
-                right <= left
-                or bottom <= top
-            ):
-                continue
-
-            transformed_rects.append(
-                (
-                    left,
-                    top,
-                    right - left,
-                    bottom - top,
-                )
-            )
-
-        return transformed_rects
 
     def apply_mosaic_to_preview_pixmap(
         self,
