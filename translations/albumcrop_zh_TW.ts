@@ -1,4 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE TS>
 <TS version="2.1" language="zh_TW">
     <context>
         <name>AboutDialog</name>
@@ -67,6 +68,26 @@
             <location filename="../app/main_window.py" line="481" />
             <source>切り抜きプレビュー - {title}</source>
             <translation>裁切預覽 - {title}</translation>
+        </message>
+        <message>
+            <location filename="../app/main_window.py" line="331" />
+            <source>最大化</source>
+            <translation>最大化</translation>
+        </message>
+        <message>
+            <location filename="../app/main_window.py" line="390" />
+            <source>プレビュー画面を最大化します</source>
+            <translation>將預覽視窗最大化</translation>
+        </message>
+        <message>
+            <location filename="../app/main_window.py" line="485" />
+            <source>元に戻す</source>
+            <translation>還原</translation>
+        </message>
+        <message>
+            <location filename="../app/main_window.py" line="490" />
+            <source>プレビュー画面を元のサイズに戻します</source>
+            <translation>將預覽視窗還原為原始大小</translation>
         </message>
     </context>
     <context>
@@ -254,7 +275,7 @@
         </message>
         <message>
             <location filename="../app/main_window.py" line="2180" />
-            <source>About AlbumCrop Studio</source>
+            <source>AlbumCrop Studioについて</source>
             <translation>關於 AlbumCrop Studio</translation>
         </message>
         <message>
@@ -1032,26 +1053,6 @@ AlbumCrop Studio Free 最多可開啟 {max_pages} 頁的專案。
             <translation>群組</translation>
         </message>
         <message>
-            <location filename="../app/main_window.py" line="331" />
-            <source>最大化</source>
-            <translation>最大化</translation>
-        </message>
-        <message>
-            <location filename="../app/main_window.py" line="485" />
-            <source>元に戻す</source>
-            <translation>還原</translation>
-        </message>
-        <message>
-            <location filename="../app/main_window.py" line="390" />
-            <source>プレビュー画面を最大化します</source>
-            <translation>將預覽視窗最大化</translation>
-        </message>
-        <message>
-            <location filename="../app/main_window.py" line="490" />
-            <source>プレビュー画面を元のサイズに戻します</source>
-            <translation>將預覽視窗還原為原始大小</translation>
-        </message>
-        <message>
             <location filename="../app/main_window.py" line="2682" />
             <source>選択した複数の枠を1つのグループにします</source>
             <translation>將選取的多個框合併為一個群組</translation>
@@ -1088,6 +1089,34 @@ AlbumCrop Studio Free 最多可開啟 {max_pages} 頁的專案。
 {files}
 
 請先變更來源影像的檔名，再重新匯出。</translation>
+        </message>
+        <message>
+            <source>切り取り</source>
+            <translation>剪下</translation>
+        </message>
+        <message>
+            <source>コピー</source>
+            <translation>複製</translation>
+        </message>
+        <message>
+            <source>保存</source>
+            <translation>儲存</translation>
+        </message>
+        <message>
+            <source>保存せず終了</source>
+            <translation>不儲存並結束</translation>
+        </message>
+        <message>
+            <source>上書き</source>
+            <translation>覆寫</translation>
+        </message>
+        <message>
+            <source>やり直す</source>
+            <translation>重做</translation>
+        </message>
+        <message>
+            <source>元に戻す</source>
+            <translation>復原</translation>
         </message>
     </context>
     <context>

@@ -29,6 +29,7 @@ from PySide6.QtGui import (
     QImage,
     QIcon,
     QKeySequence,
+    QKeyEvent,
     QRegion,
     QPainterPath,
 )
@@ -2456,7 +2457,7 @@ class MainWindow(QMainWindow):
         )
 
         self.exit_action.setShortcut(
-            QKeySequence.StandardKey.Quit
+            QKeySequence("Alt+F4")
         )
 
         self.exit_action.triggered.connect(
@@ -2476,6 +2477,78 @@ class MainWindow(QMainWindow):
         help_menu = self.menuBar().addMenu(
             self.tr("ヘルプ")
         )
+
+        self.undo_action = QAction(
+            self.tr("元に戻す"),
+            self,
+        )
+
+        self.undo_action.setShortcut(
+            QKeySequence("Ctrl+Z")
+        )
+
+        self.undo_action.triggered.connect(
+            self.preview_area.undo
+        )
+
+        edit_menu.addAction(
+            self.undo_action
+        )
+
+        self.redo_action = QAction(
+            self.tr("やり直す"),
+            self,
+        )
+
+        self.redo_action.setShortcut(
+            QKeySequence("Ctrl+Y")
+        )
+
+        self.redo_action.triggered.connect(
+            self.preview_area.redo
+        )
+
+        edit_menu.addAction(
+            self.redo_action
+        )
+
+        edit_menu.addSeparator()
+
+        self.cut_action = QAction(
+            self.tr("切り取り"),
+            self,
+        )
+
+        self.cut_action.setShortcut(
+            QKeySequence("Ctrl+X")
+        )
+
+        self.cut_action.triggered.connect(
+            self.cut_selected_rects
+        )
+
+        edit_menu.addAction(
+            self.cut_action
+        )
+
+        self.copy_action = QAction(
+            self.tr("コピー"),
+            self,
+        )
+
+        self.copy_action.setShortcut(
+            QKeySequence("Ctrl+C")
+        )
+
+        self.copy_action.triggered.connect(
+            self.copy_selected_rects
+        )
+
+        edit_menu.addAction(
+            self.copy_action
+        )
+
+        edit_menu.addSeparator()
 
         self.paste_selected_pages_action = QAction(
             self.tr(
@@ -2510,7 +2583,7 @@ class MainWindow(QMainWindow):
         # 編集メニューを開く直前に、
         # 貼り付け可能な状態か再判定する
         edit_menu.aboutToShow.connect(
-            self.update_bulk_paste_actions_state
+            self.update_edit_menu_state
         )
 
         quick_start_action = QAction(
@@ -2529,7 +2602,7 @@ class MainWindow(QMainWindow):
         help_menu.addSeparator()
 
         about_action = QAction(
-            self.tr("About AlbumCrop Studio"),
+            self.tr("AlbumCrop Studioについて"),
             self,
         )
 
@@ -5147,6 +5220,79 @@ class MainWindow(QMainWindow):
             ]
         )
 
+    def cut_selected_rects(self):
+        key_event = QKeyEvent(
+            QKeyEvent.Type.KeyPress,
+            Qt.Key.Key_X,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+
+        self.preview_area.keyPressEvent(
+            key_event
+        )
+
+    def copy_selected_rects(self):
+        key_event = QKeyEvent(
+            QKeyEvent.Type.KeyPress,
+            Qt.Key.Key_C,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+
+        self.preview_area.keyPressEvent(
+            key_event
+        )
+
+    def update_edit_menu_state(self):
+        undo_available = (
+            bool(
+                self.preview_area.undo_stack
+            )
+            or self.has_bulk_paste_undo()
+        )
+
+        redo_available = (
+            bool(
+                self.preview_area.redo_stack
+            )
+            or self.has_bulk_paste_redo()
+        )
+
+        selected_indexes = set(
+            self.preview_area.selected_rects
+        )
+
+        if (
+            not selected_indexes
+            and 0
+            <= self.preview_area.selected_rect
+            < len(self.preview_area.rects)
+        ):
+            selected_indexes.add(
+                self.preview_area.selected_rect
+            )
+
+        has_selected_rects = bool(
+            selected_indexes
+        )
+
+        self.undo_action.setEnabled(
+            undo_available
+        )
+
+        self.redo_action.setEnabled(
+            redo_available
+        )
+
+        self.cut_action.setEnabled(
+            has_selected_rects
+        )
+
+        self.copy_action.setEnabled(
+            has_selected_rects
+        )
+
+        self.update_bulk_paste_actions_state()
+
     def update_bulk_paste_actions_state(self):
         # コピー済みの切り抜き枠があるか
         has_copied_rects = bool(
@@ -6935,20 +7081,50 @@ class MainWindow(QMainWindow):
         project_path = Path(file_path)
 
         if project_path.exists():
-            reply = QMessageBox.warning(
-                self,
+            message_box = QMessageBox(
+                self
+            )
+
+            message_box.setIcon(
+                QMessageBox.Icon.Warning
+            )
+
+            message_box.setWindowTitle(
                 self.tr(
                     "上書き確認"
-                ),
+                )
+            )
+
+            message_box.setText(
                 self.tr(
                     "同じ名前のプロジェクトファイルが"
                     "すでに存在します。\n\n"
                     "上書きしますか？"
-                ),
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
+                )
             )
+
+            message_box.setStandardButtons(
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.Cancel
+            )
+
+            message_box.setDefaultButton(
+                QMessageBox.StandardButton.Cancel
+            )
+
+            message_box.button(
+                QMessageBox.StandardButton.Yes
+            ).setText(
+                self.tr("上書き")
+            )
+
+            message_box.button(
+                QMessageBox.StandardButton.Cancel
+            ).setText(
+                self.tr("キャンセル")
+            )
+
+            reply = message_box.exec()
 
             if reply != QMessageBox.StandardButton.Yes:
                 self.status_label.setText(
@@ -9748,11 +9924,21 @@ class MainWindow(QMainWindow):
             return
 
         if existing_files:
-            reply = QMessageBox.warning(
-                self,
+            message_box = QMessageBox(
+                self
+            )
+
+            message_box.setIcon(
+                QMessageBox.Icon.Warning
+            )
+
+            message_box.setWindowTitle(
                 self.tr(
                     "上書き確認"
-                ),
+                )
+            )
+
+            message_box.setText(
                 self.tr(
                     "保存先に同名ファイルが"
                     "{count}件あります。\n\n"
@@ -9760,11 +9946,31 @@ class MainWindow(QMainWindow):
                     "上書きしますか？"
                 ).format(
                     count=len(existing_files)
-                ),
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
+                )
             )
+
+            message_box.setStandardButtons(
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.Cancel
+            )
+
+            message_box.setDefaultButton(
+                QMessageBox.StandardButton.Cancel
+            )
+
+            message_box.button(
+                QMessageBox.StandardButton.Yes
+            ).setText(
+                self.tr("上書き")
+            )
+
+            message_box.button(
+                QMessageBox.StandardButton.Cancel
+            ).setText(
+                self.tr("キャンセル")
+            )
+
+            reply = message_box.exec()
 
             if (
                 reply
@@ -9880,20 +10086,56 @@ class MainWindow(QMainWindow):
         if not self.project_modified:
             return True
 
-        reply = QMessageBox.question(
-            self,
+        message_box = QMessageBox(
+            self
+        )
+
+        message_box.setIcon(
+            QMessageBox.Icon.Question
+        )
+
+        message_box.setWindowTitle(
             self.tr(
                 "未保存の変更"
-            ),
+            )
+        )
+
+        message_box.setText(
             self.tr(
                 "保存されていない変更があります。\n\n"
                 "作業を保存しますか？"
-            ),
+            )
+        )
+
+        message_box.setStandardButtons(
             QMessageBox.StandardButton.Save
             | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save,
+            | QMessageBox.StandardButton.Cancel
         )
+
+        message_box.setDefaultButton(
+            QMessageBox.StandardButton.Save
+        )
+
+        message_box.button(
+            QMessageBox.StandardButton.Save
+        ).setText(
+            self.tr("保存")
+        )
+
+        message_box.button(
+            QMessageBox.StandardButton.Discard
+        ).setText(
+            self.tr("保存せず終了")
+        )
+
+        message_box.button(
+            QMessageBox.StandardButton.Cancel
+        ).setText(
+            self.tr("キャンセル")
+        )
+
+        reply = message_box.exec()
 
         if reply == QMessageBox.StandardButton.Save:
             self.save_project_overwrite()

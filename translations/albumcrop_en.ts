@@ -269,7 +269,7 @@ will appear here</translation>
         </message>
         <message>
             <location filename="../app/main_window.py" line="2180" />
-            <source>About AlbumCrop Studio</source>
+            <source>AlbumCrop Studioについて</source>
             <translation>About AlbumCrop Studio</translation>
         </message>
         <message>
@@ -1089,6 +1089,34 @@ You can save your work as a project using “Save Project”.</translation>
 {files}
 
 Rename the source image files, then try exporting again.</translation>
+        </message>
+        <message>
+            <source>切り取り</source>
+            <translation>Cut</translation>
+        </message>
+        <message>
+            <source>コピー</source>
+            <translation>Copy</translation>
+        </message>
+        <message>
+            <source>保存</source>
+            <translation>Save</translation>
+        </message>
+        <message>
+            <source>保存せず終了</source>
+            <translation>Don't Save</translation>
+        </message>
+        <message>
+            <source>上書き</source>
+            <translation>Overwrite</translation>
+        </message>
+        <message>
+            <source>元に戻す</source>
+            <translation>Undo</translation>
+        </message>
+        <message>
+            <source>やり直す</source>
+            <translation>Redo</translation>
         </message>
     </context>
     <context>
