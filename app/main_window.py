@@ -4644,6 +4644,8 @@ class MainWindow(QMainWindow):
 
         self.project_modified = True
 
+        self.update_export_button_state()
+
     def set_all_page_export_enabled(
         self,
         enabled,
@@ -4673,6 +4675,8 @@ class MainWindow(QMainWindow):
 
         if self.page_export_enabled:
             self.project_modified = True
+
+        self.update_export_button_state()
 
     def count_crop_units(
         self,
@@ -4705,6 +4709,78 @@ class MainWindow(QMainWindow):
         return (
             independent_count
             + len(grouped_ids)
+        )
+
+    def update_export_button_state(
+        self,
+    ):
+        if self.export_running:
+            self.save_button.setEnabled(
+                False
+            )
+            return
+
+        if not self.image_paths:
+            self.save_button.setEnabled(
+                False
+            )
+            return
+
+        checked_page_indexes = [
+            page_index
+            for page_index in range(
+                len(self.image_paths)
+            )
+            if (
+                page_index
+                < len(
+                    self.page_export_enabled
+                )
+                and self.page_export_enabled[
+                    page_index
+                ]
+            )
+        ]
+
+        has_exportable_crop = False
+
+        for page_index in checked_page_indexes:
+            if (
+                page_index
+                == self.current_page_index
+            ):
+                rects = (
+                    self.preview_area.rects
+                )
+
+                group_ids = (
+                    self.preview_area.rect_group_ids
+                )
+            else:
+                rects = self.page_rects.get(
+                    page_index,
+                    [],
+                )
+
+                group_ids = (
+                    self.page_group_ids.get(
+                        page_index,
+                        [],
+                    )
+                )
+
+            if (
+                self.count_crop_units(
+                    rects,
+                    group_ids,
+                )
+                > 0
+            ):
+                has_exportable_crop = True
+                break
+
+        self.save_button.setEnabled(
+            has_exportable_crop
         )
 
     def update_group_action_states(
@@ -4835,6 +4911,7 @@ class MainWindow(QMainWindow):
         )
 
         self.update_group_action_states()
+        self.update_export_button_state()
 
     def get_page_rect_count(
         self,
