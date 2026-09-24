@@ -1,4 +1,4 @@
-# AlbumCrop Studio
+﻿# AlbumCrop Studio
 
 [English](README.md) | [日本語](docs/README_ja.md) | [繁體中文](docs/README_zh_TW.md)
 
@@ -12,7 +12,7 @@ This repository contains **AlbumCrop Studio Free**, the free edition of AlbumCro
 
 ## Current Stable Release
 
-`0.11.0`
+`0.15.0`
 
 The main development branch may contain features and improvements that are not yet included in the latest stable release.
 

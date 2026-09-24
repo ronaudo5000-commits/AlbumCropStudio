@@ -1,4 +1,4 @@
-# AlbumCrop Studio
+﻿# AlbumCrop Studio
 
 [English](../README.md) | [日本語](README_ja.md) | [繁體中文](README_zh_TW.md)
 
@@ -12,7 +12,7 @@ AlbumCrop Studio 是一款桌面應用程式，用於從掃描的相簿頁面及
 
 ## 目前穩定版本
 
-`0.11.0`
+`0.15.0`
 
 主要開發分支可能包含尚未納入最新穩定版本的功能與改進。
 
@@ -430,3 +430,4 @@ AlbumCrop Studio 的核心理念是：
 本專案採用 MIT License。
 
 詳細資訊請參閱 `LICENSE` 檔案。
+

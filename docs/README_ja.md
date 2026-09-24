@@ -1,4 +1,4 @@
-# AlbumCrop Studio
+﻿# AlbumCrop Studio
 
 [English](../README.md) | [日本語](README_ja.md) | [繁體中文](README_zh_TW.md)
 
@@ -12,7 +12,7 @@ AlbumCrop Studioは、スキャンしたアルバムページやその他のア�
 
 ## 現在の安定版
 
-`0.11.0`
+`0.15.0`
 
 メインの開発ブランチには、最新の安定版にはまだ含まれていない機能や改善が含まれる場合があります。
 
@@ -432,3 +432,4 @@ AlbumCrop Studioの基本理念は、
 このプロジェクトはMIT Licenseで公開されています。
 
 詳細は `LICENSE` ファイルを参照してください。
+
