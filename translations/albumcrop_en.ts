@@ -518,10 +518,10 @@ will appear here</translation>
             <location filename="../app/main_window.py" line="3065" />
             <source>写真の自動検出中にエラーが発生しました。
 
-{error}</source>
+画像を読み込めなかったか、写真の検出処理を完了できなかった可能性があります。</source>
             <translation>An error occurred during photo detection.
 
-{error}</translation>
+The image could not be loaded, or the photo detection process could not be completed.</translation>
         </message>
         <message>
             <location filename="../app/main_window.py" line="3202" />
@@ -549,10 +549,10 @@ Pages beyond the limit were not loaded.</translation>
             <location filename="../app/main_window.py" line="3303" />
             <source>PDFを画像へ変換できませんでした。
 
-{error}</source>
+ファイルが破損しているか、対応していないPDF形式の可能性があります。</source>
             <translation>The PDF could not be converted to images.
 
-{error}</translation>
+The file may be corrupted or use an unsupported PDF format.</translation>
         </message>
         <message>
             <location filename="../app/main_window.py" line="3318" />
@@ -1117,6 +1117,18 @@ Rename the source image files, then try exporting again.</translation>
         <message>
             <source>やり直す</source>
             <translation>Redo</translation>
+        </message>
+        <message>
+            <source>作業の読み込みエラー</source>
+            <translation>Project Load Error</translation>
+        </message>
+        <message>
+            <source>プロジェクトファイルを読み込めませんでした。
+
+ファイルが破損しているか、正しいAlbumCrop Studioプロジェクトではない可能性があります。</source>
+            <translation>Could not load the project file.
+
+The file may be corrupted or may not be a valid AlbumCrop Studio project.</translation>
         </message>
     </context>
     <context>

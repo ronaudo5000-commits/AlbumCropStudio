@@ -518,10 +518,10 @@
             <location filename="../app/main_window.py" line="3065" />
             <source>写真の自動検出中にエラーが発生しました。
 
-{error}</source>
+画像を読み込めなかったか、写真の検出処理を完了できなかった可能性があります。</source>
             <translation>自動偵測照片時發生錯誤。
 
-{error}</translation>
+可能無法讀取影像，或無法完成照片偵測處理。</translation>
         </message>
         <message>
             <location filename="../app/main_window.py" line="3202" />
@@ -549,10 +549,10 @@
             <location filename="../app/main_window.py" line="3303" />
             <source>PDFを画像へ変換できませんでした。
 
-{error}</source>
+ファイルが破損しているか、対応していないPDF形式の可能性があります。</source>
             <translation>無法將 PDF 轉換為影像。
 
-{error}</translation>
+檔案可能已損壞，或使用了不支援的 PDF 格式。</translation>
         </message>
         <message>
             <location filename="../app/main_window.py" line="3318" />
@@ -1117,6 +1117,18 @@ AlbumCrop Studio Free 最多可開啟 {max_pages} 頁的專案。
         <message>
             <source>元に戻す</source>
             <translation>復原</translation>
+        </message>
+        <message>
+            <source>作業の読み込みエラー</source>
+            <translation>專案讀取錯誤</translation>
+        </message>
+        <message>
+            <source>プロジェクトファイルを読み込めませんでした。
+
+ファイルが破損しているか、正しいAlbumCrop Studioプロジェクトではない可能性があります。</source>
+            <translation>無法讀取專案檔案。
+
+檔案可能已損壞，或不是有效的 AlbumCrop Studio 專案。</translation>
         </message>
     </context>
     <context>

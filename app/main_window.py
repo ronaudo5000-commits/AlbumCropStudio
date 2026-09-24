@@ -3616,9 +3616,9 @@ class MainWindow(QMainWindow):
             self.tr(
                 "写真の自動検出中に"
                 "エラーが発生しました。\n\n"
-                "{error}"
-            ).format(
-                error=error_message
+                "画像を読み込めなかったか、"
+                "写真の検出処理を完了できなかった"
+                "可能性があります。"
             ),
         )
 
@@ -3853,9 +3853,9 @@ class MainWindow(QMainWindow):
                 ),
                 self.tr(
                     "PDFを画像へ変換できませんでした。\n\n"
-                    "{error}"
-                ).format(
-                    error=e
+                    "ファイルが破損しているか、"
+                    "対応していないPDF形式の"
+                    "可能性があります。"
                 ),
             )
 
@@ -4159,6 +4159,10 @@ class MainWindow(QMainWindow):
         self,
         error_message,
     ):
+        print(
+            f"PDF変換エラー: {error_message}"
+        )
+
         QMessageBox.critical(
             self,
             self.tr(
@@ -4166,9 +4170,9 @@ class MainWindow(QMainWindow):
             ),
             self.tr(
                 "PDFを画像へ変換できませんでした。\n\n"
-                "{error}"
-            ).format(
-                error=error_message
+                "ファイルが破損しているか、"
+                "対応していないPDF形式の"
+                "可能性があります。"
             ),
         )
 
@@ -7235,6 +7239,21 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(
                 f"プロジェクト読み込みエラー: {e}"
+            )
+
+            QMessageBox.warning(
+                self,
+                self.tr(
+                    "作業の読み込みエラー"
+                ),
+                self.tr(
+                    "プロジェクトファイルを"
+                    "読み込めませんでした。\n\n"
+                    "ファイルが破損しているか、"
+                    "正しいAlbumCrop Studio"
+                    "プロジェクトではない"
+                    "可能性があります。"
+                ),
             )
 
             self.status_label.setText(
