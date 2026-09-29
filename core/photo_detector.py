@@ -2273,6 +2273,231 @@ def log_layout_border_metrics(
         )
 
 
+def log_layout_regularity(
+    fitted_layout_cells,
+):
+    cell_count = len(
+        fitted_layout_cells
+    )
+
+    if cell_count == 0:
+        write_detection_log(
+            "layout regularity "
+            "cells=0 "
+            "width_cv=0.0000 "
+            "height_cv=0.0000 "
+            "area_cv=0.0000"
+        )
+
+        return
+
+    widths = np.array(
+        [
+            w
+            for (
+                x,
+                y,
+                w,
+                h,
+            )
+            in fitted_layout_cells
+        ],
+        dtype=np.float32,
+    )
+
+    heights = np.array(
+        [
+            h
+            for (
+                x,
+                y,
+                w,
+                h,
+            )
+            in fitted_layout_cells
+        ],
+        dtype=np.float32,
+    )
+
+    areas = (
+        widths * heights
+    )
+
+    width_mean = float(
+        np.mean(
+            widths
+        )
+    )
+
+    height_mean = float(
+        np.mean(
+            heights
+        )
+    )
+
+    area_mean = float(
+        np.mean(
+            areas
+        )
+    )
+
+    width_cv = 0.0
+    height_cv = 0.0
+    area_cv = 0.0
+
+    if width_mean > 0.0:
+        width_cv = float(
+            np.std(
+                widths
+            )
+            / width_mean
+        )
+
+    if height_mean > 0.0:
+        height_cv = float(
+            np.std(
+                heights
+            )
+            / height_mean
+        )
+
+    if area_mean > 0.0:
+        area_cv = float(
+            np.std(
+                areas
+            )
+            / area_mean
+        )
+
+    write_detection_log(
+        "layout regularity "
+        f"cells={cell_count} "
+        f"width_cv={width_cv:.4f} "
+        f"height_cv={height_cv:.4f} "
+        f"area_cv={area_cv:.4f}"
+    )
+
+
+def log_candidate_layout_relations(
+    candidates,
+    fitted_layout_cells,
+):
+    if not fitted_layout_cells:
+        write_detection_log(
+            "candidate layout relation "
+            "skipped reason=no_layout_cells"
+        )
+
+        return
+
+    for candidate_number, (
+        x,
+        y,
+        w,
+        h,
+    ) in enumerate(
+        candidates,
+        start=1,
+    ):
+        candidate_area = (
+            w * h
+        )
+
+        best_cell_number = 0
+        best_inside_ratio = 0.0
+        best_area_ratio = 0.0
+
+        for cell_number, (
+            cell_x,
+            cell_y,
+            cell_w,
+            cell_h,
+        ) in enumerate(
+            fitted_layout_cells,
+            start=1,
+        ):
+            overlap_x1 = max(
+                x,
+                cell_x,
+            )
+
+            overlap_y1 = max(
+                y,
+                cell_y,
+            )
+
+            overlap_x2 = min(
+                x + w,
+                cell_x + cell_w,
+            )
+
+            overlap_y2 = min(
+                y + h,
+                cell_y + cell_h,
+            )
+
+            overlap_w = max(
+                0,
+                overlap_x2 - overlap_x1,
+            )
+
+            overlap_h = max(
+                0,
+                overlap_y2 - overlap_y1,
+            )
+
+            overlap_area = (
+                overlap_w
+                * overlap_h
+            )
+
+            inside_ratio = 0.0
+
+            if candidate_area > 0:
+                inside_ratio = (
+                    overlap_area
+                    / candidate_area
+                )
+
+            cell_area = (
+                cell_w * cell_h
+            )
+
+            candidate_to_cell_area_ratio = 0.0
+
+            if cell_area > 0:
+                candidate_to_cell_area_ratio = (
+                    candidate_area
+                    / cell_area
+                )
+
+            if (
+                inside_ratio
+                > best_inside_ratio
+            ):
+                best_cell_number = (
+                    cell_number
+                )
+
+                best_inside_ratio = (
+                    inside_ratio
+                )
+
+                best_area_ratio = (
+                    candidate_to_cell_area_ratio
+                )
+
+        write_detection_log(
+            "candidate layout relation "
+            f"number={candidate_number} "
+            f"best_cell={best_cell_number} "
+            f"inside_ratio="
+            f"{best_inside_ratio:.3f} "
+            f"candidate_to_cell_area_ratio="
+            f"{best_area_ratio:.3f}"
+        )
+
+
 def build_candidates(
     contours,
     image,
@@ -2813,6 +3038,10 @@ def detect_photos(image_path):
             edges,
         )
 
+        log_layout_regularity(
+            fitted_layout_cells,
+        )
+
         (
             bright_frame_mask,
             bright_frame_candidates,
@@ -2942,6 +3171,12 @@ def detect_photos(image_path):
         "normal candidates built "
         f"count={len(candidates)}"
     )
+
+    if DEBUG_SAVE_IMAGE:
+        log_candidate_layout_relations(
+            candidates,
+            fitted_layout_cells,
+        )
 
     save_candidate_debug_image(
         image,
