@@ -1743,6 +1743,13 @@ def log_candidate_metrics(
         x:x + w,
     ]
 
+    edge_ratio = 0.0
+
+    top_border_evidence = 0.0
+    bottom_border_evidence = 0.0
+    left_border_evidence = 0.0
+    right_border_evidence = 0.0
+
     if roi_edges.size > 0:
         edge_ratio = (
             cv2.countNonZero(
@@ -1750,8 +1757,102 @@ def log_candidate_metrics(
             )
             / roi_edges.size
         )
-    else:
-        edge_ratio = 0.0
+
+        border_band = max(
+            3,
+            min(
+                40,
+                int(
+                    min(w, h) * 0.02
+                ),
+            ),
+        )
+
+        top_band = roi_edges[
+            :border_band,
+            :,
+        ]
+
+        bottom_band = roi_edges[
+            max(
+                0,
+                h - border_band,
+            ):h,
+            :,
+        ]
+
+        left_band = roi_edges[
+            :,
+            :border_band,
+        ]
+
+        right_band = roi_edges[
+            :,
+            max(
+                0,
+                w - border_band,
+            ):w,
+        ]
+
+        if top_band.size > 0:
+            top_row_ratios = (
+                np.count_nonzero(
+                    top_band,
+                    axis=1,
+                )
+                / top_band.shape[1]
+            )
+
+            top_border_evidence = float(
+                np.max(
+                    top_row_ratios
+                )
+            )
+
+        if bottom_band.size > 0:
+            bottom_row_ratios = (
+                np.count_nonzero(
+                    bottom_band,
+                    axis=1,
+                )
+                / bottom_band.shape[1]
+            )
+
+            bottom_border_evidence = float(
+                np.max(
+                    bottom_row_ratios
+                )
+            )
+
+        if left_band.size > 0:
+            left_column_ratios = (
+                np.count_nonzero(
+                    left_band,
+                    axis=0,
+                )
+                / left_band.shape[0]
+            )
+
+            left_border_evidence = float(
+                np.max(
+                    left_column_ratios
+                )
+            )
+
+        if right_band.size > 0:
+            right_column_ratios = (
+                np.count_nonzero(
+                    right_band,
+                    axis=0,
+                )
+                / right_band.shape[0]
+            )
+
+            right_border_evidence = float(
+                np.max(
+                    right_column_ratios
+                )
+            )
 
     roi_image = image[
         y:y + h,
@@ -1816,6 +1917,14 @@ def log_candidate_metrics(
         f"shape_ratio={shape_ratio:.3f} "
         f"fill_ratio={fill_ratio:.3f} "
         f"edge_ratio={edge_ratio:.3f} "
+        f"top_border_evidence="
+        f"{top_border_evidence:.3f} "
+        f"bottom_border_evidence="
+        f"{bottom_border_evidence:.3f} "
+        f"left_border_evidence="
+        f"{left_border_evidence:.3f} "
+        f"right_border_evidence="
+        f"{right_border_evidence:.3f} "
         f"gray_mean={gray_mean:.2f} "
         f"gray_std={gray_std:.2f} "
         f"saturation_mean="
