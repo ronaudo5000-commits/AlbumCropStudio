@@ -1211,6 +1211,131 @@ def find_bright_frame_candidates(
     )
 
 
+def log_bright_frame_regularity(
+    bright_frame_candidates,
+):
+    candidate_count = len(
+        bright_frame_candidates
+    )
+
+    if candidate_count == 0:
+        write_detection_log(
+            "bright frame regularity "
+            "count=0 "
+            "width_cv=0.0000 "
+            "height_cv=0.0000 "
+            "area_cv=0.0000"
+        )
+
+        return False
+
+    widths = np.array(
+        [
+            w
+            for (
+                x,
+                y,
+                w,
+                h,
+            )
+            in bright_frame_candidates
+        ],
+        dtype=np.float32,
+    )
+
+    heights = np.array(
+        [
+            h
+            for (
+                x,
+                y,
+                w,
+                h,
+            )
+            in bright_frame_candidates
+        ],
+        dtype=np.float32,
+    )
+
+    areas = (
+        widths * heights
+    )
+
+    width_mean = float(
+        np.mean(
+            widths
+        )
+    )
+
+    height_mean = float(
+        np.mean(
+            heights
+        )
+    )
+
+    area_mean = float(
+        np.mean(
+            areas
+        )
+    )
+
+    width_cv = 0.0
+    height_cv = 0.0
+    area_cv = 0.0
+
+    if width_mean > 0.0:
+        width_cv = float(
+            np.std(
+                widths
+            )
+            / width_mean
+        )
+
+    if height_mean > 0.0:
+        height_cv = float(
+            np.std(
+                heights
+            )
+            / height_mean
+        )
+
+    if area_mean > 0.0:
+        area_cv = float(
+            np.std(
+                areas
+            )
+            / area_mean
+        )
+
+    candidate_count_ok = (
+        candidate_count >= 4
+    )
+
+    regularity_ok = (
+        width_cv <= 0.05
+        and height_cv <= 0.05
+        and area_cv <= 0.05
+    )
+
+    trusted = (
+        candidate_count_ok
+        and regularity_ok
+    )
+
+    write_detection_log(
+        "bright frame regularity "
+        f"count={candidate_count} "
+        f"candidate_count_ok={candidate_count_ok} "
+        f"width_cv={width_cv:.4f} "
+        f"height_cv={height_cv:.4f} "
+        f"area_cv={area_cv:.4f} "
+        f"regularity_ok={regularity_ok} "
+        f"trusted={trusted}"
+    )
+
+    return trusted
+
+
 def find_dark_hole_candidates(
     bright_mask,
     image_area,
@@ -3426,6 +3551,12 @@ def detect_photos(image_path):
             image_area,
         )
 
+        bright_frame_trusted = (
+            log_bright_frame_regularity(
+                bright_frame_candidates,
+            )
+        )
+
         cv2.imwrite(
             str(
                 output_dir
@@ -3523,6 +3654,38 @@ def detect_photos(image_path):
             small_photo_mask,
         )
 
+    if not DEBUG_SAVE_IMAGE:
+        (
+            background_mask,
+            background_color,
+        ) = create_background_separation_mask(
+            image
+        )
+
+        (
+            horizontal_runs,
+            row_regions,
+            row_vertical_runs,
+        ) = detect_separator_bands(
+            image,
+            background_color,
+        )
+
+        layout_cells = build_layout_cells(
+            image,
+            row_regions,
+            row_vertical_runs,
+        )
+
+        (
+            fitted_layout_cells,
+            layout_fit_success_ratio,
+        ) = fit_layout_cells_to_photos(
+            image,
+            layout_cells,
+            background_color,
+        )
+
     contours = find_all_contours(
         mask,
         edges,
@@ -3554,14 +3717,15 @@ def detect_photos(image_path):
             fitted_layout_cells,
         )
 
-        layout_trusted = (
-            log_layout_trust_candidate(
-                candidates,
-                fitted_layout_cells,
-                layout_fit_success_ratio,
-            )
+    layout_trusted = (
+        log_layout_trust_candidate(
+            candidates,
+            fitted_layout_cells,
+            layout_fit_success_ratio,
         )
+    )
 
+    if DEBUG_SAVE_IMAGE:
         if layout_trusted:
             write_detection_log(
                 "layout alternative "
@@ -3575,6 +3739,34 @@ def detect_photos(image_path):
                 "selected=False "
                 "count=0"
             )
+
+        bright_frame_rescue_selected = (
+            bright_frame_trusted
+            and not layout_trusted
+            and len(candidates) == 0
+        )
+
+        write_detection_log(
+            "bright frame rescue candidate "
+            f"bright_frame_trusted="
+            f"{bright_frame_trusted} "
+            f"layout_trusted={layout_trusted} "
+            f"normal_candidate_count="
+            f"{len(candidates)} "
+            f"selected="
+            f"{bright_frame_rescue_selected}"
+        )
+
+    if layout_trusted:
+        candidates = list(
+            fitted_layout_cells
+        )
+
+        write_detection_log(
+            "layout candidates applied "
+            f"count={len(candidates)} "
+            f"rects={candidates}"
+        )
 
     save_candidate_debug_image(
         image,
