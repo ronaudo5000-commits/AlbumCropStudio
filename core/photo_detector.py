@@ -740,6 +740,11 @@ def fit_layout_cells_to_photos(
 
     fitted_cells = []
 
+    fit_success_count = 0
+    fit_failed_count = 0
+    fit_rejected_count = 0
+    empty_cell_count = 0
+
     for cell_number, (
         x,
         y,
@@ -755,6 +760,8 @@ def fit_layout_cells_to_photos(
         ]
 
         if cell_lab.size == 0:
+            empty_cell_count += 1
+
             continue
 
         difference = (
@@ -957,6 +964,8 @@ def fit_layout_cells_to_photos(
             or top is None
             or bottom is None
         ):
+            fit_failed_count += 1
+
             write_detection_log(
                 "layout fit failed "
                 f"cell={cell_number}"
@@ -1012,6 +1021,8 @@ def fit_layout_cells_to_photos(
             fitted_w < w * 0.45
             or fitted_h < h * 0.45
         ):
+            fit_rejected_count += 1
+
             write_detection_log(
                 "layout fit rejected "
                 f"cell={cell_number} "
@@ -1044,6 +1055,8 @@ def fit_layout_cells_to_photos(
             )
         )
 
+        fit_success_count += 1
+
         write_detection_log(
             "layout fit "
             f"cell={cell_number} "
@@ -1055,6 +1068,29 @@ def fit_layout_cells_to_photos(
             f"{fitted_w},"
             f"{fitted_h})"
         )
+
+    cell_count = len(
+        layout_cells
+    )
+
+    fit_success_ratio = 0.0
+
+    if cell_count > 0:
+        fit_success_ratio = (
+            fit_success_count
+            / cell_count
+        )
+
+    write_detection_log(
+        "layout fit summary "
+        f"cells={cell_count} "
+        f"fitted={fit_success_count} "
+        f"failed={fit_failed_count} "
+        f"rejected={fit_rejected_count} "
+        f"empty={empty_cell_count} "
+        f"fit_success_ratio="
+        f"{fit_success_ratio:.3f}"
+    )
 
     return fitted_cells
 
