@@ -2390,6 +2390,9 @@ def log_candidate_layout_relations(
 
         return
 
+    best_inside_ratios = []
+    best_area_ratios = []
+
     for candidate_number, (
         x,
         y,
@@ -2487,15 +2490,69 @@ def log_candidate_layout_relations(
                     candidate_to_cell_area_ratio
                 )
 
+        best_inside_ratios.append(
+            best_inside_ratio
+        )
+
+        best_area_ratios.append(
+            best_area_ratio
+        )
+
         write_detection_log(
             "candidate layout relation "
             f"number={candidate_number} "
             f"best_cell={best_cell_number} "
             f"inside_ratio="
-            f"{best_inside_ratio:.3f} "
+            f"{best_inside_ratio:.4f} "
             f"candidate_to_cell_area_ratio="
             f"{best_area_ratio:.3f}"
         )
+
+    candidate_count = len(
+        best_inside_ratios
+    )
+
+    inside_095_count = sum(
+        1
+        for ratio in best_inside_ratios
+        if ratio >= 0.95
+    )
+
+    inside_095_ratio = 0.0
+
+    if candidate_count > 0:
+        inside_095_ratio = (
+            inside_095_count
+            / candidate_count
+        )
+
+    median_area_ratio = 0.0
+    max_area_ratio = 0.0
+
+    if best_area_ratios:
+        median_area_ratio = float(
+            np.median(
+                best_area_ratios
+            )
+        )
+
+        max_area_ratio = float(
+            np.max(
+                best_area_ratios
+            )
+        )
+
+    write_detection_log(
+        "candidate layout summary "
+        f"candidate_count={candidate_count} "
+        f"inside_095_count={inside_095_count} "
+        f"inside_095_ratio="
+        f"{inside_095_ratio:.3f} "
+        f"median_candidate_to_cell_area_ratio="
+        f"{median_area_ratio:.3f} "
+        f"max_candidate_to_cell_area_ratio="
+        f"{max_area_ratio:.3f}"
+    )
 
 
 def build_candidates(
