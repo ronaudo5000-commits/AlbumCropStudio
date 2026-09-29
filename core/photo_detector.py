@@ -11,7 +11,7 @@ from core.detection_log import (
 )
 
 DEBUG = False
-DEBUG_SAVE_IMAGE = True
+DEBUG_SAVE_IMAGE = False
 
 SMALL_CANDIDATE_MIN_RATIO = 0.004
 SMALL_CANDIDATE_MAX_RATIO = 0.008
@@ -3686,6 +3686,20 @@ def detect_photos(image_path):
             background_color,
         )
 
+        (
+            bright_frame_mask,
+            bright_frame_candidates,
+        ) = find_bright_frame_candidates(
+            image,
+            image_area,
+        )
+
+        bright_frame_trusted = (
+            log_bright_frame_regularity(
+                bright_frame_candidates,
+            )
+        )
+
     contours = find_all_contours(
         mask,
         edges,
@@ -3740,33 +3754,33 @@ def detect_photos(image_path):
                 "count=0"
             )
 
-        bright_frame_rescue_selected = (
-            bright_frame_trusted
-            and not layout_trusted
-            and len(candidates) == 0
+    bright_frame_rescue_selected = (
+        bright_frame_trusted
+        and not layout_trusted
+        and len(candidates) == 0
+    )
+
+    write_detection_log(
+        "bright frame rescue candidate "
+        f"bright_frame_trusted="
+        f"{bright_frame_trusted} "
+        f"layout_trusted={layout_trusted} "
+        f"normal_candidate_count="
+        f"{len(candidates)} "
+        f"selected="
+        f"{bright_frame_rescue_selected}"
+    )
+
+    if bright_frame_rescue_selected:
+        candidates = list(
+            bright_frame_candidates
         )
 
         write_detection_log(
-            "bright frame rescue candidate "
-            f"bright_frame_trusted="
-            f"{bright_frame_trusted} "
-            f"layout_trusted={layout_trusted} "
-            f"normal_candidate_count="
-            f"{len(candidates)} "
-            f"selected="
-            f"{bright_frame_rescue_selected}"
+            "bright frame candidates applied "
+            f"count={len(candidates)} "
+            f"rects={candidates}"
         )
-
-        if bright_frame_rescue_selected:
-            candidates = list(
-                bright_frame_candidates
-            )
-
-            write_detection_log(
-                "bright frame candidates applied "
-                f"count={len(candidates)} "
-                f"rects={candidates}"
-            )
 
     if layout_trusted:
         candidates = list(
