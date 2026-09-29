@@ -11,7 +11,7 @@ from core.detection_log import (
 )
 
 DEBUG = False
-DEBUG_SAVE_IMAGE = False
+DEBUG_SAVE_IMAGE = True
 
 SMALL_CANDIDATE_MIN_RATIO = 0.004
 SMALL_CANDIDATE_MAX_RATIO = 0.008
@@ -98,6 +98,1241 @@ def create_small_photo_mask(gray):
 
     return mask
 
+
+def create_background_separation_mask(
+    image,
+):
+    height, width = image.shape[:2]
+
+    min_side = min(
+        width,
+        height,
+    )
+
+    border_size = max(
+        10,
+        int(min_side * 0.03),
+    )
+
+    lab_image = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2LAB,
+    )
+
+    top_pixels = lab_image[
+        :border_size,
+        :,
+    ].reshape(-1, 3)
+
+    bottom_pixels = lab_image[
+        height - border_size:,
+        :,
+    ].reshape(-1, 3)
+
+    left_pixels = lab_image[
+        :,
+        :border_size,
+    ].reshape(-1, 3)
+
+    right_pixels = lab_image[
+        :,
+        width - border_size:,
+    ].reshape(-1, 3)
+
+    border_pixels = np.concatenate(
+        (
+            top_pixels,
+            bottom_pixels,
+            left_pixels,
+            right_pixels,
+        ),
+        axis=0,
+    )
+
+    background_color = np.median(
+        border_pixels,
+        axis=0,
+    ).astype(
+        np.float32
+    )
+
+    lab_float = lab_image.astype(
+        np.float32
+    )
+
+    difference = (
+        lab_float
+        - background_color
+    )
+
+    distance = np.sqrt(
+        np.sum(
+            difference * difference,
+            axis=2,
+        )
+    )
+
+    mask = np.where(
+        distance > 18.0,
+        255,
+        0,
+    ).astype(
+        np.uint8
+    )
+
+    close_size = max(
+        5,
+        int(min_side * 0.008),
+    )
+
+    if close_size % 2 == 0:
+        close_size += 1
+
+    close_kernel = (
+        cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (
+                close_size,
+                close_size,
+            ),
+        )
+    )
+
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_CLOSE,
+        close_kernel,
+        iterations=1,
+    )
+
+    open_size = max(
+        3,
+        int(min_side * 0.002),
+    )
+
+    if open_size % 2 == 0:
+        open_size += 1
+
+    open_kernel = (
+        cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (
+                open_size,
+                open_size,
+            ),
+        )
+    )
+
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_OPEN,
+        open_kernel,
+        iterations=1,
+    )
+
+    return (
+        mask,
+        background_color,
+    )
+
+
+def find_background_separation_candidates(
+    mask,
+    width,
+    height,
+    image_area,
+):
+    contours, _ = cv2.findContours(
+        mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+
+    candidates = []
+
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(
+            contour
+        )
+
+        area = w * h
+        area_ratio = (
+            area / image_area
+        )
+
+        if area_ratio < 0.015:
+            continue
+
+        if area_ratio > 0.40:
+            continue
+
+        if w < width * 0.12:
+            continue
+
+        if h < height * 0.10:
+            continue
+
+        ratio = w / h
+
+        if ratio < 0.35:
+            continue
+
+        if ratio > 3.0:
+            continue
+
+        candidates.append(
+            (
+                x,
+                y,
+                w,
+                h,
+            )
+        )
+
+    return candidates
+
+
+def detect_separator_bands(
+    image,
+    background_color,
+):
+    lab_image = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2LAB,
+    ).astype(
+        np.float32
+    )
+
+    height, width = (
+        lab_image.shape[:2]
+    )
+
+    difference = (
+        lab_image
+        - background_color
+    )
+
+    distance = np.sqrt(
+        np.sum(
+            difference * difference,
+            axis=2,
+        )
+    )
+
+    background_like = (
+        distance < 20.0
+    ).astype(
+        np.float32
+    )
+
+    def find_runs(
+        values,
+        min_length,
+    ):
+        runs = []
+        start = None
+
+        for index, value in enumerate(
+            values
+        ):
+            if value:
+                if start is None:
+                    start = index
+            else:
+                if start is not None:
+                    if (
+                        index - start
+                        >= min_length
+                    ):
+                        runs.append(
+                            (
+                                start,
+                                index - 1,
+                            )
+                        )
+
+                    start = None
+
+        if start is not None:
+            if (
+                len(values) - start
+                >= min_length
+            ):
+                runs.append(
+                    (
+                        start,
+                        len(values) - 1,
+                    )
+                )
+
+        return runs
+
+    horizontal_background_ratio = (
+        np.mean(
+            background_like,
+            axis=1,
+        )
+    )
+
+    horizontal_separator_flags = (
+        horizontal_background_ratio
+        > 0.60
+    )
+
+    horizontal_runs = find_runs(
+        horizontal_separator_flags,
+        max(
+            10,
+            int(height * 0.004),
+        ),
+    )
+
+    inner_horizontal_runs = []
+
+    outer_margin = int(
+        height * 0.04
+    )
+
+    for start, end in horizontal_runs:
+        center = int(
+            (start + end) / 2
+        )
+
+        if center <= outer_margin:
+            continue
+
+        if center >= (
+            height - outer_margin
+        ):
+            continue
+
+        inner_horizontal_runs.append(
+            (
+                start,
+                end,
+            )
+        )
+
+    horizontal_centers = [
+        int(
+            (start + end) / 2
+        )
+        for start, end
+        in inner_horizontal_runs
+    ]
+
+    row_boundaries = [
+        0,
+        *horizontal_centers,
+        height,
+    ]
+
+    row_regions = []
+
+    for index in range(
+        len(row_boundaries) - 1
+    ):
+        y1 = row_boundaries[index]
+        y2 = row_boundaries[index + 1]
+
+        row_height = y2 - y1
+
+        if row_height < height * 0.12:
+            continue
+
+        row_regions.append(
+            (
+                y1,
+                y2,
+            )
+        )
+
+    row_vertical_runs = []
+
+    for row_index, (
+        y1,
+        y2,
+    ) in enumerate(
+        row_regions,
+        start=1,
+    ):
+        row_background_like = (
+            background_like[
+                y1:y2,
+                :,
+            ]
+        )
+
+        vertical_background_ratio = (
+            np.mean(
+                row_background_like,
+                axis=0,
+            )
+        )
+
+        vertical_separator_flags = (
+            vertical_background_ratio
+            > 0.60
+        )
+
+        vertical_runs = find_runs(
+            vertical_separator_flags,
+            max(
+                10,
+                int(width * 0.004),
+            ),
+        )
+
+        inner_vertical_runs = []
+
+        side_margin = int(
+            width * 0.05
+        )
+
+        for start, end in vertical_runs:
+            center = int(
+                (start + end) / 2
+            )
+
+            if center <= side_margin:
+                continue
+
+            if center >= (
+                width - side_margin
+            ):
+                continue
+
+            inner_vertical_runs.append(
+                (
+                    start,
+                    end,
+                )
+            )
+
+        row_vertical_runs.append(
+            (
+                row_index,
+                y1,
+                y2,
+                inner_vertical_runs,
+            )
+        )
+
+    write_detection_log(
+        "separator analysis "
+        f"horizontal="
+        f"{inner_horizontal_runs} "
+        f"rows={row_regions} "
+        f"row_vertical="
+        f"{row_vertical_runs}"
+    )
+
+    return (
+        inner_horizontal_runs,
+        row_regions,
+        row_vertical_runs,
+    )
+
+
+def save_separator_debug_image(
+    image,
+    horizontal_runs,
+    row_regions,
+    row_vertical_runs,
+    image_path,
+):
+    if not DEBUG_SAVE_IMAGE:
+        return
+
+    debug_image = image.copy()
+
+    height, width = (
+        debug_image.shape[:2]
+    )
+
+    for start, end in horizontal_runs:
+        center = int(
+            (start + end) / 2
+        )
+
+        cv2.line(
+            debug_image,
+            (0, center),
+            (width, center),
+            (255, 0, 0),
+            5,
+        )
+
+    for (
+        row_index,
+        y1,
+        y2,
+        vertical_runs,
+    ) in row_vertical_runs:
+        for start, end in vertical_runs:
+            center = int(
+                (start + end) / 2
+            )
+
+            cv2.line(
+                debug_image,
+                (center, y1),
+                (center, y2),
+                (0, 0, 255),
+                5,
+            )
+
+        cv2.putText(
+            debug_image,
+            f"ROW {row_index}",
+            (
+                20,
+                min(
+                    y2 - 10,
+                    y1 + 60,
+                ),
+            ),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.5,
+            (0, 255, 0),
+            4,
+            cv2.LINE_AA,
+        )
+
+    output_dir = (
+        Path(__file__).resolve().parent.parent
+        / "tests"
+        / "output"
+    )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    image_name = Path(
+        image_path
+    ).stem
+
+    output_path = (
+        output_dir
+        / (
+            f"{image_name}_"
+            "separator_debug.jpg"
+        )
+    )
+
+    cv2.imwrite(
+        str(output_path),
+        debug_image,
+    )
+
+    write_detection_log(
+        "separator debug "
+        f"horizontal={horizontal_runs} "
+        f"rows={row_regions} "
+        f"row_vertical="
+        f"{row_vertical_runs}"
+    )
+
+
+def build_layout_cells(
+    image,
+    row_regions,
+    row_vertical_runs,
+):
+    height, width = image.shape[:2]
+
+    vertical_by_row = {}
+
+    for (
+        row_index,
+        y1,
+        y2,
+        vertical_runs,
+    ) in row_vertical_runs:
+        vertical_by_row[
+            row_index
+        ] = vertical_runs
+
+    cells = []
+
+    for row_index, (
+        y1,
+        y2,
+    ) in enumerate(
+        row_regions,
+        start=1,
+    ):
+        vertical_runs = (
+            vertical_by_row.get(
+                row_index,
+                [],
+            )
+        )
+
+        vertical_centers = [
+            int(
+                (start + end) / 2
+            )
+            for start, end
+            in vertical_runs
+        ]
+
+        x_boundaries = [
+            0,
+            *vertical_centers,
+            width,
+        ]
+
+        for index in range(
+            len(x_boundaries) - 1
+        ):
+            x1 = x_boundaries[index]
+            x2 = x_boundaries[
+                index + 1
+            ]
+
+            cell_width = x2 - x1
+            cell_height = y2 - y1
+
+            if (
+                cell_width
+                < width * 0.15
+            ):
+                continue
+
+            if (
+                cell_height
+                < height * 0.12
+            ):
+                continue
+
+            cells.append(
+                (
+                    x1,
+                    y1,
+                    cell_width,
+                    cell_height,
+                )
+            )
+
+    write_detection_log(
+        "layout cells "
+        f"count={len(cells)} "
+        f"cells={cells}"
+    )
+
+    return cells
+
+
+def fit_layout_cells_to_photos(
+    image,
+    layout_cells,
+    background_color,
+):
+    lab_image = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2LAB,
+    ).astype(
+        np.float32
+    )
+
+    fitted_cells = []
+
+    for cell_number, (
+        x,
+        y,
+        w,
+        h,
+    ) in enumerate(
+        layout_cells,
+        start=1,
+    ):
+        cell_lab = lab_image[
+            y:y + h,
+            x:x + w,
+        ]
+
+        if cell_lab.size == 0:
+            continue
+
+        difference = (
+            cell_lab
+            - background_color
+        )
+
+        distance = np.sqrt(
+            np.sum(
+                difference * difference,
+                axis=2,
+            )
+        )
+
+        foreground_like = (
+            distance >= 20.0
+        ).astype(
+            np.float32
+        )
+
+        column_ratio = np.mean(
+            foreground_like,
+            axis=0,
+        )
+
+        row_ratio = np.mean(
+            foreground_like,
+            axis=1,
+        )
+
+        def smooth_profile(
+            profile,
+            window_size,
+        ):
+            window_size = max(
+                3,
+                int(window_size),
+            )
+
+            if window_size % 2 == 0:
+                window_size += 1
+
+            kernel = np.ones(
+                window_size,
+                dtype=np.float32,
+            ) / window_size
+
+            return np.convolve(
+                profile,
+                kernel,
+                mode="same",
+            )
+
+        column_ratio = smooth_profile(
+            column_ratio,
+            max(
+                5,
+                int(w * 0.015),
+            ),
+        )
+
+        row_ratio = smooth_profile(
+            row_ratio,
+            max(
+                5,
+                int(h * 0.015),
+            ),
+        )
+
+        column_flags = (
+            column_ratio > 0.45
+        )
+
+        row_flags = (
+            row_ratio > 0.45
+        )
+
+        def largest_run(flags):
+            best_start = None
+            best_end = None
+            best_length = 0
+
+            start = None
+
+            for index, value in enumerate(
+                flags
+            ):
+                if value:
+                    if start is None:
+                        start = index
+                else:
+                    if start is not None:
+                        length = (
+                            index - start
+                        )
+
+                        if length > best_length:
+                            best_start = start
+                            best_end = index - 1
+                            best_length = length
+
+                        start = None
+
+            if start is not None:
+                length = (
+                    len(flags) - start
+                )
+
+                if length > best_length:
+                    best_start = start
+                    best_end = (
+                        len(flags) - 1
+                    )
+
+            return (
+                best_start,
+                best_end,
+            )
+
+        def find_strong_top_edge(
+            cell_image,
+        ):
+            gray_cell = cv2.cvtColor(
+                cell_image,
+                cv2.COLOR_BGR2GRAY,
+            ).astype(
+                np.float32
+            )
+
+            cell_h, cell_w = (
+                gray_cell.shape[:2]
+            )
+
+            if (
+                cell_h < 2
+                or cell_w < 20
+            ):
+                return None
+
+            margin_x = max(
+                1,
+                int(cell_w * 0.05),
+            )
+
+            search_end = max(
+                2,
+                int(cell_h * 0.20),
+            )
+
+            center_area = gray_cell[
+                :search_end,
+                margin_x:cell_w - margin_x,
+            ]
+
+            if (
+                center_area.shape[0] < 2
+                or center_area.shape[1] < 2
+            ):
+                return None
+
+            row_difference = np.mean(
+                np.abs(
+                    center_area[1:, :]
+                    - center_area[:-1, :]
+                ),
+                axis=1,
+            )
+
+            if row_difference.size == 0:
+                return None
+
+            edge_index = int(
+                np.argmax(
+                    row_difference
+                )
+            )
+
+            edge_strength = float(
+                row_difference[
+                    edge_index
+                ]
+            )
+
+            if edge_strength < 20.0:
+                return None
+
+            return edge_index + 1
+
+        left, right = largest_run(
+            column_flags
+        )
+
+        top, bottom = largest_run(
+            row_flags
+        )
+
+        if (
+            left is None
+            or right is None
+            or top is None
+            or bottom is None
+        ):
+            write_detection_log(
+                "layout fit failed "
+                f"cell={cell_number}"
+            )
+
+            fitted_cells.append(
+                (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+            )
+
+            continue
+
+        original_top = top
+
+        if top > h * 0.20:
+            cell_image = image[
+                y:y + h,
+                x:x + w,
+            ]
+
+            edge_top = (
+                find_strong_top_edge(
+                    cell_image
+                )
+            )
+
+            if edge_top is not None:
+                top = edge_top
+
+                write_detection_log(
+                    "layout fit top corrected "
+                    f"cell={cell_number} "
+                    f"color_top={original_top} "
+                    f"edge_top={edge_top}"
+                )
+
+        fitted_x = x + left
+        fitted_y = y + top
+
+        fitted_w = (
+            right - left + 1
+        )
+
+        fitted_h = (
+            bottom - top + 1
+        )
+
+        if (
+            fitted_w < w * 0.45
+            or fitted_h < h * 0.45
+        ):
+            write_detection_log(
+                "layout fit rejected "
+                f"cell={cell_number} "
+                f"original="
+                f"({x},{y},{w},{h}) "
+                f"fitted="
+                f"({fitted_x},"
+                f"{fitted_y},"
+                f"{fitted_w},"
+                f"{fitted_h})"
+            )
+
+            fitted_cells.append(
+                (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+            )
+
+            continue
+
+        fitted_cells.append(
+            (
+                fitted_x,
+                fitted_y,
+                fitted_w,
+                fitted_h,
+            )
+        )
+
+        write_detection_log(
+            "layout fit "
+            f"cell={cell_number} "
+            f"original="
+            f"({x},{y},{w},{h}) "
+            f"fitted="
+            f"({fitted_x},"
+            f"{fitted_y},"
+            f"{fitted_w},"
+            f"{fitted_h})"
+        )
+
+    return fitted_cells
+
+
+def find_bright_frame_candidates(
+    image,
+    image_area,
+):
+    gray = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY,
+    )
+
+    height, width = gray.shape[:2]
+
+    bright_mask = np.where(
+        gray >= 200,
+        255,
+        0,
+    ).astype(
+        np.uint8
+    )
+
+    min_side = min(
+        width,
+        height,
+    )
+
+    close_size = max(
+        5,
+        int(min_side * 0.004),
+    )
+
+    if close_size % 2 == 0:
+        close_size += 1
+
+    close_kernel = (
+        cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (
+                close_size,
+                close_size,
+            ),
+        )
+    )
+
+    bright_mask = cv2.morphologyEx(
+        bright_mask,
+        cv2.MORPH_CLOSE,
+        close_kernel,
+        iterations=1,
+    )
+
+    contours, _ = cv2.findContours(
+        bright_mask,
+        cv2.RETR_LIST,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+
+    candidates = []
+
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(
+            contour
+        )
+
+        area = w * h
+        area_ratio = (
+            area / image_area
+        )
+
+        if area_ratio < 0.010:
+            continue
+
+        if area_ratio > 0.080:
+            continue
+
+        if w < width * 0.08:
+            continue
+
+        if h < height * 0.08:
+            continue
+
+        ratio = w / h
+
+        if ratio < 0.55:
+            continue
+
+        if ratio > 2.20:
+            continue
+
+        candidates.append(
+            (
+                x,
+                y,
+                w,
+                h,
+            )
+        )
+
+    candidates = remove_duplicate_rects(
+        candidates
+    )
+
+    write_detection_log(
+        "bright frame candidates "
+        f"contours={len(contours)} "
+        f"candidates={len(candidates)} "
+        f"rects={candidates}"
+    )
+
+    return (
+        bright_mask,
+        candidates,
+    )
+
+
+def find_dark_hole_candidates(
+    bright_mask,
+    image_area,
+):
+    height, width = (
+        bright_mask.shape[:2]
+    )
+
+    dark_mask = cv2.bitwise_not(
+        bright_mask
+    )
+
+    min_side = min(
+        width,
+        height,
+    )
+
+    close_size = max(
+        7,
+        int(min_side * 0.008),
+    )
+
+    if close_size % 2 == 0:
+        close_size += 1
+
+    close_kernel = (
+        cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (
+                close_size,
+                close_size,
+            ),
+        )
+    )
+
+    dark_mask = cv2.morphologyEx(
+        dark_mask,
+        cv2.MORPH_CLOSE,
+        close_kernel,
+        iterations=1,
+    )
+
+    open_size = max(
+        3,
+        int(min_side * 0.002),
+    )
+
+    if open_size % 2 == 0:
+        open_size += 1
+
+    open_kernel = (
+        cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (
+                open_size,
+                open_size,
+            ),
+        )
+    )
+
+    dark_mask = cv2.morphologyEx(
+        dark_mask,
+        cv2.MORPH_OPEN,
+        open_kernel,
+        iterations=1,
+    )
+
+    contours, _ = cv2.findContours(
+        dark_mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+
+    candidates = []
+
+    border_margin = max(
+        5,
+        int(min_side * 0.01),
+    )
+
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(
+            contour
+        )
+
+        if (
+            x <= border_margin
+            or y <= border_margin
+            or x + w
+            >= width - border_margin
+            or y + h
+            >= height - border_margin
+        ):
+            continue
+
+        area = w * h
+
+        area_ratio = (
+            area / image_area
+        )
+
+        if area_ratio < 0.015:
+            continue
+
+        if area_ratio > 0.12:
+            continue
+
+        if w < width * 0.10:
+            continue
+
+        if h < height * 0.10:
+            continue
+
+        ratio = w / h
+
+        if ratio < 0.55:
+            continue
+
+        if ratio > 2.50:
+            continue
+
+        contour_area = cv2.contourArea(
+            contour
+        )
+
+        if area <= 0:
+            continue
+
+        fill_ratio = (
+            contour_area / area
+        )
+
+        if fill_ratio < 0.60:
+            continue
+
+        candidates.append(
+            (
+                x,
+                y,
+                w,
+                h,
+            )
+        )
+
+    candidates = remove_duplicate_rects(
+        candidates
+    )
+
+    write_detection_log(
+        "dark hole candidates "
+        f"contours={len(contours)} "
+        f"candidates={len(candidates)} "
+        f"rects={candidates}"
+    )
+
+    return (
+        dark_mask,
+        candidates,
+    )
+
+
 def create_small_photo_line_debug(image, edges):
     debug_image = image.copy()
 
@@ -144,7 +1379,15 @@ def get_image_info(image):
 
     return width, height, image_area
 
-def contour_to_candidate(contour, image, edges, image_area, width, height):
+def contour_to_candidate(
+    contour,
+    image,
+    edges,
+    image_area,
+    width,
+    height,
+    allow_small=False,
+):
     x, y, w, h = cv2.boundingRect(contour)
     area = w * h
 
@@ -152,7 +1395,11 @@ def contour_to_candidate(contour, image, edges, image_area, width, height):
         return None
 
     img_h, img_w = image.shape[:2]
-    if w > img_w * 0.9 and h > img_h * 0.5:
+
+    if (
+        w > img_w * 0.9
+        and h > img_h * 0.5
+    ):
         return None
 
     ratio = w / h
@@ -165,37 +1412,59 @@ def contour_to_candidate(contour, image, edges, image_area, width, height):
 
     area_ratio = area / image_area
 
-    if area_ratio < SMALL_CANDIDATE_MIN_RATIO:
-        return None
+    if allow_small:
+        if (
+            area_ratio
+            < SMALL_CANDIDATE_MIN_RATIO
+        ):
+            return None
 
-    if area_ratio < SMALL_CANDIDATE_MAX_RATIO:
-        if DEBUG:
-            print(
-                f"SMALL candidate "
-                f"x={x}, y={y}, w={w}, h={h}, "
-                f"area_ratio={area_ratio:.5f}, "
-                f"shape_ratio={ratio:.2f}"
-            )
+        if (
+            area_ratio
+            >= SMALL_CANDIDATE_MAX_RATIO
+        ):
+            return None
 
-        return None
+    else:
+        if (
+            area_ratio
+            < SMALL_CANDIDATE_MAX_RATIO
+        ):
+            return None
 
-    contour_area = cv2.contourArea(contour)
+    contour_area = cv2.contourArea(
+        contour
+    )
+
     fill_ratio = contour_area / area
 
     if fill_ratio < 0.30:
         return None
 
-    perimeter = cv2.arcLength(contour, True)
+    perimeter = cv2.arcLength(
+        contour,
+        True,
+    )
+
     approx = cv2.approxPolyDP(
         contour,
         0.03 * perimeter,
         True,
     )
 
-    if len(approx) < 4 or len(approx) > 12:
+    if (
+        len(approx) < 4
+        or len(approx) > 12
+    ):
         return None
 
-    x, y, w, h = grow_rect(image, x, y, w, h)
+    x, y, w, h = grow_rect(
+        image,
+        x,
+        y,
+        w,
+        h,
+    )
 
     if area > image_area * 0.35:
         return None
@@ -206,15 +1475,356 @@ def contour_to_candidate(contour, image, edges, image_area, width, height):
     if h < height * 0.06:
         return None
 
-    roi_edges = edges[y:y + h, x:x + w]
+    roi_edges = edges[
+        y:y + h,
+        x:x + w,
+    ]
 
     if roi_edges.size == 0:
         return None
 
-    if not is_photo_like_candidate(image, edges, x, y, w, h):
+    if not is_photo_like_candidate(
+        image,
+        edges,
+        x,
+        y,
+        w,
+        h,
+    ):
         return None
 
+    if DEBUG and allow_small:
+        print(
+            f"SMALL candidate accepted "
+            f"x={x}, y={y}, "
+            f"w={w}, h={h}, "
+            f"area_ratio={area_ratio:.5f}, "
+            f"shape_ratio={ratio:.2f}"
+        )
+
     return (x, y, w, h)
+
+
+def log_small_candidate_diagnostics(
+    contours,
+    image,
+    edges,
+    image_area,
+    width,
+    height,
+):
+    counts = {
+        "total": 0,
+        "area_too_small": 0,
+        "page_like": 0,
+        "bad_ratio": 0,
+        "portrait_rejected": 0,
+        "area_ratio_low": 0,
+        "area_ratio_high": 0,
+        "fill_ratio_low": 0,
+        "bad_polygon": 0,
+        "area_too_large": 0,
+        "width_too_small": 0,
+        "height_too_small": 0,
+        "empty_roi": 0,
+        "edge_ratio_low": 0,
+        "accepted": 0,
+    }
+
+    img_h, img_w = image.shape[:2]
+
+    for contour in contours:
+        counts["total"] += 1
+
+        x, y, w, h = cv2.boundingRect(
+            contour
+        )
+
+        area = w * h
+
+        if area < 50000:
+            counts[
+                "area_too_small"
+            ] += 1
+            continue
+
+        if (
+            w > img_w * 0.9
+            and h > img_h * 0.5
+        ):
+            counts["page_like"] += 1
+            continue
+
+        ratio = w / h
+
+        if ratio < 0.4 or ratio > 2.5:
+            counts["bad_ratio"] += 1
+            continue
+
+        if (
+            ratio < 0.75
+            and h > w * 1.4
+        ):
+            counts[
+                "portrait_rejected"
+            ] += 1
+            continue
+
+        area_ratio = area / image_area
+
+        if (
+            area_ratio
+            < SMALL_CANDIDATE_MIN_RATIO
+        ):
+            counts[
+                "area_ratio_low"
+            ] += 1
+            continue
+
+        if (
+            area_ratio
+            >= SMALL_CANDIDATE_MAX_RATIO
+        ):
+            counts[
+                "area_ratio_high"
+            ] += 1
+            continue
+
+        contour_area = cv2.contourArea(
+            contour
+        )
+
+        fill_ratio = contour_area / area
+
+        if fill_ratio < 0.30:
+            counts[
+                "fill_ratio_low"
+            ] += 1
+            continue
+
+        perimeter = cv2.arcLength(
+            contour,
+            True,
+        )
+
+        approx = cv2.approxPolyDP(
+            contour,
+            0.03 * perimeter,
+            True,
+        )
+
+        if (
+            len(approx) < 4
+            or len(approx) > 12
+        ):
+            counts[
+                "bad_polygon"
+            ] += 1
+            continue
+
+        x, y, w, h = grow_rect(
+            image,
+            x,
+            y,
+            w,
+            h,
+        )
+
+        if area > image_area * 0.35:
+            counts[
+                "area_too_large"
+            ] += 1
+            continue
+
+        if w < width * 0.06:
+            counts[
+                "width_too_small"
+            ] += 1
+            continue
+
+        if h < height * 0.06:
+            counts[
+                "height_too_small"
+            ] += 1
+            continue
+
+        roi_edges = edges[
+            y:y + h,
+            x:x + w,
+        ]
+
+        if roi_edges.size == 0:
+            counts[
+                "empty_roi"
+            ] += 1
+            continue
+
+        edge_ratio = (
+            cv2.countNonZero(
+                roi_edges
+            )
+            / roi_edges.size
+        )
+
+        if edge_ratio < 0.02:
+            counts[
+                "edge_ratio_low"
+            ] += 1
+            continue
+
+        counts["accepted"] += 1
+
+    diagnostic_text = " ".join(
+        f"{key}={value}"
+        for key, value
+        in counts.items()
+    )
+
+    write_detection_log(
+        "small candidate diagnostics "
+        + diagnostic_text
+    )
+
+
+def log_candidate_metrics(
+    candidate_number,
+    candidate,
+    contour,
+    image,
+    edges,
+    image_area,
+    candidate_type,
+):
+    x, y, w, h = candidate
+
+    area = w * h
+    area_ratio = area / image_area
+
+    shape_ratio = w / h
+
+    contour_area = cv2.contourArea(
+        contour
+    )
+
+    (
+        original_x,
+        original_y,
+        original_w,
+        original_h,
+    ) = cv2.boundingRect(
+        contour
+    )
+
+    original_area = (
+        original_w * original_h
+    )
+
+    if original_area > 0:
+        fill_ratio = (
+            contour_area
+            / original_area
+        )
+    else:
+        fill_ratio = 0.0
+
+    perimeter = cv2.arcLength(
+        contour,
+        True,
+    )
+
+    approx = cv2.approxPolyDP(
+        contour,
+        0.03 * perimeter,
+        True,
+    )
+
+    roi_edges = edges[
+        y:y + h,
+        x:x + w,
+    ]
+
+    if roi_edges.size > 0:
+        edge_ratio = (
+            cv2.countNonZero(
+                roi_edges
+            )
+            / roi_edges.size
+        )
+    else:
+        edge_ratio = 0.0
+
+    roi_image = image[
+        y:y + h,
+        x:x + w,
+    ]
+
+    gray_mean = 0.0
+    gray_std = 0.0
+    saturation_mean = 0.0
+    saturation_std = 0.0
+
+    if roi_image.size > 0:
+        roi_gray = cv2.cvtColor(
+            roi_image,
+            cv2.COLOR_BGR2GRAY,
+        )
+
+        gray_mean = float(
+            np.mean(
+                roi_gray
+            )
+        )
+
+        gray_std = float(
+            np.std(
+                roi_gray
+            )
+        )
+
+        roi_hsv = cv2.cvtColor(
+            roi_image,
+            cv2.COLOR_BGR2HSV,
+        )
+
+        saturation = roi_hsv[
+            :,
+            :,
+            1,
+        ]
+
+        saturation_mean = float(
+            np.mean(
+                saturation
+            )
+        )
+
+        saturation_std = float(
+            np.std(
+                saturation
+            )
+        )
+
+    write_detection_log(
+        "candidate metrics "
+        f"number={candidate_number} "
+        f"type={candidate_type} "
+        f"x={x} "
+        f"y={y} "
+        f"w={w} "
+        f"h={h} "
+        f"area_ratio={area_ratio:.5f} "
+        f"shape_ratio={shape_ratio:.3f} "
+        f"fill_ratio={fill_ratio:.3f} "
+        f"edge_ratio={edge_ratio:.3f} "
+        f"gray_mean={gray_mean:.2f} "
+        f"gray_std={gray_std:.2f} "
+        f"saturation_mean="
+        f"{saturation_mean:.2f} "
+        f"saturation_std="
+        f"{saturation_std:.2f} "
+        f"vertices={len(approx)}"
+    )
+
 
 def build_candidates(
     contours,
@@ -223,8 +1833,15 @@ def build_candidates(
     image_area,
     width,
     height,
+    allow_small=False,
 ):
     candidates = []
+
+    candidate_type = (
+        "small"
+        if allow_small
+        else "normal"
+    )
 
     for contour in contours:
         candidate = contour_to_candidate(
@@ -234,24 +1851,46 @@ def build_candidates(
             image_area,
             width,
             height,
+            allow_small=allow_small,
         )
 
         if candidate is None:
             continue
 
-        candidates.append(candidate)
+        candidates.append(
+            candidate
+        )
+
+        candidate_number = len(
+            candidates
+        )
+
+        log_candidate_metrics(
+            candidate_number,
+            candidate,
+            contour,
+            image,
+            edges,
+            image_area,
+            candidate_type,
+        )
 
         if DEBUG:
             x, y, w, h = candidate
+
             print(
-                f"candidate x={x}, y={y}, "
-                f"w={w}, h={h}"
+                f"candidate "
+                f"number={candidate_number}, "
+                f"x={x}, y={y}, "
+                f"w={w}, h={h}, "
+                f"type={candidate_type}"
             )
 
     if DEBUG:
         print(
             f"contours={len(contours)}, "
-            f"candidates={len(candidates)}"
+            f"candidates={len(candidates)}, "
+            f"type={candidate_type}"
         )
 
     return candidates
@@ -272,12 +1911,149 @@ def find_all_contours(mask, edges):
         cv2.CHAIN_APPROX_SIMPLE,
     )
 
-    contours_mask = find_photo_contours(mask)
+    contours_mask = find_photo_contours(
+        mask
+    )
 
     return (
         list(contours_edge)
         + list(contours_mask)
     )
+
+
+def save_candidate_debug_image(
+    image,
+    candidates,
+    image_path,
+    suffix,
+):
+    if not DEBUG_SAVE_IMAGE:
+        return
+
+    debug_image = image.copy()
+
+    image_height, image_width = (
+        debug_image.shape[:2]
+    )
+
+    min_side = min(
+        image_width,
+        image_height,
+    )
+
+    line_thickness = max(
+        3,
+        int(min_side * 0.001),
+    )
+
+    font_scale = max(
+        1.0,
+        min_side / 1800.0,
+    )
+
+    text_thickness = max(
+        2,
+        int(min_side * 0.0008),
+    )
+
+    for number, rect in enumerate(
+        candidates,
+        start=1,
+    ):
+        x, y, w, h = rect
+
+        cv2.rectangle(
+            debug_image,
+            (x, y),
+            (x + w, y + h),
+            (0, 0, 255),
+            line_thickness,
+        )
+
+        label = str(
+            number
+        )
+
+        (
+            text_size,
+            baseline,
+        ) = cv2.getTextSize(
+            label,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            text_thickness,
+        )
+
+        text_w, text_h = text_size
+
+        label_x = x
+        label_y = max(
+            text_h + 10,
+            y,
+        )
+
+        cv2.rectangle(
+            debug_image,
+            (
+                label_x,
+                label_y - text_h - 10,
+            ),
+            (
+                label_x + text_w + 16,
+                label_y + baseline + 6,
+            ),
+            (0, 0, 0),
+            -1,
+        )
+
+        cv2.putText(
+            debug_image,
+            label,
+            (
+                label_x + 8,
+                label_y - 4,
+            ),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (255, 255, 255),
+            text_thickness,
+            cv2.LINE_AA,
+        )
+
+    output_dir = (
+        Path(__file__).resolve().parent.parent
+        / "tests"
+        / "output"
+    )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    image_name = Path(
+        image_path
+    ).stem
+
+    output_path = (
+        output_dir
+        / (
+            f"{image_name}_"
+            f"{suffix}.jpg"
+        )
+    )
+
+    cv2.imwrite(
+        str(output_path),
+        debug_image,
+    )
+
+    write_detection_log(
+        "candidate debug image saved "
+        f"path={str(output_path)!r} "
+        f"count={len(candidates)}"
+    )
+
 
 def detect_photos(image_path):
     started_at = time.perf_counter()
@@ -498,6 +2274,145 @@ def detect_photos(image_path):
             image_path
         ).stem
 
+        (
+            background_mask,
+            background_color,
+        ) = create_background_separation_mask(
+            image
+        )
+
+        background_candidates = (
+            find_background_separation_candidates(
+                background_mask,
+                width,
+                height,
+                image_area,
+            )
+        )
+
+        write_detection_log(
+            "background separation "
+            f"lab="
+            f"{background_color.tolist()} "
+            f"candidates="
+            f"{len(background_candidates)}"
+        )
+
+        cv2.imwrite(
+            str(
+                output_dir
+                / (
+                    f"{image_name}_"
+                    "background_mask.png"
+                )
+            ),
+            background_mask,
+        )
+
+        save_candidate_debug_image(
+            image,
+            background_candidates,
+            image_path,
+            "background_candidates",
+        )
+
+        (
+            horizontal_runs,
+            row_regions,
+            row_vertical_runs,
+        ) = detect_separator_bands(
+            image,
+            background_color,
+        )
+
+        save_separator_debug_image(
+            image,
+            horizontal_runs,
+            row_regions,
+            row_vertical_runs,
+            image_path,
+        )
+
+        layout_cells = build_layout_cells(
+            image,
+            row_regions,
+            row_vertical_runs,
+        )
+
+        save_candidate_debug_image(
+            image,
+            layout_cells,
+            image_path,
+            "layout_cells",
+        )
+
+        fitted_layout_cells = (
+            fit_layout_cells_to_photos(
+                image,
+                layout_cells,
+                background_color,
+            )
+        )
+
+        save_candidate_debug_image(
+            image,
+            fitted_layout_cells,
+            image_path,
+            "fitted_layout_cells",
+        )
+
+        (
+            bright_frame_mask,
+            bright_frame_candidates,
+        ) = find_bright_frame_candidates(
+            image,
+            image_area,
+        )
+
+        cv2.imwrite(
+            str(
+                output_dir
+                / (
+                    f"{image_name}_"
+                    "bright_frame_mask.png"
+                )
+            ),
+            bright_frame_mask,
+        )
+
+        save_candidate_debug_image(
+            image,
+            bright_frame_candidates,
+            image_path,
+            "bright_frame_candidates",
+        )
+
+        (
+            dark_hole_mask,
+            dark_hole_candidates,
+        ) = find_dark_hole_candidates(
+            bright_frame_mask,
+            image_area,
+        )
+
+        cv2.imwrite(
+            str(
+                output_dir
+                / (
+                    f"{image_name}_"
+                    "dark_hole_mask.png"
+                )
+            ),
+            dark_hole_mask,
+        )
+
+        save_candidate_debug_image(
+            image,
+            dark_hole_candidates,
+            image_path,
+            "dark_hole_candidates",
+        )
+
         small_photo_lines = (
             create_small_photo_line_debug(
                 image,
@@ -568,10 +2483,60 @@ def detect_photos(image_path):
         image_area,
         width,
         height,
+        allow_small=False,
     )
 
     write_detection_log(
-        "candidates built "
+        "normal candidates built "
+        f"count={len(candidates)}"
+    )
+
+    save_candidate_debug_image(
+        image,
+        candidates,
+        image_path,
+        "normal_candidates",
+    )
+
+    small_contours = find_photo_contours(
+        small_photo_mask
+    )
+
+    write_detection_log(
+        "small photo contours found "
+        f"count={len(small_contours)}"
+    )
+
+    log_small_candidate_diagnostics(
+        small_contours,
+        image,
+        edges,
+        image_area,
+        width,
+        height,
+    )
+
+    small_candidates = build_candidates(
+        small_contours,
+        image,
+        edges,
+        image_area,
+        width,
+        height,
+        allow_small=True,
+    )
+
+    write_detection_log(
+        "small photo candidates built "
+        f"count={len(small_candidates)}"
+    )
+
+    candidates.extend(
+        small_candidates
+    )
+
+    write_detection_log(
+        "combined candidates "
         f"count={len(candidates)}"
     )
 
@@ -796,16 +2761,94 @@ def remove_lower_overlap_rects(rects):
 
     return result
 
-def is_photo_like_candidate(image, edges, x, y, w, h):
+def is_photo_like_candidate(
+    image,
+    edges,
+    x,
+    y,
+    w,
+    h,
+):
+    roi_edges = edges[
+        y:y + h,
+        x:x + w,
+    ]
 
-    roi = edges[y:y+h, x:x+w]
-
-    if roi.size == 0:
+    if roi_edges.size == 0:
         return False
 
-    edge_ratio = cv2.countNonZero(roi) / roi.size
+    edge_ratio = (
+        cv2.countNonZero(
+            roi_edges
+        )
+        / roi_edges.size
+    )
 
     if edge_ratio < 0.02:
+        return False
+
+    roi_image = image[
+        y:y + h,
+        x:x + w,
+    ]
+
+    if roi_image.size == 0:
+        return False
+
+    roi_gray = cv2.cvtColor(
+        roi_image,
+        cv2.COLOR_BGR2GRAY,
+    )
+
+    gray_mean = float(
+        np.mean(
+            roi_gray
+        )
+    )
+
+    gray_std = float(
+        np.std(
+            roi_gray
+        )
+    )
+
+    roi_hsv = cv2.cvtColor(
+        roi_image,
+        cv2.COLOR_BGR2HSV,
+    )
+
+    saturation = roi_hsv[
+        :,
+        :,
+        1,
+    ]
+
+    saturation_std = float(
+        np.std(
+            saturation
+        )
+    )
+
+    uniform_bright_region = (
+        gray_mean > 180.0
+        and gray_std < 30.0
+        and saturation_std < 20.0
+    )
+
+    if uniform_bright_region:
+        write_detection_log(
+            "candidate rejected "
+            "reason=uniform_bright_region "
+            f"x={x} "
+            f"y={y} "
+            f"w={w} "
+            f"h={h} "
+            f"gray_mean={gray_mean:.2f} "
+            f"gray_std={gray_std:.2f} "
+            f"saturation_std="
+            f"{saturation_std:.2f}"
+        )
+
         return False
 
     return True
