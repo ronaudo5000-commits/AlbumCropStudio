@@ -3757,6 +3757,17 @@ def detect_photos(image_path):
             f"{bright_frame_rescue_selected}"
         )
 
+        if bright_frame_rescue_selected:
+            candidates = list(
+                bright_frame_candidates
+            )
+
+            write_detection_log(
+                "bright frame candidates applied "
+                f"count={len(candidates)} "
+                f"rects={candidates}"
+            )
+
     if layout_trusted:
         candidates = list(
             fitted_layout_cells
