@@ -1092,7 +1092,10 @@ def fit_layout_cells_to_photos(
         f"{fit_success_ratio:.3f}"
     )
 
-    return fitted_cells
+    return (
+        fitted_cells,
+        fit_success_ratio,
+    )
 
 
 def find_bright_frame_candidates(
@@ -2591,6 +2594,283 @@ def log_candidate_layout_relations(
     )
 
 
+def log_layout_trust_candidate(
+    candidates,
+    fitted_layout_cells,
+    layout_fit_success_ratio,
+):
+    cell_count = len(
+        fitted_layout_cells
+    )
+
+    cell_count_ok = (
+        cell_count >= 4
+    )
+
+    width_cv = 0.0
+    height_cv = 0.0
+    area_cv = 0.0
+
+    if fitted_layout_cells:
+        widths = np.array(
+            [
+                w
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in fitted_layout_cells
+            ],
+            dtype=np.float32,
+        )
+
+        heights = np.array(
+            [
+                h
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in fitted_layout_cells
+            ],
+            dtype=np.float32,
+        )
+
+        areas = (
+            widths * heights
+        )
+
+        width_mean = float(
+            np.mean(
+                widths
+            )
+        )
+
+        height_mean = float(
+            np.mean(
+                heights
+            )
+        )
+
+        area_mean = float(
+            np.mean(
+                areas
+            )
+        )
+
+        if width_mean > 0.0:
+            width_cv = float(
+                np.std(
+                    widths
+                )
+                / width_mean
+            )
+
+        if height_mean > 0.0:
+            height_cv = float(
+                np.std(
+                    heights
+                )
+                / height_mean
+            )
+
+        if area_mean > 0.0:
+            area_cv = float(
+                np.std(
+                    areas
+                )
+                / area_mean
+            )
+
+    regularity_ok = (
+        width_cv <= 0.05
+        and height_cv <= 0.05
+        and area_cv <= 0.10
+    )
+
+    fit_success_ok = (
+        layout_fit_success_ratio
+        >= 0.95
+    )
+
+    best_inside_ratios = []
+    best_area_ratios = []
+
+    for (
+        x,
+        y,
+        w,
+        h,
+    ) in candidates:
+        candidate_area = (
+            w * h
+        )
+
+        best_inside_ratio = 0.0
+        best_area_ratio = 0.0
+
+        for (
+            cell_x,
+            cell_y,
+            cell_w,
+            cell_h,
+        ) in fitted_layout_cells:
+            overlap_x1 = max(
+                x,
+                cell_x,
+            )
+
+            overlap_y1 = max(
+                y,
+                cell_y,
+            )
+
+            overlap_x2 = min(
+                x + w,
+                cell_x + cell_w,
+            )
+
+            overlap_y2 = min(
+                y + h,
+                cell_y + cell_h,
+            )
+
+            overlap_w = max(
+                0,
+                overlap_x2 - overlap_x1,
+            )
+
+            overlap_h = max(
+                0,
+                overlap_y2 - overlap_y1,
+            )
+
+            overlap_area = (
+                overlap_w
+                * overlap_h
+            )
+
+            inside_ratio = 0.0
+
+            if candidate_area > 0:
+                inside_ratio = (
+                    overlap_area
+                    / candidate_area
+                )
+
+            cell_area = (
+                cell_w * cell_h
+            )
+
+            candidate_to_cell_area_ratio = 0.0
+
+            if cell_area > 0:
+                candidate_to_cell_area_ratio = (
+                    candidate_area
+                    / cell_area
+                )
+
+            if (
+                inside_ratio
+                > best_inside_ratio
+            ):
+                best_inside_ratio = (
+                    inside_ratio
+                )
+
+                best_area_ratio = (
+                    candidate_to_cell_area_ratio
+                )
+
+        best_inside_ratios.append(
+            best_inside_ratio
+        )
+
+        best_area_ratios.append(
+            best_area_ratio
+        )
+
+    candidate_count = len(
+        best_inside_ratios
+    )
+
+    inside_095_count = sum(
+        1
+        for ratio in best_inside_ratios
+        if ratio >= 0.95
+    )
+
+    inside_095_ratio = 0.0
+
+    if candidate_count > 0:
+        inside_095_ratio = (
+            inside_095_count
+            / candidate_count
+        )
+
+    containment_ok = (
+        candidate_count > 0
+        and inside_095_ratio >= 0.90
+    )
+
+    median_area_ratio = 0.0
+    max_area_ratio = 0.0
+
+    if best_area_ratios:
+        median_area_ratio = float(
+            np.median(
+                best_area_ratios
+            )
+        )
+
+        max_area_ratio = float(
+            np.max(
+                best_area_ratios
+            )
+        )
+
+    candidate_size_ok = (
+        candidate_count > 0
+        and median_area_ratio <= 0.50
+        and max_area_ratio <= 0.80
+    )
+
+    trusted = (
+        cell_count_ok
+        and regularity_ok
+        and fit_success_ok
+        and containment_ok
+        and candidate_size_ok
+    )
+
+    write_detection_log(
+        "layout trust candidate "
+        f"cells={cell_count} "
+        f"cell_count_ok={cell_count_ok} "
+        f"width_cv={width_cv:.4f} "
+        f"height_cv={height_cv:.4f} "
+        f"area_cv={area_cv:.4f} "
+        f"regularity_ok={regularity_ok} "
+        f"fit_success_ratio="
+        f"{layout_fit_success_ratio:.3f} "
+        f"fit_success_ok={fit_success_ok} "
+        f"inside_095_ratio="
+        f"{inside_095_ratio:.3f} "
+        f"containment_ok={containment_ok} "
+        f"median_area_ratio="
+        f"{median_area_ratio:.3f} "
+        f"max_area_ratio="
+        f"{max_area_ratio:.3f} "
+        f"candidate_size_ok="
+        f"{candidate_size_ok} "
+        f"trusted={trusted}"
+    )
+
+
 def build_candidates(
     contours,
     image,
@@ -3111,12 +3391,13 @@ def detect_photos(image_path):
             "layout_cells",
         )
 
-        fitted_layout_cells = (
-            fit_layout_cells_to_photos(
-                image,
-                layout_cells,
-                background_color,
-            )
+        (
+            fitted_layout_cells,
+            layout_fit_success_ratio,
+        ) = fit_layout_cells_to_photos(
+            image,
+            layout_cells,
+            background_color,
         )
 
         save_candidate_debug_image(
@@ -3269,6 +3550,12 @@ def detect_photos(image_path):
         log_candidate_layout_relations(
             candidates,
             fitted_layout_cells,
+        )
+
+        log_layout_trust_candidate(
+            candidates,
+            fitted_layout_cells,
+            layout_fit_success_ratio,
         )
 
     save_candidate_debug_image(
