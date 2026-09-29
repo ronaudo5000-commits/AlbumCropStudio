@@ -2870,6 +2870,8 @@ def log_layout_trust_candidate(
         f"trusted={trusted}"
     )
 
+    return trusted
+
 
 def build_candidates(
     contours,
@@ -3552,11 +3554,27 @@ def detect_photos(image_path):
             fitted_layout_cells,
         )
 
-        log_layout_trust_candidate(
-            candidates,
-            fitted_layout_cells,
-            layout_fit_success_ratio,
+        layout_trusted = (
+            log_layout_trust_candidate(
+                candidates,
+                fitted_layout_cells,
+                layout_fit_success_ratio,
+            )
         )
+
+        if layout_trusted:
+            write_detection_log(
+                "layout alternative "
+                "selected=True "
+                f"count={len(fitted_layout_cells)} "
+                f"rects={fitted_layout_cells}"
+            )
+        else:
+            write_detection_log(
+                "layout alternative "
+                "selected=False "
+                "count=0"
+            )
 
     save_candidate_debug_image(
         image,
