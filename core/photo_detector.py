@@ -1750,6 +1750,38 @@ def log_candidate_metrics(
     left_border_evidence = 0.0
     right_border_evidence = 0.0
 
+    top_border_run_ratio = 0.0
+    bottom_border_run_ratio = 0.0
+    left_border_run_ratio = 0.0
+    right_border_run_ratio = 0.0
+
+    def longest_run_ratio(
+        values,
+    ):
+        if values.size == 0:
+            return 0.0
+
+        flags = (
+            values > 0
+        )
+
+        longest_run = 0
+        current_run = 0
+
+        for value in flags:
+            if value:
+                current_run += 1
+
+                if current_run > longest_run:
+                    longest_run = current_run
+            else:
+                current_run = 0
+
+        return (
+            longest_run
+            / len(flags)
+        )
+
     if roi_edges.size > 0:
         edge_ratio = (
             cv2.countNonZero(
@@ -1803,9 +1835,24 @@ def log_candidate_metrics(
                 / top_band.shape[1]
             )
 
-            top_border_evidence = float(
-                np.max(
+            top_row_index = int(
+                np.argmax(
                     top_row_ratios
+                )
+            )
+
+            top_border_evidence = float(
+                top_row_ratios[
+                    top_row_index
+                ]
+            )
+
+            top_border_run_ratio = (
+                longest_run_ratio(
+                    top_band[
+                        top_row_index,
+                        :,
+                    ]
                 )
             )
 
@@ -1818,9 +1865,24 @@ def log_candidate_metrics(
                 / bottom_band.shape[1]
             )
 
-            bottom_border_evidence = float(
-                np.max(
+            bottom_row_index = int(
+                np.argmax(
                     bottom_row_ratios
+                )
+            )
+
+            bottom_border_evidence = float(
+                bottom_row_ratios[
+                    bottom_row_index
+                ]
+            )
+
+            bottom_border_run_ratio = (
+                longest_run_ratio(
+                    bottom_band[
+                        bottom_row_index,
+                        :,
+                    ]
                 )
             )
 
@@ -1833,9 +1895,24 @@ def log_candidate_metrics(
                 / left_band.shape[0]
             )
 
-            left_border_evidence = float(
-                np.max(
+            left_column_index = int(
+                np.argmax(
                     left_column_ratios
+                )
+            )
+
+            left_border_evidence = float(
+                left_column_ratios[
+                    left_column_index
+                ]
+            )
+
+            left_border_run_ratio = (
+                longest_run_ratio(
+                    left_band[
+                        :,
+                        left_column_index,
+                    ]
                 )
             )
 
@@ -1848,9 +1925,24 @@ def log_candidate_metrics(
                 / right_band.shape[0]
             )
 
-            right_border_evidence = float(
-                np.max(
+            right_column_index = int(
+                np.argmax(
                     right_column_ratios
+                )
+            )
+
+            right_border_evidence = float(
+                right_column_ratios[
+                    right_column_index
+                ]
+            )
+
+            right_border_run_ratio = (
+                longest_run_ratio(
+                    right_band[
+                        :,
+                        right_column_index,
+                    ]
                 )
             )
 
@@ -1925,6 +2017,14 @@ def log_candidate_metrics(
         f"{left_border_evidence:.3f} "
         f"right_border_evidence="
         f"{right_border_evidence:.3f} "
+        f"top_border_run_ratio="
+        f"{top_border_run_ratio:.3f} "
+        f"bottom_border_run_ratio="
+        f"{bottom_border_run_ratio:.3f} "
+        f"left_border_run_ratio="
+        f"{left_border_run_ratio:.3f} "
+        f"right_border_run_ratio="
+        f"{right_border_run_ratio:.3f} "
         f"gray_mean={gray_mean:.2f} "
         f"gray_std={gray_std:.2f} "
         f"saturation_mean="
