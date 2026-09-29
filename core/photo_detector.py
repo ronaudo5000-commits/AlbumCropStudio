@@ -2035,6 +2035,244 @@ def log_candidate_metrics(
     )
 
 
+def log_layout_border_metrics(
+    fitted_layout_cells,
+    edges,
+):
+    def longest_run_ratio(
+        values,
+    ):
+        if values.size == 0:
+            return 0.0
+
+        flags = (
+            values > 0
+        )
+
+        longest_run = 0
+        current_run = 0
+
+        for value in flags:
+            if value:
+                current_run += 1
+
+                if current_run > longest_run:
+                    longest_run = current_run
+            else:
+                current_run = 0
+
+        return (
+            longest_run
+            / len(flags)
+        )
+
+    for cell_number, (
+        x,
+        y,
+        w,
+        h,
+    ) in enumerate(
+        fitted_layout_cells,
+        start=1,
+    ):
+        roi_edges = edges[
+            y:y + h,
+            x:x + w,
+        ]
+
+        top_border_evidence = 0.0
+        bottom_border_evidence = 0.0
+        left_border_evidence = 0.0
+        right_border_evidence = 0.0
+
+        top_border_run_ratio = 0.0
+        bottom_border_run_ratio = 0.0
+        left_border_run_ratio = 0.0
+        right_border_run_ratio = 0.0
+
+        if roi_edges.size > 0:
+            border_band = max(
+                3,
+                min(
+                    40,
+                    int(
+                        min(w, h) * 0.02
+                    ),
+                ),
+            )
+
+            top_band = roi_edges[
+                :border_band,
+                :,
+            ]
+
+            bottom_band = roi_edges[
+                max(
+                    0,
+                    h - border_band,
+                ):h,
+                :,
+            ]
+
+            left_band = roi_edges[
+                :,
+                :border_band,
+            ]
+
+            right_band = roi_edges[
+                :,
+                max(
+                    0,
+                    w - border_band,
+                ):w,
+            ]
+
+            if top_band.size > 0:
+                top_row_ratios = (
+                    np.count_nonzero(
+                        top_band,
+                        axis=1,
+                    )
+                    / top_band.shape[1]
+                )
+
+                top_row_index = int(
+                    np.argmax(
+                        top_row_ratios
+                    )
+                )
+
+                top_border_evidence = float(
+                    top_row_ratios[
+                        top_row_index
+                    ]
+                )
+
+                top_border_run_ratio = (
+                    longest_run_ratio(
+                        top_band[
+                            top_row_index,
+                            :,
+                        ]
+                    )
+                )
+
+            if bottom_band.size > 0:
+                bottom_row_ratios = (
+                    np.count_nonzero(
+                        bottom_band,
+                        axis=1,
+                    )
+                    / bottom_band.shape[1]
+                )
+
+                bottom_row_index = int(
+                    np.argmax(
+                        bottom_row_ratios
+                    )
+                )
+
+                bottom_border_evidence = float(
+                    bottom_row_ratios[
+                        bottom_row_index
+                    ]
+                )
+
+                bottom_border_run_ratio = (
+                    longest_run_ratio(
+                        bottom_band[
+                            bottom_row_index,
+                            :,
+                        ]
+                    )
+                )
+
+            if left_band.size > 0:
+                left_column_ratios = (
+                    np.count_nonzero(
+                        left_band,
+                        axis=0,
+                    )
+                    / left_band.shape[0]
+                )
+
+                left_column_index = int(
+                    np.argmax(
+                        left_column_ratios
+                    )
+                )
+
+                left_border_evidence = float(
+                    left_column_ratios[
+                        left_column_index
+                    ]
+                )
+
+                left_border_run_ratio = (
+                    longest_run_ratio(
+                        left_band[
+                            :,
+                            left_column_index,
+                        ]
+                    )
+                )
+
+            if right_band.size > 0:
+                right_column_ratios = (
+                    np.count_nonzero(
+                        right_band,
+                        axis=0,
+                    )
+                    / right_band.shape[0]
+                )
+
+                right_column_index = int(
+                    np.argmax(
+                        right_column_ratios
+                    )
+                )
+
+                right_border_evidence = float(
+                    right_column_ratios[
+                        right_column_index
+                    ]
+                )
+
+                right_border_run_ratio = (
+                    longest_run_ratio(
+                        right_band[
+                            :,
+                            right_column_index,
+                        ]
+                    )
+                )
+
+        write_detection_log(
+            "layout border metrics "
+            f"cell={cell_number} "
+            f"x={x} "
+            f"y={y} "
+            f"w={w} "
+            f"h={h} "
+            f"top_border_evidence="
+            f"{top_border_evidence:.3f} "
+            f"bottom_border_evidence="
+            f"{bottom_border_evidence:.3f} "
+            f"left_border_evidence="
+            f"{left_border_evidence:.3f} "
+            f"right_border_evidence="
+            f"{right_border_evidence:.3f} "
+            f"top_border_run_ratio="
+            f"{top_border_run_ratio:.3f} "
+            f"bottom_border_run_ratio="
+            f"{bottom_border_run_ratio:.3f} "
+            f"left_border_run_ratio="
+            f"{left_border_run_ratio:.3f} "
+            f"right_border_run_ratio="
+            f"{right_border_run_ratio:.3f}"
+        )
+
+
 def build_candidates(
     contours,
     image,
@@ -2568,6 +2806,11 @@ def detect_photos(image_path):
             fitted_layout_cells,
             image_path,
             "fitted_layout_cells",
+        )
+
+        log_layout_border_metrics(
+            fitted_layout_cells,
+            edges,
         )
 
         (
