@@ -1229,6 +1229,206 @@ def log_bright_frame_regularity(
 
         return False
 
+    for candidate_number, (
+        x,
+        y,
+        w,
+        h,
+    ) in enumerate(
+        bright_frame_candidates,
+        start=1,
+    ):
+        area = w * h
+        aspect_ratio = (
+            w / h
+            if h > 0
+            else 0.0
+        )
+
+        write_detection_log(
+            "bright frame candidate detail "
+            f"number={candidate_number} "
+            f"x={x} "
+            f"y={y} "
+            f"w={w} "
+            f"h={h} "
+            f"area={area} "
+            f"aspect_ratio={aspect_ratio:.3f}"
+        )
+
+    candidate_centers_x = [
+        x + (w / 2.0)
+        for (
+            x,
+            y,
+            w,
+            h,
+        )
+        in bright_frame_candidates
+    ]
+
+    candidate_centers_y = [
+        y + (h / 2.0)
+        for (
+            x,
+            y,
+            w,
+            h,
+        )
+        in bright_frame_candidates
+    ]
+
+    median_width = float(
+        np.median(
+            [
+                w
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in bright_frame_candidates
+            ]
+        )
+    )
+
+    median_height = float(
+        np.median(
+            [
+                h
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in bright_frame_candidates
+            ]
+        )
+    )
+
+    def cluster_positions(
+        values,
+        tolerance,
+    ):
+        clusters = []
+
+        for value in sorted(values):
+            matched_cluster = None
+
+            for cluster in clusters:
+                cluster_center = float(
+                    np.mean(cluster)
+                )
+
+                if (
+                    abs(
+                        value - cluster_center
+                    )
+                    <= tolerance
+                ):
+                    matched_cluster = cluster
+                    break
+
+            if matched_cluster is None:
+                clusters.append(
+                    [value]
+                )
+            else:
+                matched_cluster.append(
+                    value
+                )
+
+        return [
+            float(
+                np.mean(cluster)
+            )
+            for cluster in clusters
+        ]
+
+    column_centers = cluster_positions(
+        candidate_centers_x,
+        median_width * 0.50,
+    )
+
+    row_centers = cluster_positions(
+        candidate_centers_y,
+        median_height * 0.50,
+    )
+
+    occupied_cells = set()
+
+    for center_x, center_y in zip(
+        candidate_centers_x,
+        candidate_centers_y,
+    ):
+        column_index = min(
+            range(len(column_centers)),
+            key=lambda index: abs(
+                center_x
+                - column_centers[index]
+            ),
+        )
+
+        row_index = min(
+            range(len(row_centers)),
+            key=lambda index: abs(
+                center_y
+                - row_centers[index]
+            ),
+        )
+
+        occupied_cells.add(
+            (
+                column_index,
+                row_index,
+            )
+        )
+
+    column_count = len(
+        column_centers
+    )
+
+    row_count = len(
+        row_centers
+    )
+
+    expected_cell_count = (
+        column_count * row_count
+    )
+
+    occupied_cell_count = len(
+        occupied_cells
+    )
+
+    duplicate_cell_count = (
+        candidate_count
+        - occupied_cell_count
+    )
+
+    grid_fill_ratio = 0.0
+
+    if expected_cell_count > 0:
+        grid_fill_ratio = (
+            occupied_cell_count
+            / expected_cell_count
+        )
+
+    write_detection_log(
+        "bright frame grid "
+        f"columns={column_count} "
+        f"rows={row_count} "
+        f"expected_cells={expected_cell_count} "
+        f"occupied_cells={occupied_cell_count} "
+        f"duplicate_cells={duplicate_cell_count} "
+        f"fill_ratio={grid_fill_ratio:.3f} "
+        f"column_centers="
+        f"{[round(value, 1) for value in column_centers]} "
+        f"row_centers="
+        f"{[round(value, 1) for value in row_centers]}"
+    )
+
     widths = np.array(
         [
             w
@@ -1317,9 +1517,20 @@ def log_bright_frame_regularity(
         and area_cv <= 0.05
     )
 
+    complete_grid_ok = (
+        candidate_count >= 6
+        and column_count >= 2
+        and row_count >= 2
+        and duplicate_cell_count == 0
+        and grid_fill_ratio >= 0.95
+    )
+
     trusted = (
         candidate_count_ok
-        and regularity_ok
+        and (
+            regularity_ok
+            or complete_grid_ok
+        )
     )
 
     write_detection_log(
@@ -1330,6 +1541,7 @@ def log_bright_frame_regularity(
         f"height_cv={height_cv:.4f} "
         f"area_cv={area_cv:.4f} "
         f"regularity_ok={regularity_ok} "
+        f"complete_grid_ok={complete_grid_ok} "
         f"trusted={trusted}"
     )
 
@@ -3754,10 +3966,27 @@ def detect_photos(image_path):
                 "count=0"
             )
 
+    normal_candidate_count = len(
+        candidates
+    )
+
+    bright_frame_candidate_count = len(
+        bright_frame_candidates
+    )
+
+    normal_candidates_sparse = (
+        normal_candidate_count == 0
+        or (
+            bright_frame_candidate_count >= 6
+            and normal_candidate_count
+            <= bright_frame_candidate_count * 0.25
+        )
+    )
+
     bright_frame_rescue_selected = (
         bright_frame_trusted
         and not layout_trusted
-        and len(candidates) == 0
+        and normal_candidates_sparse
     )
 
     write_detection_log(
