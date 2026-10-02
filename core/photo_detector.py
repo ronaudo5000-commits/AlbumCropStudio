@@ -3937,6 +3937,96 @@ def detect_photos(image_path):
         f"count={len(candidates)}"
     )
 
+    for child_index, child_rect in enumerate(
+        candidates,
+        start=1,
+    ):
+        child_x, child_y, child_w, child_h = (
+            child_rect
+        )
+
+        child_area = (
+            child_w * child_h
+        )
+
+        if child_area <= 0:
+            continue
+
+        for parent_index, parent_rect in enumerate(
+            candidates,
+            start=1,
+        ):
+            if child_index == parent_index:
+                continue
+
+            parent_x, parent_y, parent_w, parent_h = (
+                parent_rect
+            )
+
+            parent_area = (
+                parent_w * parent_h
+            )
+
+            if parent_area <= child_area:
+                continue
+
+            overlap_x1 = max(
+                child_x,
+                parent_x,
+            )
+
+            overlap_y1 = max(
+                child_y,
+                parent_y,
+            )
+
+            overlap_x2 = min(
+                child_x + child_w,
+                parent_x + parent_w,
+            )
+
+            overlap_y2 = min(
+                child_y + child_h,
+                parent_y + parent_h,
+            )
+
+            overlap_w = max(
+                0,
+                overlap_x2 - overlap_x1,
+            )
+
+            overlap_h = max(
+                0,
+                overlap_y2 - overlap_y1,
+            )
+
+            overlap_area = (
+                overlap_w * overlap_h
+            )
+
+            containment_ratio = (
+                overlap_area / child_area
+            )
+
+            child_to_parent_area_ratio = (
+                child_area / parent_area
+            )
+
+            if containment_ratio < 0.50:
+                continue
+
+            write_detection_log(
+                "normal candidate containment "
+                f"child={child_index} "
+                f"parent={parent_index} "
+                f"containment_ratio="
+                f"{containment_ratio:.3f} "
+                f"child_to_parent_area_ratio="
+                f"{child_to_parent_area_ratio:.3f} "
+                f"child={child_rect} "
+                f"parent={parent_rect}"
+            )
+
     if DEBUG_SAVE_IMAGE:
         log_candidate_layout_relations(
             candidates,
@@ -4161,7 +4251,8 @@ def remove_inner_overlaps(candidates):
 def postprocess_candidates(candidates):
     write_detection_log(
         "postprocess start "
-        f"count={len(candidates)}"
+        f"count={len(candidates)} "
+        f"rects={candidates}"
     )
 
     if DEBUG:
@@ -4177,7 +4268,8 @@ def postprocess_candidates(candidates):
     write_detection_log(
         "postprocess "
         "after_remove_inner_overlaps "
-        f"count={len(candidates)}"
+        f"count={len(candidates)} "
+        f"rects={candidates}"
     )
 
     if DEBUG:
@@ -4193,7 +4285,8 @@ def postprocess_candidates(candidates):
     write_detection_log(
         "postprocess "
         "after_split_large_rects "
-        f"count={len(candidates)}"
+        f"count={len(candidates)} "
+        f"rects={candidates}"
     )
 
     if DEBUG:
@@ -4209,7 +4302,8 @@ def postprocess_candidates(candidates):
     write_detection_log(
         "postprocess "
         "after_remove_lower_overlap_rects "
-        f"count={len(candidates)}"
+        f"count={len(candidates)} "
+        f"rects={candidates}"
     )
 
     if DEBUG:
@@ -4225,7 +4319,8 @@ def postprocess_candidates(candidates):
     write_detection_log(
         "postprocess "
         "after_remove_duplicate_rects "
-        f"count={len(candidates)}"
+        f"count={len(candidates)} "
+        f"rects={candidates}"
     )
 
     if DEBUG:
@@ -4238,9 +4333,1061 @@ def postprocess_candidates(candidates):
         candidates
     )
 
+    candidate_areas = [
+        w * h
+        for (
+            x,
+            y,
+            w,
+            h,
+        )
+        in candidates
+    ]
+
+    median_area = 0.0
+
+    if candidate_areas:
+        median_area = float(
+            np.median(
+                candidate_areas
+            )
+        )
+
+    for candidate_number, (
+        x,
+        y,
+        w,
+        h,
+    ) in enumerate(
+        candidates,
+        start=1,
+    ):
+        area = w * h
+
+        area_to_median_ratio = 0.0
+
+        if median_area > 0.0:
+            area_to_median_ratio = (
+                area / median_area
+            )
+
+        write_detection_log(
+            "postprocess final area "
+            f"number={candidate_number} "
+            f"x={x} "
+            f"y={y} "
+            f"w={w} "
+            f"h={h} "
+            f"area={area} "
+            f"median_area={median_area:.1f} "
+            f"area_to_median_ratio="
+            f"{area_to_median_ratio:.3f}"
+        )
+
+    ranked_areas = sorted(
+        candidate_areas,
+        reverse=True,
+    )
+
+    max_gap_ratio = 0.0
+    max_gap_rank = 0
+
+    for rank, area in enumerate(
+        ranked_areas,
+        start=1,
+    ):
+        next_area = 0
+        gap_ratio = 0.0
+
+        if rank < len(ranked_areas):
+            next_area = ranked_areas[
+                rank
+            ]
+
+            if next_area > 0:
+                gap_ratio = (
+                    area / next_area
+                )
+
+                if gap_ratio > max_gap_ratio:
+                    max_gap_ratio = gap_ratio
+                    max_gap_rank = rank
+
+        write_detection_log(
+            "postprocess area gap "
+            f"rank={rank} "
+            f"area={area} "
+            f"next_area={next_area} "
+            f"gap_ratio={gap_ratio:.3f}"
+        )
+
+    if max_gap_rank > 0:
+        large_group_min_area = ranked_areas[
+            max_gap_rank - 1
+        ]
+
+        large_group = [
+            rect
+            for rect in candidates
+            if rect[2] * rect[3]
+            >= large_group_min_area
+        ]
+
+        small_group = [
+            rect
+            for rect in candidates
+            if rect[2] * rect[3]
+            < large_group_min_area
+        ]
+
+        large_group_centers = [
+            (
+                round(
+                    x + w / 2.0,
+                    1,
+                ),
+                round(
+                    y + h / 2.0,
+                    1,
+                ),
+            )
+            for (
+                x,
+                y,
+                w,
+                h,
+            )
+            in large_group
+        ]
+
+        small_group_centers = [
+            (
+                round(
+                    x + w / 2.0,
+                    1,
+                ),
+                round(
+                    y + h / 2.0,
+                    1,
+                ),
+            )
+            for (
+                x,
+                y,
+                w,
+                h,
+            )
+            in small_group
+        ]
+
+        small_clusters = []
+
+        if large_group:
+            large_widths = [
+                w
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in large_group
+            ]
+
+            large_heights = [
+                h
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in large_group
+            ]
+
+            cluster_distance = (
+                min(
+                    float(
+                        np.median(
+                            large_widths
+                        )
+                    ),
+                    float(
+                        np.median(
+                            large_heights
+                        )
+                    ),
+                )
+                * 0.75
+            )
+        else:
+            cluster_distance = 0.0
+
+        for rect in small_group:
+            x, y, w, h = rect
+
+            center_x = (
+                x + w / 2.0
+            )
+
+            center_y = (
+                y + h / 2.0
+            )
+
+            matched_cluster = None
+
+            for cluster in small_clusters:
+                cluster_centers = [
+                    (
+                        item[0]
+                        + item[2] / 2.0,
+                        item[1]
+                        + item[3] / 2.0,
+                    )
+                    for item in cluster
+                ]
+
+                cluster_center_x = float(
+                    np.mean(
+                        [
+                            center[0]
+                            for center
+                            in cluster_centers
+                        ]
+                    )
+                )
+
+                cluster_center_y = float(
+                    np.mean(
+                        [
+                            center[1]
+                            for center
+                            in cluster_centers
+                        ]
+                    )
+                )
+
+                distance = (
+                    (
+                        center_x
+                        - cluster_center_x
+                    ) ** 2
+                    + (
+                        center_y
+                        - cluster_center_y
+                    ) ** 2
+                ) ** 0.5
+
+                if (
+                    cluster_distance > 0.0
+                    and distance
+                    <= cluster_distance
+                ):
+                    matched_cluster = cluster
+                    break
+
+            if matched_cluster is None:
+                small_clusters.append(
+                    [rect]
+                )
+            else:
+                matched_cluster.append(
+                    rect
+                )
+
+        for cluster_number, cluster in enumerate(
+            small_clusters,
+            start=1,
+        ):
+            cluster_centers = [
+                (
+                    round(
+                        x + w / 2.0,
+                        1,
+                    ),
+                    round(
+                        y + h / 2.0,
+                        1,
+                    ),
+                )
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in cluster
+            ]
+
+            min_x = min(
+                x
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in cluster
+            )
+
+            min_y = min(
+                y
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in cluster
+            )
+
+            max_x = max(
+                x + w
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in cluster
+            )
+
+            max_y = max(
+                y + h
+                for (
+                    x,
+                    y,
+                    w,
+                    h,
+                )
+                in cluster
+            )
+
+            cluster_width = (
+                max_x - min_x
+            )
+
+            cluster_height = (
+                max_y - min_y
+            )
+
+            cluster_bounding_rect = (
+                min_x,
+                min_y,
+                cluster_width,
+                cluster_height,
+            )
+
+            median_large_width = float(
+                np.median(
+                    [
+                        w
+                        for (
+                            x,
+                            y,
+                            w,
+                            h,
+                        )
+                        in large_group
+                    ]
+                )
+            )
+
+            median_large_height = float(
+                np.median(
+                    [
+                        h
+                        for (
+                            x,
+                            y,
+                            w,
+                            h,
+                        )
+                        in large_group
+                    ]
+                )
+            )
+
+            width_ratio = 0.0
+            height_ratio = 0.0
+
+            if median_large_width > 0.0:
+                width_ratio = (
+                    cluster_width
+                    / median_large_width
+                )
+
+            if median_large_height > 0.0:
+                height_ratio = (
+                    cluster_height
+                    / median_large_height
+                )
+
+            write_detection_log(
+                "postprocess small cluster "
+                f"number={cluster_number} "
+                f"count={len(cluster)} "
+                f"centers={cluster_centers} "
+                f"bounding_rect="
+                f"{cluster_bounding_rect} "
+                f"median_large_width="
+                f"{median_large_width:.1f} "
+                f"median_large_height="
+                f"{median_large_height:.1f} "
+                f"width_ratio="
+                f"{width_ratio:.3f} "
+                f"height_ratio="
+                f"{height_ratio:.3f}"
+            )
+
+        if large_group:
+            median_large_width = float(
+                np.median(
+                    [
+                        w
+                        for (
+                            x,
+                            y,
+                            w,
+                            h,
+                        )
+                        in large_group
+                    ]
+                )
+            )
+
+            median_large_height = float(
+                np.median(
+                    [
+                        h
+                        for (
+                            x,
+                            y,
+                            w,
+                            h,
+                        )
+                        in large_group
+                    ]
+                )
+            )
+
+            def cluster_axis_positions(
+                values,
+                tolerance,
+            ):
+                clusters = []
+
+                for value in sorted(values):
+                    matched_cluster = None
+
+                    for cluster in clusters:
+                        cluster_center = float(
+                            np.mean(
+                                cluster
+                            )
+                        )
+
+                        if (
+                            abs(
+                                value
+                                - cluster_center
+                            )
+                            <= tolerance
+                        ):
+                            matched_cluster = cluster
+                            break
+
+                    if matched_cluster is None:
+                        clusters.append(
+                            [value]
+                        )
+                    else:
+                        matched_cluster.append(
+                            value
+                        )
+
+                return [
+                    float(
+                        np.mean(
+                            cluster
+                        )
+                    )
+                    for cluster in clusters
+                ]
+
+            large_column_centers = (
+                cluster_axis_positions(
+                    [
+                        center_x
+                        for (
+                            center_x,
+                            center_y,
+                        )
+                        in large_group_centers
+                    ],
+                    median_large_width * 0.50,
+                )
+            )
+
+            large_row_centers = (
+                cluster_axis_positions(
+                    [
+                        center_y
+                        for (
+                            center_x,
+                            center_y,
+                        )
+                        in large_group_centers
+                    ],
+                    median_large_height * 0.50,
+                )
+            )
+
+            occupied_cells = set()
+
+            for (
+                center_x,
+                center_y,
+            ) in large_group_centers:
+                column_index = min(
+                    range(
+                        len(
+                            large_column_centers
+                        )
+                    ),
+                    key=lambda index: abs(
+                        center_x
+                        - large_column_centers[
+                            index
+                        ]
+                    ),
+                )
+
+                row_index = min(
+                    range(
+                        len(
+                            large_row_centers
+                        )
+                    ),
+                    key=lambda index: abs(
+                        center_y
+                        - large_row_centers[
+                            index
+                        ]
+                    ),
+                )
+
+                occupied_cells.add(
+                    (
+                        column_index,
+                        row_index,
+                    )
+                )
+
+            missing_cell_centers = []
+
+            for column_index, column_center in enumerate(
+                large_column_centers
+            ):
+                for row_index, row_center in enumerate(
+                    large_row_centers
+                ):
+                    if (
+                        column_index,
+                        row_index,
+                    ) in occupied_cells:
+                        continue
+
+                    missing_cell_centers.append(
+                        (
+                            round(
+                                column_center,
+                                1,
+                            ),
+                            round(
+                                row_center,
+                                1,
+                            ),
+                        )
+                    )
+
+            write_detection_log(
+                "postprocess missing cells "
+                f"columns="
+                f"{[round(value, 1) for value in large_column_centers]} "
+                f"rows="
+                f"{[round(value, 1) for value in large_row_centers]} "
+                f"occupied_count="
+                f"{len(occupied_cells)} "
+                f"missing_count="
+                f"{len(missing_cell_centers)} "
+                f"missing_centers="
+                f"{missing_cell_centers}"
+            )
+
+            for cluster_number, cluster in enumerate(
+                small_clusters,
+                start=1,
+            ):
+                cluster_center_x = float(
+                    np.mean(
+                        [
+                            x + w / 2.0
+                            for (
+                                x,
+                                y,
+                                w,
+                                h,
+                            )
+                            in cluster
+                        ]
+                    )
+                )
+
+                cluster_center_y = float(
+                    np.mean(
+                        [
+                            y + h / 2.0
+                            for (
+                                x,
+                                y,
+                                w,
+                                h,
+                            )
+                            in cluster
+                        ]
+                    )
+                )
+
+                if missing_cell_centers:
+                    nearest_missing_center = min(
+                        missing_cell_centers,
+                        key=lambda center: (
+                            (
+                                cluster_center_x
+                                - center[0]
+                            ) ** 2
+                            + (
+                                cluster_center_y
+                                - center[1]
+                            ) ** 2
+                        ),
+                    )
+
+                    delta_x = abs(
+                        cluster_center_x
+                        - nearest_missing_center[0]
+                    )
+
+                    delta_y = abs(
+                        cluster_center_y
+                        - nearest_missing_center[1]
+                    )
+
+                    distance = (
+                        delta_x ** 2
+                        + delta_y ** 2
+                    ) ** 0.5
+
+                    normalized_distance = 0.0
+
+                    reference_size = min(
+                        median_large_width,
+                        median_large_height,
+                    )
+
+                    if reference_size > 0.0:
+                        normalized_distance = (
+                            distance
+                            / reference_size
+                        )
+
+                    write_detection_log(
+                        "postprocess cluster missing match "
+                        f"cluster={cluster_number} "
+                        f"cluster_center="
+                        f"({cluster_center_x:.1f}, "
+                        f"{cluster_center_y:.1f}) "
+                        f"missing_center="
+                        f"{nearest_missing_center} "
+                        f"delta_x={delta_x:.1f} "
+                        f"delta_y={delta_y:.1f} "
+                        f"distance={distance:.1f} "
+                        f"normalized_distance="
+                        f"{normalized_distance:.3f}"
+                    )
+
+            reconstruction_candidate = False
+            reconstruction_width_ratio = 0.0
+            reconstruction_height_ratio = 0.0
+            reconstruction_distance = 0.0
+            reconstruction_member_count = 0
+
+            if (
+                len(missing_cell_centers) == 1
+                and len(small_clusters) == 1
+            ):
+                reconstruction_cluster = (
+                    small_clusters[0]
+                )
+
+                reconstruction_member_count = len(
+                    reconstruction_cluster
+                )
+
+                reconstruction_min_x = min(
+                    x
+                    for (
+                        x,
+                        y,
+                        w,
+                        h,
+                    )
+                    in reconstruction_cluster
+                )
+
+                reconstruction_min_y = min(
+                    y
+                    for (
+                        x,
+                        y,
+                        w,
+                        h,
+                    )
+                    in reconstruction_cluster
+                )
+
+                reconstruction_max_x = max(
+                    x + w
+                    for (
+                        x,
+                        y,
+                        w,
+                        h,
+                    )
+                    in reconstruction_cluster
+                )
+
+                reconstruction_max_y = max(
+                    y + h
+                    for (
+                        x,
+                        y,
+                        w,
+                        h,
+                    )
+                    in reconstruction_cluster
+                )
+
+                reconstruction_width = (
+                    reconstruction_max_x
+                    - reconstruction_min_x
+                )
+
+                reconstruction_height = (
+                    reconstruction_max_y
+                    - reconstruction_min_y
+                )
+
+                if median_large_width > 0.0:
+                    reconstruction_width_ratio = (
+                        reconstruction_width
+                        / median_large_width
+                    )
+
+                if median_large_height > 0.0:
+                    reconstruction_height_ratio = (
+                        reconstruction_height
+                        / median_large_height
+                    )
+
+                reconstruction_center_x = float(
+                    np.mean(
+                        [
+                            x + w / 2.0
+                            for (
+                                x,
+                                y,
+                                w,
+                                h,
+                            )
+                            in reconstruction_cluster
+                        ]
+                    )
+                )
+
+                reconstruction_center_y = float(
+                    np.mean(
+                        [
+                            y + h / 2.0
+                            for (
+                                x,
+                                y,
+                                w,
+                                h,
+                            )
+                            in reconstruction_cluster
+                        ]
+                    )
+                )
+
+                reconstruction_missing_center = (
+                    missing_cell_centers[0]
+                )
+
+                reconstruction_delta_x = (
+                    reconstruction_center_x
+                    - reconstruction_missing_center[0]
+                )
+
+                reconstruction_delta_y = (
+                    reconstruction_center_y
+                    - reconstruction_missing_center[1]
+                )
+
+                reconstruction_pixel_distance = (
+                    reconstruction_delta_x ** 2
+                    + reconstruction_delta_y ** 2
+                ) ** 0.5
+
+                reconstruction_reference_size = min(
+                    median_large_width,
+                    median_large_height,
+                )
+
+                if reconstruction_reference_size > 0.0:
+                    reconstruction_distance = (
+                        reconstruction_pixel_distance
+                        / reconstruction_reference_size
+                    )
+
+                reconstruction_candidate = (
+                    reconstruction_member_count >= 2
+                    and reconstruction_width_ratio >= 0.70
+                    and reconstruction_height_ratio >= 0.55
+                    and reconstruction_distance <= 0.35
+                )
+
+            write_detection_log(
+                "postprocess reconstruction candidate "
+                f"candidate={reconstruction_candidate} "
+                f"missing_count="
+                f"{len(missing_cell_centers)} "
+                f"small_cluster_count="
+                f"{len(small_clusters)} "
+                f"cluster_member_count="
+                f"{reconstruction_member_count} "
+                f"width_ratio="
+                f"{reconstruction_width_ratio:.3f} "
+                f"height_ratio="
+                f"{reconstruction_height_ratio:.3f} "
+                f"normalized_distance="
+                f"{reconstruction_distance:.3f}"
+            )
+
+            if reconstruction_candidate:
+                reconstruction_center = (
+                    missing_cell_centers[0]
+                )
+
+                provisional_width = int(
+                    round(
+                        median_large_width
+                    )
+                )
+
+                provisional_height = int(
+                    round(
+                        median_large_height
+                    )
+                )
+
+                provisional_x = int(
+                    round(
+                        reconstruction_center[0]
+                        - provisional_width / 2.0
+                    )
+                )
+
+                provisional_y = int(
+                    round(
+                        reconstruction_center[1]
+                        - provisional_height / 2.0
+                    )
+                )
+
+                provisional_rect = (
+                    provisional_x,
+                    provisional_y,
+                    provisional_width,
+                    provisional_height,
+                )
+
+                write_detection_log(
+                    "postprocess provisional reconstruction "
+                    f"center="
+                    f"{reconstruction_center} "
+                    f"median_width="
+                    f"{median_large_width:.1f} "
+                    f"median_height="
+                    f"{median_large_height:.1f} "
+                    f"rect={provisional_rect}"
+                )
+
+                provisional_right = (
+                    provisional_x
+                    + provisional_width
+                )
+
+                provisional_bottom = (
+                    provisional_y
+                    + provisional_height
+                )
+
+                containment_ratios = []
+
+                for member_number, (
+                    member_x,
+                    member_y,
+                    member_w,
+                    member_h,
+                ) in enumerate(
+                    reconstruction_cluster,
+                    start=1,
+                ):
+                    member_right = (
+                        member_x
+                        + member_w
+                    )
+
+                    member_bottom = (
+                        member_y
+                        + member_h
+                    )
+
+                    overlap_left = max(
+                        provisional_x,
+                        member_x,
+                    )
+
+                    overlap_top = max(
+                        provisional_y,
+                        member_y,
+                    )
+
+                    overlap_right = min(
+                        provisional_right,
+                        member_right,
+                    )
+
+                    overlap_bottom = min(
+                        provisional_bottom,
+                        member_bottom,
+                    )
+
+                    overlap_width = max(
+                        0,
+                        overlap_right
+                        - overlap_left,
+                    )
+
+                    overlap_height = max(
+                        0,
+                        overlap_bottom
+                        - overlap_top,
+                    )
+
+                    overlap_area = (
+                        overlap_width
+                        * overlap_height
+                    )
+
+                    member_area = (
+                        member_w
+                        * member_h
+                    )
+
+                    containment_ratio = 0.0
+
+                    if member_area > 0:
+                        containment_ratio = (
+                            overlap_area
+                            / member_area
+                        )
+
+                    containment_ratios.append(
+                        containment_ratio
+                    )
+
+                    write_detection_log(
+                        "postprocess provisional containment "
+                        f"member={member_number} "
+                        f"rect="
+                        f"({member_x}, "
+                        f"{member_y}, "
+                        f"{member_w}, "
+                        f"{member_h}) "
+                        f"overlap_area="
+                        f"{overlap_area} "
+                        f"member_area="
+                        f"{member_area} "
+                        f"containment_ratio="
+                        f"{containment_ratio:.3f}"
+                    )
+
+                all_members_contained = (
+                    len(containment_ratios)
+                    == len(reconstruction_cluster)
+                    and len(containment_ratios) > 0
+                    and min(containment_ratios) >= 0.95
+                )
+
+                if all_members_contained:
+                    candidates_before_reconstruction = list(
+                        candidates
+                    )
+
+                    candidates = [
+                        candidate
+                        for candidate in candidates
+                        if candidate
+                        not in reconstruction_cluster
+                    ]
+
+                    candidates.append(
+                        provisional_rect
+                    )
+
+                    write_detection_log(
+                        "postprocess reconstruction applied "
+                        f"removed="
+                        f"{reconstruction_cluster} "
+                        f"added="
+                        f"{provisional_rect} "
+                        f"before="
+                        f"{candidates_before_reconstruction} "
+                        f"after="
+                        f"{candidates}"
+                    )
+
+        write_detection_log(
+            "postprocess area groups "
+            f"max_gap_rank={max_gap_rank} "
+            f"max_gap_ratio={max_gap_ratio:.3f} "
+            f"large_count={len(large_group)} "
+            f"small_count={len(small_group)} "
+            f"large_rects={large_group} "
+            f"small_rects={small_group} "
+            f"large_centers={large_group_centers} "
+            f"small_centers={small_group_centers} "
+            f"small_cluster_count="
+            f"{len(small_clusters)}"
+        )
+
     write_detection_log(
         "postprocess final "
-        f"count={len(candidates)}"
+        f"count={len(candidates)} "
+        f"rects={candidates}"
     )
 
     if DEBUG:
