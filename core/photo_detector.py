@@ -4162,7 +4162,9 @@ def detect_photos(image_path):
     )
 
     candidates = postprocess_candidates(
-        candidates
+        candidates,
+        image,
+        edges,
     )
 
     total_elapsed = (
@@ -4248,7 +4250,11 @@ def remove_inner_overlaps(candidates):
 
     return filtered
 
-def postprocess_candidates(candidates):
+def postprocess_candidates(
+    candidates,
+    image,
+    edges,
+):
     write_detection_log(
         "postprocess start "
         f"count={len(candidates)} "
@@ -4479,6 +4485,798 @@ def postprocess_candidates(candidates):
             )
             in small_group
         ]
+
+        if large_group:
+            relative_median_width = float(
+                np.median(
+                    [
+                        w
+                        for (
+                            x,
+                            y,
+                            w,
+                            h,
+                        )
+                        in large_group
+                    ]
+                )
+            )
+
+            relative_median_height = float(
+                np.median(
+                    [
+                        h
+                        for (
+                            x,
+                            y,
+                            w,
+                            h,
+                        )
+                        in large_group
+                    ]
+                )
+            )
+
+            relative_median_area = float(
+                np.median(
+                    [
+                        w * h
+                        for (
+                            x,
+                            y,
+                            w,
+                            h,
+                        )
+                        in large_group
+                    ]
+                )
+            )
+
+            image_height, image_width = (
+                image.shape[:2]
+            )
+
+            max_horizontal_search = int(
+                relative_median_width * 0.75
+            )
+
+            max_vertical_search = int(
+                relative_median_height * 0.75
+            )
+
+            def longest_edge_run_ratio(
+                values,
+            ):
+                if values.size == 0:
+                    return 0.0
+
+                flags = (
+                    values > 0
+                )
+
+                longest_run = 0
+                current_run = 0
+
+                for value in flags:
+                    if value:
+                        current_run += 1
+
+                        if current_run > longest_run:
+                            longest_run = (
+                                current_run
+                            )
+                    else:
+                        current_run = 0
+
+                return (
+                    longest_run
+                    / len(flags)
+                )
+
+            for candidate_number, (
+                x,
+                y,
+                w,
+                h,
+            ) in enumerate(
+                small_group,
+                start=1,
+            ):
+                relative_width_ratio = 0.0
+                relative_height_ratio = 0.0
+                relative_area_ratio = 0.0
+
+                if relative_median_width > 0.0:
+                    relative_width_ratio = (
+                        w
+                        / relative_median_width
+                    )
+
+                if relative_median_height > 0.0:
+                    relative_height_ratio = (
+                        h
+                        / relative_median_height
+                    )
+
+                if relative_median_area > 0.0:
+                    relative_area_ratio = (
+                        (w * h)
+                        / relative_median_area
+                    )
+
+                fragment_size_suspected = (
+                    relative_width_ratio <= 0.75
+                    and relative_height_ratio <= 0.80
+                    and relative_area_ratio <= 0.50
+                )
+
+                write_detection_log(
+                    "postprocess small relative size "
+                    f"number={candidate_number} "
+                    f"rect=({x}, {y}, {w}, {h}) "
+                    f"median_large_width="
+                    f"{relative_median_width:.1f} "
+                    f"median_large_height="
+                    f"{relative_median_height:.1f} "
+                    f"median_large_area="
+                    f"{relative_median_area:.1f} "
+                    f"width_ratio="
+                    f"{relative_width_ratio:.3f} "
+                    f"height_ratio="
+                    f"{relative_height_ratio:.3f} "
+                    f"area_ratio="
+                    f"{relative_area_ratio:.3f} "
+                    f"fragment_size_suspected="
+                    f"{fragment_size_suspected}"
+                )
+
+                if fragment_size_suspected:
+                    page_border_size = max(
+                        10,
+                        int(
+                            min(
+                                image_width,
+                                image_height,
+                            )
+                            * 0.02
+                        ),
+                    )
+
+                    border_samples = np.concatenate(
+                        (
+                            image[
+                                :page_border_size:8,
+                                ::8,
+                            ].reshape(-1, 3),
+                            image[
+                                image_height
+                                - page_border_size::8,
+                                ::8,
+                            ].reshape(-1, 3),
+                            image[
+                                ::8,
+                                :page_border_size:8,
+                            ].reshape(-1, 3),
+                            image[
+                                ::8,
+                                image_width
+                                - page_border_size::8,
+                            ].reshape(-1, 3),
+                        ),
+                        axis=0,
+                    ).astype(
+                        np.float32
+                    )
+
+                    page_background_color = np.median(
+                        border_samples,
+                        axis=0,
+                    )
+
+                    outside_band_size = max(
+                        5,
+                        min(
+                            60,
+                            int(
+                                min(w, h) * 0.05
+                            ),
+                        ),
+                    )
+
+                    top_outside = image[
+                        max(
+                            0,
+                            y - outside_band_size,
+                        ):y,
+                        x:x + w,
+                    ]
+
+                    bottom_outside = image[
+                        y + h:min(
+                            image_height,
+                            y + h
+                            + outside_band_size,
+                        ),
+                        x:x + w,
+                    ]
+
+                    left_outside = image[
+                        y:y + h,
+                        max(
+                            0,
+                            x - outside_band_size,
+                        ):x,
+                    ]
+
+                    right_outside = image[
+                        y:y + h,
+                        x + w:min(
+                            image_width,
+                            x + w
+                            + outside_band_size,
+                        ),
+                    ]
+
+                    def outside_background_ratio(
+                        region,
+                    ):
+                        if region.size == 0:
+                            return -1.0
+
+                        sampled_region = region[
+                            ::4,
+                            ::4,
+                        ].astype(
+                            np.float32
+                        )
+
+                        difference = (
+                            sampled_region
+                            - page_background_color
+                        )
+
+                        distance = np.sqrt(
+                            np.sum(
+                                difference
+                                * difference,
+                                axis=2,
+                            )
+                        )
+
+                        return float(
+                            np.mean(
+                                distance <= 35.0
+                            )
+                        )
+
+                    top_background_ratio = (
+                        outside_background_ratio(
+                            top_outside
+                        )
+                    )
+
+                    bottom_background_ratio = (
+                        outside_background_ratio(
+                            bottom_outside
+                        )
+                    )
+
+                    left_background_ratio = (
+                        outside_background_ratio(
+                            left_outside
+                        )
+                    )
+
+                    right_background_ratio = (
+                        outside_background_ratio(
+                            right_outside
+                        )
+                    )
+
+                    outside_background_min = min(
+                        top_background_ratio,
+                        bottom_background_ratio,
+                        left_background_ratio,
+                        right_background_ratio,
+                    )
+
+                    isolated_small_photo_suspected = (
+                        outside_background_min >= 0.75
+                    )
+
+                    write_detection_log(
+                        "postprocess fragment outside "
+                        f"number={candidate_number} "
+                        f"band={outside_band_size} "
+                        f"top_background_ratio="
+                        f"{top_background_ratio:.3f} "
+                        f"bottom_background_ratio="
+                        f"{bottom_background_ratio:.3f} "
+                        f"left_background_ratio="
+                        f"{left_background_ratio:.3f} "
+                        f"right_background_ratio="
+                        f"{right_background_ratio:.3f} "
+                        f"outside_background_min="
+                        f"{outside_background_min:.3f} "
+                        f"isolated_small_photo_suspected="
+                        f"{isolated_small_photo_suspected}"
+                    )
+
+                expected_horizontal_margin = max(
+                    0.0,
+                    (
+                        relative_median_width
+                        - w
+                    ) / 2.0,
+                )
+
+                expected_vertical_margin = max(
+                    0.0,
+                    (
+                        relative_median_height
+                        - h
+                    ) / 2.0,
+                )
+
+                horizontal_band_half_width = max(
+                    20,
+                    int(
+                        relative_median_width
+                        * 0.15
+                    ),
+                )
+
+                vertical_band_half_width = max(
+                    20,
+                    int(
+                        relative_median_height
+                        * 0.15
+                    ),
+                )
+
+                expected_top = int(
+                    y
+                    - expected_vertical_margin
+                )
+
+                expected_bottom = int(
+                    y + h
+                    + expected_vertical_margin
+                )
+
+                expected_left = int(
+                    x
+                    - expected_horizontal_margin
+                )
+
+                expected_right = int(
+                    x + w
+                    + expected_horizontal_margin
+                )
+
+                top_start = max(
+                    0,
+                    expected_top
+                    - vertical_band_half_width,
+                )
+
+                top_end = min(
+                    y,
+                    expected_top
+                    + vertical_band_half_width,
+                )
+
+                bottom_start = max(
+                    y + h,
+                    expected_bottom
+                    - vertical_band_half_width,
+                )
+
+                bottom_end = min(
+                    image_height,
+                    expected_bottom
+                    + vertical_band_half_width,
+                )
+
+                left_start = max(
+                    0,
+                    expected_left
+                    - horizontal_band_half_width,
+                )
+
+                left_end = min(
+                    x,
+                    expected_left
+                    + horizontal_band_half_width,
+                )
+
+                right_start = max(
+                    x + w,
+                    expected_right
+                    - horizontal_band_half_width,
+                )
+
+                right_end = min(
+                    image_width,
+                    expected_right
+                    + horizontal_band_half_width,
+                )
+
+                write_detection_log(
+                    "postprocess small outer band "
+                    f"number={candidate_number} "
+                    f"expected_top={expected_top} "
+                    f"top_band=({top_start},{top_end}) "
+                    f"expected_bottom={expected_bottom} "
+                    f"bottom_band="
+                    f"({bottom_start},{bottom_end}) "
+                    f"expected_left={expected_left} "
+                    f"left_band=({left_start},{left_end}) "
+                    f"expected_right={expected_right} "
+                    f"right_band="
+                    f"({right_start},{right_end})"
+                )
+
+                top_position = -1
+                top_distance = -1
+                top_evidence = 0.0
+                top_run_ratio = 0.0
+
+                if (
+                    top_end > top_start
+                    and w > 0
+                ):
+                    top_region = edges[
+                        top_start:top_end,
+                        x:x + w,
+                    ]
+
+                    if top_region.size > 0:
+                        top_ratios = (
+                            np.count_nonzero(
+                                top_region,
+                                axis=1,
+                            )
+                            / top_region.shape[1]
+                        )
+
+                        top_index = int(
+                            np.argmax(
+                                top_ratios
+                            )
+                        )
+
+                        top_position = (
+                            top_start
+                            + top_index
+                        )
+
+                        top_distance = (
+                            y
+                            - top_position
+                        )
+
+                        top_evidence = float(
+                            top_ratios[
+                                top_index
+                            ]
+                        )
+
+                        top_run_ratio = (
+                            longest_edge_run_ratio(
+                                top_region[
+                                    top_index,
+                                    :,
+                                ]
+                            )
+                        )
+
+                bottom_position = -1
+                bottom_distance = -1
+                bottom_evidence = 0.0
+                bottom_run_ratio = 0.0
+
+                if (
+                    bottom_end > bottom_start
+                    and w > 0
+                ):
+                    bottom_region = edges[
+                        bottom_start:bottom_end,
+                        x:x + w,
+                    ]
+
+                    if bottom_region.size > 0:
+                        bottom_ratios = (
+                            np.count_nonzero(
+                                bottom_region,
+                                axis=1,
+                            )
+                            / bottom_region.shape[1]
+                        )
+
+                        bottom_index = int(
+                            np.argmax(
+                                bottom_ratios
+                            )
+                        )
+
+                        bottom_position = (
+                            bottom_start
+                            + bottom_index
+                        )
+
+                        bottom_distance = (
+                            bottom_position
+                            - (y + h)
+                        )
+
+                        bottom_evidence = float(
+                            bottom_ratios[
+                                bottom_index
+                            ]
+                        )
+
+                        bottom_run_ratio = (
+                            longest_edge_run_ratio(
+                                bottom_region[
+                                    bottom_index,
+                                    :,
+                                ]
+                            )
+                        )
+
+                left_position = -1
+                left_distance = -1
+                left_evidence = 0.0
+                left_run_ratio = 0.0
+
+                if (
+                    left_end > left_start
+                    and h > 0
+                ):
+                    left_region = edges[
+                        y:y + h,
+                        left_start:left_end,
+                    ]
+
+                    if left_region.size > 0:
+                        left_ratios = (
+                            np.count_nonzero(
+                                left_region,
+                                axis=0,
+                            )
+                            / left_region.shape[0]
+                        )
+
+                        left_index = int(
+                            np.argmax(
+                                left_ratios
+                            )
+                        )
+
+                        left_position = (
+                            left_start
+                            + left_index
+                        )
+
+                        left_distance = (
+                            x
+                            - left_position
+                        )
+
+                        left_evidence = float(
+                            left_ratios[
+                                left_index
+                            ]
+                        )
+
+                        left_run_ratio = (
+                            longest_edge_run_ratio(
+                                left_region[
+                                    :,
+                                    left_index,
+                                ]
+                            )
+                        )
+
+                right_position = -1
+                right_distance = -1
+                right_evidence = 0.0
+                right_run_ratio = 0.0
+
+                if (
+                    right_end > right_start
+                    and h > 0
+                ):
+                    right_region = edges[
+                        y:y + h,
+                        right_start:right_end,
+                    ]
+
+                    if right_region.size > 0:
+                        right_ratios = (
+                            np.count_nonzero(
+                                right_region,
+                                axis=0,
+                            )
+                            / right_region.shape[0]
+                        )
+
+                        right_index = int(
+                            np.argmax(
+                                right_ratios
+                            )
+                        )
+
+                        right_position = (
+                            right_start
+                            + right_index
+                        )
+
+                        right_distance = (
+                            right_position
+                            - (x + w)
+                        )
+
+                        right_evidence = float(
+                            right_ratios[
+                                right_index
+                            ]
+                        )
+
+                        right_run_ratio = (
+                            longest_edge_run_ratio(
+                                right_region[
+                                    :,
+                                    right_index,
+                                ]
+                            )
+                        )
+
+                top_expected_distance = -1
+                bottom_expected_distance = -1
+                left_expected_distance = -1
+                right_expected_distance = -1
+
+                top_expected_ratio = -1.0
+                bottom_expected_ratio = -1.0
+                left_expected_ratio = -1.0
+                right_expected_ratio = -1.0
+
+                if top_position >= 0:
+                    top_expected_distance = abs(
+                        top_position
+                        - expected_top
+                    )
+
+                    if relative_median_height > 0.0:
+                        top_expected_ratio = (
+                            top_expected_distance
+                            / relative_median_height
+                        )
+
+                if bottom_position >= 0:
+                    bottom_expected_distance = abs(
+                        bottom_position
+                        - expected_bottom
+                    )
+
+                    if relative_median_height > 0.0:
+                        bottom_expected_ratio = (
+                            bottom_expected_distance
+                            / relative_median_height
+                        )
+
+                if left_position >= 0:
+                    left_expected_distance = abs(
+                        left_position
+                        - expected_left
+                    )
+
+                    if relative_median_width > 0.0:
+                        left_expected_ratio = (
+                            left_expected_distance
+                            / relative_median_width
+                        )
+
+                if right_position >= 0:
+                    right_expected_distance = abs(
+                        right_position
+                        - expected_right
+                    )
+
+                    if relative_median_width > 0.0:
+                        right_expected_ratio = (
+                            right_expected_distance
+                            / relative_median_width
+                        )
+
+                top_trusted = (
+                    top_position >= 0
+                    and top_expected_ratio >= 0.0
+                    and top_expected_ratio <= 0.05
+                    and top_evidence >= 0.80
+                    and top_run_ratio >= 0.30
+                )
+
+                bottom_trusted = (
+                    bottom_position >= 0
+                    and bottom_expected_ratio >= 0.0
+                    and bottom_expected_ratio <= 0.05
+                    and bottom_evidence >= 0.80
+                    and bottom_run_ratio >= 0.30
+                )
+
+                left_trusted = (
+                    left_position >= 0
+                    and left_expected_ratio >= 0.0
+                    and left_expected_ratio <= 0.05
+                    and left_evidence >= 0.80
+                    and left_run_ratio >= 0.30
+                )
+
+                right_trusted = (
+                    right_position >= 0
+                    and right_expected_ratio >= 0.0
+                    and right_expected_ratio <= 0.05
+                    and right_evidence >= 0.80
+                    and right_run_ratio >= 0.30
+                )
+
+                write_detection_log(
+                    "postprocess small outer trust "
+                    f"number={candidate_number} "
+                    f"top_trusted={top_trusted} "
+                    f"bottom_trusted={bottom_trusted} "
+                    f"left_trusted={left_trusted} "
+                    f"right_trusted={right_trusted}"
+                )
+
+                write_detection_log(
+                    "postprocess small outer edge "
+                    f"number={candidate_number} "
+                    f"top_position={top_position} "
+                    f"top_distance={top_distance} "
+                    f"top_expected_distance="
+                    f"{top_expected_distance} "
+                    f"top_expected_ratio="
+                    f"{top_expected_ratio:.3f} "
+                    f"top_evidence={top_evidence:.3f} "
+                    f"top_run_ratio={top_run_ratio:.3f} "
+                    f"bottom_position="
+                    f"{bottom_position} "
+                    f"bottom_distance="
+                    f"{bottom_distance} "
+                    f"bottom_expected_distance="
+                    f"{bottom_expected_distance} "
+                    f"bottom_expected_ratio="
+                    f"{bottom_expected_ratio:.3f} "
+                    f"bottom_evidence="
+                    f"{bottom_evidence:.3f} "
+                    f"bottom_run_ratio="
+                    f"{bottom_run_ratio:.3f} "
+                    f"left_position={left_position} "
+                    f"left_distance={left_distance} "
+                    f"left_expected_distance="
+                    f"{left_expected_distance} "
+                    f"left_expected_ratio="
+                    f"{left_expected_ratio:.3f} "
+                    f"left_evidence={left_evidence:.3f} "
+                    f"left_run_ratio="
+                    f"{left_run_ratio:.3f} "
+                    f"right_position="
+                    f"{right_position} "
+                    f"right_distance="
+                    f"{right_distance} "
+                    f"right_expected_distance="
+                    f"{right_expected_distance} "
+                    f"right_expected_ratio="
+                    f"{right_expected_ratio:.3f} "
+                    f"right_evidence="
+                    f"{right_evidence:.3f} "
+                    f"right_run_ratio="
+                    f"{right_run_ratio:.3f}"
+                )
 
         small_clusters = []
 
