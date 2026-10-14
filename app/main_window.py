@@ -9847,8 +9847,15 @@ class MainWindow(QMainWindow):
                     )
                 )
 
+        initial_output_directory = str(
+            Path(
+                self.current_image_path
+            ).parent
+        )
+
         export_dialog = ExportDialog(
             export_items,
+            initial_output_directory,
             self,
         )
 

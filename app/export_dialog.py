@@ -22,12 +22,17 @@ class ExportDialog(QDialog):
     def __init__(
         self,
         export_items,
+        initial_output_directory="",
         parent=None,
     ):
         super().__init__(parent)
 
         self.export_items = list(
             export_items
+        )
+
+        self.initial_output_directory = str(
+            initial_output_directory
         )
 
         self.setWindowTitle(
@@ -128,6 +133,10 @@ class ExportDialog(QDialog):
 
         self.output_dir_edit.setPlaceholderText(
             self.tr("保存先フォルダを選択")
+        )
+
+        self.output_dir_edit.setText(
+            self.initial_output_directory
         )
 
         self.output_dir_button = QPushButton(
