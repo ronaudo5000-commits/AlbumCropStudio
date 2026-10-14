@@ -4784,6 +4784,34 @@ def postprocess_candidates(
                         outside_background_min >= 0.75
                     )
 
+                    fragment_candidate_suspected = (
+                        fragment_size_suspected
+                        and not isolated_small_photo_suspected
+                    )
+
+                    fragment_center_x = (
+                        x + (w / 2.0)
+                    )
+
+                    fragment_center_y = (
+                        y + (h / 2.0)
+                    )
+
+                    fragment_center_x_ratio = 0.0
+                    fragment_center_y_ratio = 0.0
+
+                    if relative_median_width > 0.0:
+                        fragment_center_x_ratio = (
+                            fragment_center_x
+                            / relative_median_width
+                        )
+
+                    if relative_median_height > 0.0:
+                        fragment_center_y_ratio = (
+                            fragment_center_y
+                            / relative_median_height
+                        )
+
                     write_detection_log(
                         "postprocess fragment outside "
                         f"number={candidate_number} "
@@ -4799,8 +4827,1633 @@ def postprocess_candidates(
                         f"outside_background_min="
                         f"{outside_background_min:.3f} "
                         f"isolated_small_photo_suspected="
-                        f"{isolated_small_photo_suspected}"
+                        f"{isolated_small_photo_suspected} "
+                        f"fragment_candidate_suspected="
+                        f"{fragment_candidate_suspected} "
+                        f"center_x="
+                        f"{fragment_center_x:.1f} "
+                        f"center_y="
+                        f"{fragment_center_y:.1f} "
+                        f"center_x_ratio="
+                        f"{fragment_center_x_ratio:.3f} "
+                        f"center_y_ratio="
+                        f"{fragment_center_y_ratio:.3f}"
                     )
+
+                    if fragment_candidate_suspected:
+                        background_transition_threshold = (
+                            0.75
+                        )
+
+                        def find_background_transition(
+                            direction,
+                            immediate_ratio,
+                            max_distance,
+                        ):
+                            if (
+                                immediate_ratio
+                                >= background_transition_threshold
+                            ):
+                                if direction == "top":
+                                    position = y
+                                elif direction == "bottom":
+                                    position = y + h
+                                elif direction == "left":
+                                    position = x
+                                else:
+                                    position = x + w
+
+                                return (
+                                    position,
+                                    0,
+                                    immediate_ratio,
+                                )
+
+                            distance = outside_band_size
+
+                            while distance <= max_distance:
+                                if direction == "top":
+                                    band_end = (
+                                        y - distance
+                                    )
+
+                                    if band_end <= 0:
+                                        break
+
+                                    band_start = max(
+                                        0,
+                                        band_end
+                                        - outside_band_size,
+                                    )
+
+                                    region = image[
+                                        band_start:band_end,
+                                        x:x + w,
+                                    ]
+
+                                    position = band_end
+
+                                elif direction == "bottom":
+                                    band_start = (
+                                        y + h + distance
+                                    )
+
+                                    if (
+                                        band_start
+                                        >= image_height
+                                    ):
+                                        break
+
+                                    band_end = min(
+                                        image_height,
+                                        band_start
+                                        + outside_band_size,
+                                    )
+
+                                    region = image[
+                                        band_start:band_end,
+                                        x:x + w,
+                                    ]
+
+                                    position = band_start
+
+                                elif direction == "left":
+                                    band_end = (
+                                        x - distance
+                                    )
+
+                                    if band_end <= 0:
+                                        break
+
+                                    band_start = max(
+                                        0,
+                                        band_end
+                                        - outside_band_size,
+                                    )
+
+                                    region = image[
+                                        y:y + h,
+                                        band_start:band_end,
+                                    ]
+
+                                    position = band_end
+
+                                else:
+                                    band_start = (
+                                        x + w + distance
+                                    )
+
+                                    if (
+                                        band_start
+                                        >= image_width
+                                    ):
+                                        break
+
+                                    band_end = min(
+                                        image_width,
+                                        band_start
+                                        + outside_band_size,
+                                    )
+
+                                    region = image[
+                                        y:y + h,
+                                        band_start:band_end,
+                                    ]
+
+                                    position = band_start
+
+                                background_ratio = (
+                                    outside_background_ratio(
+                                        region
+                                    )
+                                )
+
+                                if (
+                                    background_ratio
+                                    >= background_transition_threshold
+                                ):
+                                    return (
+                                        position,
+                                        distance,
+                                        background_ratio,
+                                    )
+
+                                distance += (
+                                    outside_band_size
+                                )
+
+                            return (
+                                -1,
+                                -1,
+                                -1.0,
+                            )
+
+                        max_vertical_transition_distance = int(
+                            relative_median_height
+                        )
+
+                        max_horizontal_transition_distance = int(
+                            relative_median_width
+                        )
+
+                        (
+                            top_transition_position,
+                            top_transition_distance,
+                            top_transition_ratio,
+                        ) = find_background_transition(
+                            "top",
+                            top_background_ratio,
+                            max_vertical_transition_distance,
+                        )
+
+                        (
+                            bottom_transition_position,
+                            bottom_transition_distance,
+                            bottom_transition_ratio,
+                        ) = find_background_transition(
+                            "bottom",
+                            bottom_background_ratio,
+                            max_vertical_transition_distance,
+                        )
+
+                        (
+                            left_transition_position,
+                            left_transition_distance,
+                            left_transition_ratio,
+                        ) = find_background_transition(
+                            "left",
+                            left_background_ratio,
+                            max_horizontal_transition_distance,
+                        )
+
+                        (
+                            right_transition_position,
+                            right_transition_distance,
+                            right_transition_ratio,
+                        ) = find_background_transition(
+                            "right",
+                            right_background_ratio,
+                            max_horizontal_transition_distance,
+                        )
+
+                        def measure_transition_persistence(
+                            direction,
+                            transition_position,
+                        ):
+                            if transition_position < 0:
+                                return (
+                                    0,
+                                    [],
+                                )
+
+                            persistence_ratios = []
+
+                            for step in range(
+                                1,
+                                4,
+                            ):
+                                offset = (
+                                    step
+                                    * outside_band_size
+                                )
+
+                                if direction == "top":
+                                    band_end = (
+                                        transition_position
+                                        - offset
+                                    )
+
+                                    if band_end <= 0:
+                                        break
+
+                                    band_start = max(
+                                        0,
+                                        band_end
+                                        - outside_band_size,
+                                    )
+
+                                    region = image[
+                                        band_start:band_end,
+                                        x:x + w,
+                                    ]
+
+                                elif direction == "bottom":
+                                    band_start = (
+                                        transition_position
+                                        + offset
+                                    )
+
+                                    if (
+                                        band_start
+                                        >= image_height
+                                    ):
+                                        break
+
+                                    band_end = min(
+                                        image_height,
+                                        band_start
+                                        + outside_band_size,
+                                    )
+
+                                    region = image[
+                                        band_start:band_end,
+                                        x:x + w,
+                                    ]
+
+                                elif direction == "left":
+                                    band_end = (
+                                        transition_position
+                                        - offset
+                                    )
+
+                                    if band_end <= 0:
+                                        break
+
+                                    band_start = max(
+                                        0,
+                                        band_end
+                                        - outside_band_size,
+                                    )
+
+                                    region = image[
+                                        y:y + h,
+                                        band_start:band_end,
+                                    ]
+
+                                else:
+                                    band_start = (
+                                        transition_position
+                                        + offset
+                                    )
+
+                                    if (
+                                        band_start
+                                        >= image_width
+                                    ):
+                                        break
+
+                                    band_end = min(
+                                        image_width,
+                                        band_start
+                                        + outside_band_size,
+                                    )
+
+                                    region = image[
+                                        y:y + h,
+                                        band_start:band_end,
+                                    ]
+
+                                background_ratio = (
+                                    outside_background_ratio(
+                                        region
+                                    )
+                                )
+
+                                persistence_ratios.append(
+                                    background_ratio
+                                )
+
+                            persistence_count = sum(
+                                ratio
+                                >= background_transition_threshold
+                                for ratio
+                                in persistence_ratios
+                            )
+
+                            return (
+                                persistence_count,
+                                persistence_ratios,
+                            )
+
+                        (
+                            top_persistence_count,
+                            top_persistence_ratios,
+                        ) = measure_transition_persistence(
+                            "top",
+                            top_transition_position,
+                        )
+
+                        (
+                            bottom_persistence_count,
+                            bottom_persistence_ratios,
+                        ) = measure_transition_persistence(
+                            "bottom",
+                            bottom_transition_position,
+                        )
+
+                        (
+                            left_persistence_count,
+                            left_persistence_ratios,
+                        ) = measure_transition_persistence(
+                            "left",
+                            left_transition_position,
+                        )
+
+                        (
+                            right_persistence_count,
+                            right_persistence_ratios,
+                        ) = measure_transition_persistence(
+                            "right",
+                            right_transition_position,
+                        )
+
+                        write_detection_log(
+                            "postprocess fragment transition "
+                            "persistence "
+                            f"number={candidate_number} "
+                            f"top_count="
+                            f"{top_persistence_count} "
+                            f"top_ratios="
+                            f"{[round(value, 3) for value in top_persistence_ratios]} "
+                            f"bottom_count="
+                            f"{bottom_persistence_count} "
+                            f"bottom_ratios="
+                            f"{[round(value, 3) for value in bottom_persistence_ratios]} "
+                            f"left_count="
+                            f"{left_persistence_count} "
+                            f"left_ratios="
+                            f"{[round(value, 3) for value in left_persistence_ratios]} "
+                            f"right_count="
+                            f"{right_persistence_count} "
+                            f"right_ratios="
+                            f"{[round(value, 3) for value in right_persistence_ratios]}"
+                        )
+
+                        def measure_transition_edge(
+                            direction,
+                            transition_position,
+                        ):
+                            if transition_position < 0:
+                                return (
+                                    -1,
+                                    0.0,
+                                    0.0,
+                                )
+
+                            edge_half_band = max(
+                                10,
+                                outside_band_size,
+                            )
+
+                            if direction in (
+                                "top",
+                                "bottom",
+                            ):
+                                search_start = max(
+                                    0,
+                                    transition_position
+                                    - edge_half_band,
+                                )
+
+                                search_end = min(
+                                    image_height,
+                                    transition_position
+                                    + edge_half_band,
+                                )
+
+                                region = edges[
+                                    search_start:search_end,
+                                    x:x + w,
+                                ]
+
+                                if region.size == 0:
+                                    return (
+                                        -1,
+                                        0.0,
+                                        0.0,
+                                    )
+
+                                line_ratios = (
+                                    np.count_nonzero(
+                                        region,
+                                        axis=1,
+                                    )
+                                    / region.shape[1]
+                                )
+
+                                best_index = int(
+                                    np.argmax(
+                                        line_ratios
+                                    )
+                                )
+
+                                edge_position = (
+                                    search_start
+                                    + best_index
+                                )
+
+                                edge_evidence = float(
+                                    line_ratios[
+                                        best_index
+                                    ]
+                                )
+
+                                edge_run_ratio = (
+                                    longest_edge_run_ratio(
+                                        region[
+                                            best_index,
+                                            :,
+                                        ]
+                                    )
+                                )
+
+                            else:
+                                search_start = max(
+                                    0,
+                                    transition_position
+                                    - edge_half_band,
+                                )
+
+                                search_end = min(
+                                    image_width,
+                                    transition_position
+                                    + edge_half_band,
+                                )
+
+                                region = edges[
+                                    y:y + h,
+                                    search_start:search_end,
+                                ]
+
+                                if region.size == 0:
+                                    return (
+                                        -1,
+                                        0.0,
+                                        0.0,
+                                    )
+
+                                line_ratios = (
+                                    np.count_nonzero(
+                                        region,
+                                        axis=0,
+                                    )
+                                    / region.shape[0]
+                                )
+
+                                best_index = int(
+                                    np.argmax(
+                                        line_ratios
+                                    )
+                                )
+
+                                edge_position = (
+                                    search_start
+                                    + best_index
+                                )
+
+                                edge_evidence = float(
+                                    line_ratios[
+                                        best_index
+                                    ]
+                                )
+
+                                edge_run_ratio = (
+                                    longest_edge_run_ratio(
+                                        region[
+                                            :,
+                                            best_index,
+                                        ]
+                                    )
+                                )
+
+                            return (
+                                edge_position,
+                                edge_evidence,
+                                edge_run_ratio,
+                            )
+
+                        (
+                            top_transition_edge_position,
+                            top_transition_edge_evidence,
+                            top_transition_edge_run_ratio,
+                        ) = measure_transition_edge(
+                            "top",
+                            top_transition_position,
+                        )
+
+                        (
+                            bottom_transition_edge_position,
+                            bottom_transition_edge_evidence,
+                            bottom_transition_edge_run_ratio,
+                        ) = measure_transition_edge(
+                            "bottom",
+                            bottom_transition_position,
+                        )
+
+                        (
+                            left_transition_edge_position,
+                            left_transition_edge_evidence,
+                            left_transition_edge_run_ratio,
+                        ) = measure_transition_edge(
+                            "left",
+                            left_transition_position,
+                        )
+
+                        (
+                            right_transition_edge_position,
+                            right_transition_edge_evidence,
+                            right_transition_edge_run_ratio,
+                        ) = measure_transition_edge(
+                            "right",
+                            right_transition_position,
+                        )
+
+                        write_detection_log(
+                            "postprocess fragment background "
+                            "transition "
+                            f"number={candidate_number} "
+                            f"top_position="
+                            f"{top_transition_position} "
+                            f"top_distance="
+                            f"{top_transition_distance} "
+                            f"top_ratio="
+                            f"{top_transition_ratio:.3f} "
+                            f"top_edge_position="
+                            f"{top_transition_edge_position} "
+                            f"top_edge_evidence="
+                            f"{top_transition_edge_evidence:.3f} "
+                            f"top_edge_run_ratio="
+                            f"{top_transition_edge_run_ratio:.3f} "
+                            f"bottom_position="
+                            f"{bottom_transition_position} "
+                            f"bottom_distance="
+                            f"{bottom_transition_distance} "
+                            f"bottom_ratio="
+                            f"{bottom_transition_ratio:.3f} "
+                            f"bottom_edge_position="
+                            f"{bottom_transition_edge_position} "
+                            f"bottom_edge_evidence="
+                            f"{bottom_transition_edge_evidence:.3f} "
+                            f"bottom_edge_run_ratio="
+                            f"{bottom_transition_edge_run_ratio:.3f} "
+                            f"left_position="
+                            f"{left_transition_position} "
+                            f"left_distance="
+                            f"{left_transition_distance} "
+                            f"left_ratio="
+                            f"{left_transition_ratio:.3f} "
+                            f"left_edge_position="
+                            f"{left_transition_edge_position} "
+                            f"left_edge_evidence="
+                            f"{left_transition_edge_evidence:.3f} "
+                            f"left_edge_run_ratio="
+                            f"{left_transition_edge_run_ratio:.3f} "
+                            f"right_position="
+                            f"{right_transition_position} "
+                            f"right_distance="
+                            f"{right_transition_distance} "
+                            f"right_ratio="
+                            f"{right_transition_ratio:.3f} "
+                            f"right_edge_position="
+                            f"{right_transition_edge_position} "
+                            f"right_edge_evidence="
+                            f"{right_transition_edge_evidence:.3f} "
+                            f"right_edge_run_ratio="
+                            f"{right_transition_edge_run_ratio:.3f}"
+                        )
+
+                        def measure_background_contrast(
+                            direction,
+                            transition_position,
+                        ):
+                            if transition_position < 0:
+                                return (
+                                    -1.0,
+                                    -1.0,
+                                    -1.0,
+                                )
+
+                            contrast_band_size = (
+                                outside_band_size
+                            )
+
+                            if direction == "top":
+                                outside_region = image[
+                                    max(
+                                        0,
+                                        transition_position
+                                        - contrast_band_size,
+                                    ):transition_position,
+                                    x:x + w,
+                                ]
+
+                                inside_region = image[
+                                    transition_position:min(
+                                        image_height,
+                                        transition_position
+                                        + contrast_band_size,
+                                    ),
+                                    x:x + w,
+                                ]
+
+                            elif direction == "bottom":
+                                inside_region = image[
+                                    max(
+                                        0,
+                                        transition_position
+                                        - contrast_band_size,
+                                    ):transition_position,
+                                    x:x + w,
+                                ]
+
+                                outside_region = image[
+                                    transition_position:min(
+                                        image_height,
+                                        transition_position
+                                        + contrast_band_size,
+                                    ),
+                                    x:x + w,
+                                ]
+
+                            elif direction == "left":
+                                outside_region = image[
+                                    y:y + h,
+                                    max(
+                                        0,
+                                        transition_position
+                                        - contrast_band_size,
+                                    ):transition_position,
+                                ]
+
+                                inside_region = image[
+                                    y:y + h,
+                                    transition_position:min(
+                                        image_width,
+                                        transition_position
+                                        + contrast_band_size,
+                                    ),
+                                ]
+
+                            else:
+                                inside_region = image[
+                                    y:y + h,
+                                    max(
+                                        0,
+                                        transition_position
+                                        - contrast_band_size,
+                                    ):transition_position,
+                                ]
+
+                                outside_region = image[
+                                    y:y + h,
+                                    transition_position:min(
+                                        image_width,
+                                        transition_position
+                                        + contrast_band_size,
+                                    ),
+                                ]
+
+                            inside_ratio = (
+                                outside_background_ratio(
+                                    inside_region
+                                )
+                            )
+
+                            outside_ratio = (
+                                outside_background_ratio(
+                                    outside_region
+                                )
+                            )
+
+                            if (
+                                inside_ratio < 0.0
+                                or outside_ratio < 0.0
+                            ):
+                                contrast = -1.0
+                            else:
+                                contrast = (
+                                    outside_ratio
+                                    - inside_ratio
+                                )
+
+                            return (
+                                inside_ratio,
+                                outside_ratio,
+                                contrast,
+                            )
+
+                        (
+                            top_inside_background_ratio,
+                            top_outside_background_ratio,
+                            top_background_contrast,
+                        ) = measure_background_contrast(
+                            "top",
+                            top_transition_position,
+                        )
+
+                        (
+                            bottom_inside_background_ratio,
+                            bottom_outside_background_ratio,
+                            bottom_background_contrast,
+                        ) = measure_background_contrast(
+                            "bottom",
+                            bottom_transition_position,
+                        )
+
+                        (
+                            left_inside_background_ratio,
+                            left_outside_background_ratio,
+                            left_background_contrast,
+                        ) = measure_background_contrast(
+                            "left",
+                            left_transition_position,
+                        )
+
+                        (
+                            right_inside_background_ratio,
+                            right_outside_background_ratio,
+                            right_background_contrast,
+                        ) = measure_background_contrast(
+                            "right",
+                            right_transition_position,
+                        )
+
+                        top_distance_ratio = -1.0
+                        bottom_distance_ratio = -1.0
+                        left_distance_ratio = -1.0
+                        right_distance_ratio = -1.0
+
+                        if (
+                            top_transition_distance >= 0
+                            and relative_median_height > 0.0
+                        ):
+                            top_distance_ratio = (
+                                top_transition_distance
+                                / relative_median_height
+                            )
+
+                        if (
+                            bottom_transition_distance >= 0
+                            and relative_median_height > 0.0
+                        ):
+                            bottom_distance_ratio = (
+                                bottom_transition_distance
+                                / relative_median_height
+                            )
+
+                        if (
+                            left_transition_distance >= 0
+                            and relative_median_width > 0.0
+                        ):
+                            left_distance_ratio = (
+                                left_transition_distance
+                                / relative_median_width
+                            )
+
+                        if (
+                            right_transition_distance >= 0
+                            and relative_median_width > 0.0
+                        ):
+                            right_distance_ratio = (
+                                right_transition_distance
+                                / relative_median_width
+                            )
+
+                        boundary_contrast_threshold = 0.40
+                        boundary_distance_threshold = 0.35
+
+                        top_near_strong_boundary = (
+                            top_background_contrast
+                            >= boundary_contrast_threshold
+                            and top_distance_ratio >= 0.0
+                            and top_distance_ratio
+                            <= boundary_distance_threshold
+                        )
+
+                        bottom_near_strong_boundary = (
+                            bottom_background_contrast
+                            >= boundary_contrast_threshold
+                            and bottom_distance_ratio >= 0.0
+                            and bottom_distance_ratio
+                            <= boundary_distance_threshold
+                        )
+
+                        left_near_strong_boundary = (
+                            left_background_contrast
+                            >= boundary_contrast_threshold
+                            and left_distance_ratio >= 0.0
+                            and left_distance_ratio
+                            <= boundary_distance_threshold
+                        )
+
+                        right_near_strong_boundary = (
+                            right_background_contrast
+                            >= boundary_contrast_threshold
+                            and right_distance_ratio >= 0.0
+                            and right_distance_ratio
+                            <= boundary_distance_threshold
+                        )
+
+                        write_detection_log(
+                            "postprocess fragment background "
+                            "contrast "
+                            f"number={candidate_number} "
+                            f"top_inside="
+                            f"{top_inside_background_ratio:.3f} "
+                            f"top_outside="
+                            f"{top_outside_background_ratio:.3f} "
+                            f"top_contrast="
+                            f"{top_background_contrast:.3f} "
+                            f"top_distance_ratio="
+                            f"{top_distance_ratio:.3f} "
+                            f"top_near_strong_boundary="
+                            f"{top_near_strong_boundary} "
+                            f"bottom_inside="
+                            f"{bottom_inside_background_ratio:.3f} "
+                            f"bottom_outside="
+                            f"{bottom_outside_background_ratio:.3f} "
+                            f"bottom_contrast="
+                            f"{bottom_background_contrast:.3f} "
+                            f"bottom_distance_ratio="
+                            f"{bottom_distance_ratio:.3f} "
+                            f"bottom_near_strong_boundary="
+                            f"{bottom_near_strong_boundary} "
+                            f"left_inside="
+                            f"{left_inside_background_ratio:.3f} "
+                            f"left_outside="
+                            f"{left_outside_background_ratio:.3f} "
+                            f"left_contrast="
+                            f"{left_background_contrast:.3f} "
+                            f"left_distance_ratio="
+                            f"{left_distance_ratio:.3f} "
+                            f"left_near_strong_boundary="
+                            f"{left_near_strong_boundary} "
+                            f"right_inside="
+                            f"{right_inside_background_ratio:.3f} "
+                            f"right_outside="
+                            f"{right_outside_background_ratio:.3f} "
+                            f"right_contrast="
+                            f"{right_background_contrast:.3f} "
+                            f"right_distance_ratio="
+                            f"{right_distance_ratio:.3f} "
+                            f"right_near_strong_boundary="
+                            f"{right_near_strong_boundary}"
+                        )
+
+                        top_confirmed_boundary = (
+                            top_near_strong_boundary
+                            and top_persistence_count >= 2
+                        )
+
+                        bottom_confirmed_boundary = (
+                            bottom_near_strong_boundary
+                            and bottom_persistence_count >= 2
+                        )
+
+                        left_confirmed_boundary = (
+                            left_near_strong_boundary
+                            and left_persistence_count >= 2
+                        )
+
+                        right_confirmed_boundary = (
+                            right_near_strong_boundary
+                            and right_persistence_count >= 2
+                        )
+
+                        write_detection_log(
+                            "postprocess fragment confirmed "
+                            "boundary "
+                            f"number={candidate_number} "
+                            f"top={top_confirmed_boundary} "
+                            f"bottom={bottom_confirmed_boundary} "
+                            f"left={left_confirmed_boundary} "
+                            f"right={right_confirmed_boundary}"
+                        )
+
+                        expected_opposite_top = -1
+                        expected_opposite_bottom = -1
+                        expected_opposite_left = -1
+                        expected_opposite_right = -1
+
+                        top_search_start = -1
+                        top_search_end = -1
+                        bottom_search_start = -1
+                        bottom_search_end = -1
+                        left_search_start = -1
+                        left_search_end = -1
+                        right_search_start = -1
+                        right_search_end = -1
+
+                        vertical_search_margin = int(
+                            relative_median_height
+                            * 0.15
+                        )
+
+                        horizontal_search_margin = int(
+                            relative_median_width
+                            * 0.15
+                        )
+
+                        if (
+                            top_confirmed_boundary
+                            and top_transition_position >= 0
+                        ):
+                            expected_opposite_bottom = int(
+                                top_transition_position
+                                + relative_median_height
+                            )
+
+                            bottom_search_start = max(
+                                0,
+                                expected_opposite_bottom
+                                - vertical_search_margin,
+                            )
+
+                            bottom_search_end = min(
+                                image_height,
+                                expected_opposite_bottom
+                                + vertical_search_margin,
+                            )
+
+                        if (
+                            bottom_confirmed_boundary
+                            and bottom_transition_position >= 0
+                        ):
+                            expected_opposite_top = int(
+                                bottom_transition_position
+                                - relative_median_height
+                            )
+
+                            top_search_start = max(
+                                0,
+                                expected_opposite_top
+                                - vertical_search_margin,
+                            )
+
+                            top_search_end = min(
+                                image_height,
+                                expected_opposite_top
+                                + vertical_search_margin,
+                            )
+
+                        if (
+                            left_confirmed_boundary
+                            and left_transition_position >= 0
+                        ):
+                            expected_opposite_right = int(
+                                left_transition_position
+                                + relative_median_width
+                            )
+
+                            right_search_start = max(
+                                0,
+                                expected_opposite_right
+                                - horizontal_search_margin,
+                            )
+
+                            right_search_end = min(
+                                image_width,
+                                expected_opposite_right
+                                + horizontal_search_margin,
+                            )
+
+                        if (
+                            right_confirmed_boundary
+                            and right_transition_position >= 0
+                        ):
+                            expected_opposite_left = int(
+                                right_transition_position
+                                - relative_median_width
+                            )
+
+                            left_search_start = max(
+                                0,
+                                expected_opposite_left
+                                - horizontal_search_margin,
+                            )
+
+                            left_search_end = min(
+                                image_width,
+                                expected_opposite_left
+                                + horizontal_search_margin,
+                            )
+
+                        write_detection_log(
+                            "postprocess fragment opposite "
+                            "boundary search "
+                            f"number={candidate_number} "
+                            f"expected_top="
+                            f"{expected_opposite_top} "
+                            f"top_range="
+                            f"({top_search_start},"
+                            f"{top_search_end}) "
+                            f"expected_bottom="
+                            f"{expected_opposite_bottom} "
+                            f"bottom_range="
+                            f"({bottom_search_start},"
+                            f"{bottom_search_end}) "
+                            f"expected_left="
+                            f"{expected_opposite_left} "
+                            f"left_range="
+                            f"({left_search_start},"
+                            f"{left_search_end}) "
+                            f"expected_right="
+                            f"{expected_opposite_right} "
+                            f"right_range="
+                            f"({right_search_start},"
+                            f"{right_search_end})"
+                        )
+
+                        def find_opposite_boundary_candidate(
+                            direction,
+                            search_start,
+                            search_end,
+                        ):
+                            if (
+                                search_start < 0
+                                or search_end < 0
+                                or search_end <= search_start
+                            ):
+                                return (
+                                    -1,
+                                    -1.0,
+                                    -1.0,
+                                    -1.0,
+                                    0,
+                                    False,
+                                )
+
+                            scan_step = max(
+                                5,
+                                outside_band_size // 2,
+                            )
+
+                            best_position = -1
+                            best_inside_ratio = -1.0
+                            best_outside_ratio = -1.0
+                            best_contrast = -1.0
+                            best_persistence_count = 0
+
+                            for position in range(
+                                search_start,
+                                search_end + 1,
+                                scan_step,
+                            ):
+                                (
+                                    inside_ratio,
+                                    outside_ratio,
+                                    contrast,
+                                ) = measure_background_contrast(
+                                    direction,
+                                    position,
+                                )
+
+                                (
+                                    persistence_count,
+                                    persistence_ratios,
+                                ) = measure_transition_persistence(
+                                    direction,
+                                    position,
+                                )
+
+                                if contrast > best_contrast:
+                                    best_position = position
+                                    best_inside_ratio = (
+                                        inside_ratio
+                                    )
+                                    best_outside_ratio = (
+                                        outside_ratio
+                                    )
+                                    best_contrast = contrast
+                                    best_persistence_count = (
+                                        persistence_count
+                                    )
+
+                            qualified = (
+                                best_position >= 0
+                                and best_outside_ratio >= 0.75
+                                and best_contrast >= 0.40
+                                and best_persistence_count >= 2
+                            )
+
+                            return (
+                                best_position,
+                                best_inside_ratio,
+                                best_outside_ratio,
+                                best_contrast,
+                                best_persistence_count,
+                                qualified,
+                            )
+
+                        (
+                            opposite_top_position,
+                            opposite_top_inside,
+                            opposite_top_outside,
+                            opposite_top_contrast,
+                            opposite_top_persistence,
+                            opposite_top_qualified,
+                        ) = find_opposite_boundary_candidate(
+                            "top",
+                            top_search_start,
+                            top_search_end,
+                        )
+
+                        (
+                            opposite_bottom_position,
+                            opposite_bottom_inside,
+                            opposite_bottom_outside,
+                            opposite_bottom_contrast,
+                            opposite_bottom_persistence,
+                            opposite_bottom_qualified,
+                        ) = find_opposite_boundary_candidate(
+                            "bottom",
+                            bottom_search_start,
+                            bottom_search_end,
+                        )
+
+                        (
+                            opposite_left_position,
+                            opposite_left_inside,
+                            opposite_left_outside,
+                            opposite_left_contrast,
+                            opposite_left_persistence,
+                            opposite_left_qualified,
+                        ) = find_opposite_boundary_candidate(
+                            "left",
+                            left_search_start,
+                            left_search_end,
+                        )
+
+                        (
+                            opposite_right_position,
+                            opposite_right_inside,
+                            opposite_right_outside,
+                            opposite_right_contrast,
+                            opposite_right_persistence,
+                            opposite_right_qualified,
+                        ) = find_opposite_boundary_candidate(
+                            "right",
+                            right_search_start,
+                            right_search_end,
+                        )
+
+                        write_detection_log(
+                            "postprocess fragment opposite "
+                            "boundary candidate "
+                            f"number={candidate_number} "
+                            f"top_position="
+                            f"{opposite_top_position} "
+                            f"top_inside="
+                            f"{opposite_top_inside:.3f} "
+                            f"top_outside="
+                            f"{opposite_top_outside:.3f} "
+                            f"top_contrast="
+                            f"{opposite_top_contrast:.3f} "
+                            f"top_persistence="
+                            f"{opposite_top_persistence} "
+                            f"top_qualified="
+                            f"{opposite_top_qualified} "
+                            f"bottom_position="
+                            f"{opposite_bottom_position} "
+                            f"bottom_inside="
+                            f"{opposite_bottom_inside:.3f} "
+                            f"bottom_outside="
+                            f"{opposite_bottom_outside:.3f} "
+                            f"bottom_contrast="
+                            f"{opposite_bottom_contrast:.3f} "
+                            f"bottom_persistence="
+                            f"{opposite_bottom_persistence} "
+                            f"bottom_qualified="
+                            f"{opposite_bottom_qualified} "
+                            f"left_position="
+                            f"{opposite_left_position} "
+                            f"left_inside="
+                            f"{opposite_left_inside:.3f} "
+                            f"left_outside="
+                            f"{opposite_left_outside:.3f} "
+                            f"left_contrast="
+                            f"{opposite_left_contrast:.3f} "
+                            f"left_persistence="
+                            f"{opposite_left_persistence} "
+                            f"left_qualified="
+                            f"{opposite_left_qualified} "
+                            f"right_position="
+                            f"{opposite_right_position} "
+                            f"right_inside="
+                            f"{opposite_right_inside:.3f} "
+                            f"right_outside="
+                            f"{opposite_right_outside:.3f} "
+                            f"right_contrast="
+                            f"{opposite_right_contrast:.3f} "
+                            f"right_persistence="
+                            f"{opposite_right_persistence} "
+                            f"right_qualified="
+                            f"{opposite_right_qualified}"
+                        )
+
+                        def log_opposite_boundary_top_candidates(
+                            direction,
+                            search_start,
+                            search_end,
+                            expected_position,
+                        ):
+                            if (
+                                search_start < 0
+                                or search_end < 0
+                                or search_end <= search_start
+                                or expected_position < 0
+                            ):
+                                return
+
+                            scan_step = max(
+                                5,
+                                outside_band_size // 2,
+                            )
+
+                            ranked_candidates = []
+
+                            for position in range(
+                                search_start,
+                                search_end + 1,
+                                scan_step,
+                            ):
+                                (
+                                    inside_ratio,
+                                    outside_ratio,
+                                    contrast,
+                                ) = measure_background_contrast(
+                                    direction,
+                                    position,
+                                )
+
+                                (
+                                    persistence_count,
+                                    persistence_ratios,
+                                ) = measure_transition_persistence(
+                                    direction,
+                                    position,
+                                )
+
+                                distance_from_expected = abs(
+                                    position
+                                    - expected_position
+                                )
+
+                                ranked_candidates.append(
+                                    (
+                                        contrast,
+                                        position,
+                                        inside_ratio,
+                                        outside_ratio,
+                                        persistence_count,
+                                        distance_from_expected,
+                                    )
+                                )
+
+                            ranked_candidates.sort(
+                                key=lambda item: item[0],
+                                reverse=True,
+                            )
+
+                            top_candidates = (
+                                ranked_candidates[:3]
+                            )
+
+                            for rank, (
+                                contrast,
+                                position,
+                                inside_ratio,
+                                outside_ratio,
+                                persistence_count,
+                                distance_from_expected,
+                            ) in enumerate(
+                                top_candidates,
+                                start=1,
+                            ):
+                                write_detection_log(
+                                    "postprocess fragment opposite "
+                                    "boundary ranked "
+                                    f"number={candidate_number} "
+                                    f"direction={direction} "
+                                    f"rank={rank} "
+                                    f"position={position} "
+                                    f"inside="
+                                    f"{inside_ratio:.3f} "
+                                    f"outside="
+                                    f"{outside_ratio:.3f} "
+                                    f"contrast="
+                                    f"{contrast:.3f} "
+                                    f"persistence="
+                                    f"{persistence_count} "
+                                    f"distance_from_expected="
+                                    f"{distance_from_expected}"
+                                )
+
+                        log_opposite_boundary_top_candidates(
+                            "top",
+                            top_search_start,
+                            top_search_end,
+                            expected_opposite_top,
+                        )
+
+                        log_opposite_boundary_top_candidates(
+                            "bottom",
+                            bottom_search_start,
+                            bottom_search_end,
+                            expected_opposite_bottom,
+                        )
+
+                        log_opposite_boundary_top_candidates(
+                            "left",
+                            left_search_start,
+                            left_search_end,
+                            expected_opposite_left,
+                        )
+
+                        log_opposite_boundary_top_candidates(
+                            "right",
+                            right_search_start,
+                            right_search_end,
+                            expected_opposite_right,
+                        )
+
+                        def log_opposite_boundary_margin_sweep(
+                            direction,
+                            expected_position,
+                        ):
+                            if expected_position < 0:
+                                return
+
+                            if direction in (
+                                "top",
+                                "bottom",
+                            ):
+                                representative_size = (
+                                    relative_median_height
+                                )
+
+                                axis_limit = image_height
+
+                            else:
+                                representative_size = (
+                                    relative_median_width
+                                )
+
+                                axis_limit = image_width
+
+                            for margin_ratio in (
+                                0.15,
+                                0.30,
+                                0.50,
+                            ):
+                                search_margin = int(
+                                    representative_size
+                                    * margin_ratio
+                                )
+
+                                search_start = max(
+                                    0,
+                                    expected_position
+                                    - search_margin,
+                                )
+
+                                search_end = min(
+                                    axis_limit,
+                                    expected_position
+                                    + search_margin,
+                                )
+
+                                (
+                                    position,
+                                    inside_ratio,
+                                    outside_ratio,
+                                    contrast,
+                                    persistence_count,
+                                    qualified,
+                                ) = find_opposite_boundary_candidate(
+                                    direction,
+                                    search_start,
+                                    search_end,
+                                )
+
+                                distance_from_expected = -1
+
+                                if position >= 0:
+                                    distance_from_expected = abs(
+                                        position
+                                        - expected_position
+                                    )
+
+                                write_detection_log(
+                                    "postprocess fragment opposite "
+                                    "boundary margin sweep "
+                                    f"number={candidate_number} "
+                                    f"direction={direction} "
+                                    f"margin_ratio="
+                                    f"{margin_ratio:.2f} "
+                                    f"range="
+                                    f"({search_start},"
+                                    f"{search_end}) "
+                                    f"position={position} "
+                                    f"inside="
+                                    f"{inside_ratio:.3f} "
+                                    f"outside="
+                                    f"{outside_ratio:.3f} "
+                                    f"contrast="
+                                    f"{contrast:.3f} "
+                                    f"persistence="
+                                    f"{persistence_count} "
+                                    f"qualified={qualified} "
+                                    f"distance_from_expected="
+                                    f"{distance_from_expected}"
+                                )
+
+                        log_opposite_boundary_margin_sweep(
+                            "top",
+                            expected_opposite_top,
+                        )
+
+                        log_opposite_boundary_margin_sweep(
+                            "bottom",
+                            expected_opposite_bottom,
+                        )
+
+                        log_opposite_boundary_margin_sweep(
+                            "left",
+                            expected_opposite_left,
+                        )
+
+                        log_opposite_boundary_margin_sweep(
+                            "right",
+                            expected_opposite_right,
+                        )
+
+                        provisional_left = x
+                        provisional_top = y
+                        provisional_right = x + w
+                        provisional_bottom = y + h
+
+                        if (
+                            left_confirmed_boundary
+                            and left_transition_position >= 0
+                        ):
+                            provisional_left = (
+                                left_transition_position
+                            )
+
+                        if (
+                            top_confirmed_boundary
+                            and top_transition_position >= 0
+                        ):
+                            provisional_top = (
+                                top_transition_position
+                            )
+
+                        if (
+                            right_confirmed_boundary
+                            and right_transition_position >= 0
+                        ):
+                            provisional_right = (
+                                right_transition_position
+                            )
+
+                        if (
+                            bottom_confirmed_boundary
+                            and bottom_transition_position >= 0
+                        ):
+                            provisional_bottom = (
+                                bottom_transition_position
+                            )
+
+                        provisional_left = max(
+                            0,
+                            min(
+                                image_width,
+                                provisional_left,
+                            ),
+                        )
+
+                        provisional_right = max(
+                            0,
+                            min(
+                                image_width,
+                                provisional_right,
+                            ),
+                        )
+
+                        provisional_top = max(
+                            0,
+                            min(
+                                image_height,
+                                provisional_top,
+                            ),
+                        )
+
+                        provisional_bottom = max(
+                            0,
+                            min(
+                                image_height,
+                                provisional_bottom,
+                            ),
+                        )
+
+                        provisional_width = max(
+                            0,
+                            provisional_right
+                            - provisional_left,
+                        )
+
+                        provisional_height = max(
+                            0,
+                            provisional_bottom
+                            - provisional_top,
+                        )
+
+                        provisional_width_ratio = 0.0
+                        provisional_height_ratio = 0.0
+                        provisional_area_ratio = 0.0
+
+                        if relative_median_width > 0.0:
+                            provisional_width_ratio = (
+                                provisional_width
+                                / relative_median_width
+                            )
+
+                        if relative_median_height > 0.0:
+                            provisional_height_ratio = (
+                                provisional_height
+                                / relative_median_height
+                            )
+
+                        representative_area = (
+                            relative_median_width
+                            * relative_median_height
+                        )
+
+                        if representative_area > 0.0:
+                            provisional_area_ratio = (
+                                provisional_width
+                                * provisional_height
+                                / representative_area
+                            )
+
+                        expanded_side_count = sum(
+                            (
+                                top_confirmed_boundary,
+                                bottom_confirmed_boundary,
+                                left_confirmed_boundary,
+                                right_confirmed_boundary,
+                            )
+                        )
+
+                        write_detection_log(
+                            "postprocess fragment provisional "
+                            "boundary "
+                            f"number={candidate_number} "
+                            f"rect="
+                            f"({provisional_left},"
+                            f"{provisional_top},"
+                            f"{provisional_width},"
+                            f"{provisional_height}) "
+                            f"expanded_sides="
+                            f"{expanded_side_count} "
+                            f"width_ratio="
+                            f"{provisional_width_ratio:.3f} "
+                            f"height_ratio="
+                            f"{provisional_height_ratio:.3f} "
+                            f"area_ratio="
+                            f"{provisional_area_ratio:.3f}"
+                        )
 
                 expected_horizontal_margin = max(
                     0.0,

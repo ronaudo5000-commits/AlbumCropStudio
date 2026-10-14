@@ -9797,6 +9797,119 @@ class MainWindow(QMainWindow):
 
             return
 
+        # ---------------------------------
+        # 書き出し設定ダイアログ
+        # ---------------------------------
+        from app.export_dialog import ExportDialog
+
+        export_items = []
+        export_unit_keys = []
+
+        for page_index in sorted(
+            export_page_indexes
+        ):
+            page_rects = self.page_rects.get(
+                page_index,
+                [],
+            )
+
+            page_group_ids = (
+                self.page_group_ids.get(
+                    page_index,
+                    [],
+                )
+            )
+
+            crop_count = self.count_crop_units(
+                page_rects,
+                page_group_ids,
+            )
+
+            image_path = self.image_paths[
+                page_index
+            ]
+
+            for crop_index in range(
+                1,
+                crop_count + 1,
+            ):
+                export_items.append(
+                    build_export_filename(
+                        image_path,
+                        crop_index,
+                    )
+                )
+
+                export_unit_keys.append(
+                    (
+                        page_index,
+                        crop_index,
+                    )
+                )
+
+        export_dialog = ExportDialog(
+            export_items,
+            self,
+        )
+
+        if (
+            export_dialog.exec()
+            != QDialog.DialogCode.Accepted
+        ):
+            self.status_label.setText(
+                self.tr(
+                    "書き出しをキャンセルしました"
+                )
+            )
+
+            self.save_button.setEnabled(
+                True
+            )
+
+            self.save_button.setText(
+                self.tr("切り抜き")
+            )
+
+            return
+
+        selected_export_indexes = (
+            export_dialog.selected_export_indexes()
+        )
+
+        selected_export_units = {
+            export_unit_keys[
+                export_index
+            ]
+            for export_index
+            in selected_export_indexes
+            if (
+                0
+                <= export_index
+                < len(export_unit_keys)
+            )
+        }
+
+        if not selected_export_units:
+            self.status_label.setText(
+                self.tr(
+                    "書き出し対象が選択されていません"
+                )
+            )
+
+            self.save_button.setEnabled(
+                True
+            )
+
+            self.save_button.setText(
+                self.tr("切り抜き")
+            )
+
+            return
+
+        total_crops = len(
+            selected_export_units
+        )
+
         self.status_label.setText(
             self.tr(
                 "✂️ 切り抜き中: "
@@ -9849,66 +9962,48 @@ class MainWindow(QMainWindow):
         planned_output_names = set()
         duplicate_output_names = set()
 
-        for page_index in sorted(
-            export_page_indexes
+        for (
+            page_index,
+            crop_index,
+        ) in sorted(
+            selected_export_units
         ):
-            page_rects = self.page_rects.get(
-                page_index,
-                [],
-            )
-
-            page_group_ids = (
-                self.page_group_ids.get(
-                    page_index,
-                    [],
-                )
-            )
-
-            crop_count = self.count_crop_units(
-                page_rects,
-                page_group_ids,
-            )
-
             image_path = self.image_paths[
                 page_index
             ]
 
-            for crop_index in range(
-                1,
-                crop_count + 1,
+            output_filename = (
+                build_export_filename(
+                    image_path,
+                    crop_index,
+                )
+            )
+
+            output_name_key = (
+                output_filename.casefold()
+            )
+
+            if (
+                output_name_key
+                in planned_output_names
             ):
-                output_filename = (
-                    build_export_filename(
-                        image_path,
-                        crop_index,
-                    )
+                duplicate_output_names.add(
+                    output_filename
                 )
-
-                output_name_key = (
-                    output_filename.casefold()
-                )
-
-                if (
+            else:
+                planned_output_names.add(
                     output_name_key
-                    in planned_output_names
-                ):
-                    duplicate_output_names.add(
-                        output_filename
-                    )
-                else:
-                    planned_output_names.add(
-                        output_name_key
-                    )
-
-                output_path = (
-                    output_dir
-                    / output_filename
                 )
 
-                if output_path.exists():
-                    existing_files.append(
-                        output_path
-                    )
+            output_path = (
+                output_dir
+                / output_filename
+            )
+
+            if output_path.exists():
+                existing_files.append(
+                    output_path
+                )
 
         if duplicate_output_names:
             duplicate_text = "\n".join(
@@ -10045,6 +10140,9 @@ class MainWindow(QMainWindow):
             export_page_indexes,
             page_mosaic_angles=(
                 self.page_mosaic_angles
+            ),
+            selected_export_units=(
+                selected_export_units
             ),
         )
 

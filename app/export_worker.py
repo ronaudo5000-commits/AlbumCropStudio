@@ -49,6 +49,7 @@ class CropExportWorker(QObject):
         total_crops,
         export_page_indexes=None,
         page_mosaic_angles=None,
+        selected_export_units=None,
     ):
         super().__init__()
 
@@ -112,6 +113,21 @@ class CropExportWorker(QObject):
                 int(page_index)
                 for page_index
                 in export_page_indexes
+            }
+
+        if selected_export_units is None:
+            self.selected_export_units = None
+        else:
+            self.selected_export_units = {
+                (
+                    int(page_index),
+                    int(crop_index),
+                )
+                for (
+                    page_index,
+                    crop_index,
+                )
+                in selected_export_units
             }
 
     def validate_crop_rect(
@@ -1212,6 +1228,17 @@ class CropExportWorker(QObject):
                         crop_units,
                         start=1,
                     ):
+                        if (
+                            self.selected_export_units
+                            is not None
+                            and (
+                                page_index,
+                                crop_index,
+                            )
+                            not in self.selected_export_units
+                        ):
+                            continue
+
                         prepared_members = []
 
                         is_group_unit = (
