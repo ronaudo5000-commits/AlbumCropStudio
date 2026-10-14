@@ -2,11 +2,14 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -121,6 +124,36 @@ class ExportDialog(QDialog):
         # ---------------------------------
         output_settings_layout = QFormLayout()
 
+        self.output_dir_edit = QLineEdit()
+
+        self.output_dir_edit.setPlaceholderText(
+            self.tr("保存先フォルダを選択")
+        )
+
+        self.output_dir_button = QPushButton(
+            self.tr("参照...")
+        )
+
+        self.output_dir_button.clicked.connect(
+            self.choose_output_directory
+        )
+
+        output_dir_layout = QHBoxLayout()
+
+        output_dir_layout.addWidget(
+            self.output_dir_edit,
+            1,
+        )
+
+        output_dir_layout.addWidget(
+            self.output_dir_button
+        )
+
+        output_settings_layout.addRow(
+            self.tr("保存先"),
+            output_dir_layout,
+        )
+
         self.dpi_spin = QSpinBox()
         self.dpi_spin.setRange(
             200,
@@ -203,7 +236,7 @@ class ExportDialog(QDialog):
         )
 
         self.button_box.accepted.connect(
-            self.accept
+            self.validate_and_accept
         )
 
         self.button_box.rejected.connect(
@@ -307,3 +340,49 @@ class ExportDialog(QDialog):
 
     def selected_margin_mm(self):
         return self.margin_mm_spin.value()
+
+    def choose_output_directory(self):
+        current_directory = (
+            self.output_dir_edit.text().strip()
+        )
+
+        selected_directory = (
+            QFileDialog.getExistingDirectory(
+                self,
+                self.tr(
+                    "保存先フォルダを選択"
+                ),
+                current_directory,
+            )
+        )
+
+        if not selected_directory:
+            return
+
+        self.output_dir_edit.setText(
+            selected_directory
+        )
+
+    def selected_output_directory(self):
+        return (
+            self.output_dir_edit.text().strip()
+        )
+
+    def validate_and_accept(self):
+        if not self.selected_output_directory():
+            QMessageBox.warning(
+                self,
+                self.tr(
+                    "保存先が選択されていません"
+                ),
+                self.tr(
+                    "保存先フォルダを選択してから"
+                    "書き出してください。"
+                ),
+            )
+
+            self.output_dir_edit.setFocus()
+
+            return
+
+        self.accept()

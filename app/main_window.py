@@ -9921,27 +9921,19 @@ class MainWindow(QMainWindow):
         )
 
         output_dir_text = (
-            QFileDialog.getExistingDirectory(
-                self,
-                self.tr(
-                    "保存先フォルダを選択"
-                ),
-                str(
-                    Path(
-                        self.current_image_path
-                    ).parent
-                ),
-            )
+            export_dialog.selected_output_directory()
         )
 
         if not output_dir_text:
             self.status_label.setText(
                 self.tr(
-                    "書き出しをキャンセルしました"
+                    "保存先フォルダを選択してください"
                 )
             )
 
-            self.save_button.setEnabled(True)
+            self.save_button.setEnabled(
+                True
+            )
 
             self.save_button.setText(
                 self.tr("切り抜き")
