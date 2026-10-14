@@ -71,6 +71,7 @@ from app.version import (
 from app.about_dialog import AboutDialog
 from app.config import Config
 from app.settings_dialog import SettingsDialog
+from app.export_job import ExportJob
 
 from app.edition import (
     get_max_pages,
@@ -9900,11 +9901,6 @@ class MainWindow(QMainWindow):
             export_dialog.selected_individual_settings()
         )
 
-        print(
-            "ExportDialog individual settings:",
-            individual_settings,
-        )
-
         individual_export_settings = {}
 
         for (
@@ -9941,11 +9937,6 @@ class MainWindow(QMainWindow):
                     settings["margin_mm"]
                 ),
             }
-
-        print(
-            "MainWindow individual export settings:",
-            individual_export_settings,
-        )
 
         if not selected_export_units:
             self.status_label.setText(
@@ -10170,6 +10161,53 @@ class MainWindow(QMainWindow):
             (margin_mm / 25.4) * dpi
         )
 
+        export_job = ExportJob(
+            image_paths=list(
+                self.image_paths
+            ),
+            page_rects={
+                page_index: list(rects)
+                for page_index, rects
+                in self.page_rects.items()
+            },
+            page_angles={
+                page_index: list(angles)
+                for page_index, angles
+                in self.page_angles.items()
+            },
+            page_group_ids={
+                page_index: list(group_ids)
+                for page_index, group_ids
+                in self.page_group_ids.items()
+            },
+            page_mosaic_rects={
+                page_index: list(mosaic_rects)
+                for page_index, mosaic_rects
+                in self.page_mosaic_rects.items()
+            },
+            output_dir=output_dir,
+            dpi=dpi,
+            margin_px=margin_px,
+            jpeg_quality=jpeg_quality,
+            total_crops=total_crops,
+            export_page_indexes=set(
+                export_page_indexes
+            ),
+            page_mosaic_angles={
+                page_index: list(angles)
+                for page_index, angles
+                in self.page_mosaic_angles.items()
+            },
+            selected_export_units=set(
+                selected_export_units
+            ),
+            individual_export_settings={
+                export_unit: dict(settings)
+                for export_unit, settings
+                in individual_export_settings.items()
+            },
+        )
+
         # 進捗バーを表示
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
@@ -10199,6 +10237,7 @@ class MainWindow(QMainWindow):
             individual_export_settings=(
                 individual_export_settings
             ),
+            export_job=export_job,
         )
 
         self.export_worker.moveToThread(
