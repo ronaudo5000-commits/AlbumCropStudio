@@ -9896,6 +9896,57 @@ class MainWindow(QMainWindow):
             )
         }
 
+        individual_settings = (
+            export_dialog.selected_individual_settings()
+        )
+
+        print(
+            "ExportDialog individual settings:",
+            individual_settings,
+        )
+
+        individual_export_settings = {}
+
+        for (
+            export_index,
+            settings,
+        ) in individual_settings.items():
+            if not (
+                0
+                <= export_index
+                < len(export_unit_keys)
+            ):
+                continue
+
+            export_unit = export_unit_keys[
+                export_index
+            ]
+
+            if (
+                export_unit
+                not in selected_export_units
+            ):
+                continue
+
+            individual_export_settings[
+                export_unit
+            ] = {
+                "dpi": int(
+                    settings["dpi"]
+                ),
+                "jpeg_quality": int(
+                    settings["jpeg_quality"]
+                ),
+                "margin_mm": float(
+                    settings["margin_mm"]
+                ),
+            }
+
+        print(
+            "MainWindow individual export settings:",
+            individual_export_settings,
+        )
+
         if not selected_export_units:
             self.status_label.setText(
                 self.tr(
@@ -10144,6 +10195,9 @@ class MainWindow(QMainWindow):
             ),
             selected_export_units=(
                 selected_export_units
+            ),
+            individual_export_settings=(
+                individual_export_settings
             ),
         )
 

@@ -50,6 +50,7 @@ class CropExportWorker(QObject):
         export_page_indexes=None,
         page_mosaic_angles=None,
         selected_export_units=None,
+        individual_export_settings=None,
     ):
         super().__init__()
 
@@ -129,6 +130,52 @@ class CropExportWorker(QObject):
                 )
                 in selected_export_units
             }
+
+        self.individual_export_settings = {}
+
+        if individual_export_settings is not None:
+            for (
+                export_unit,
+                settings,
+            ) in individual_export_settings.items():
+                page_index, crop_index = (
+                    export_unit
+                )
+
+                self.individual_export_settings[
+                    (
+                        int(page_index),
+                        int(crop_index),
+                    )
+                ] = {
+                    "dpi": int(
+                        settings["dpi"]
+                    ),
+                    "jpeg_quality": max(
+                        1,
+                        min(
+                            int(
+                                settings[
+                                    "jpeg_quality"
+                                ]
+                            ),
+                            100,
+                        ),
+                    ),
+                    "margin_mm": max(
+                        0.0,
+                        float(
+                            settings[
+                                "margin_mm"
+                            ]
+                        ),
+                    ),
+                }
+
+        print(
+            "Worker individual export settings:",
+            self.individual_export_settings,
+        )
 
     def validate_crop_rect(
         self,
@@ -1239,6 +1286,65 @@ class CropExportWorker(QObject):
                         ):
                             continue
 
+                        current_dpi = self.dpi
+
+                        current_jpeg_quality = (
+                            self.jpeg_quality
+                        )
+
+                        current_margin_px = (
+                            self.margin_px
+                        )
+
+                        individual_settings = (
+                            self.individual_export_settings.get(
+                                (
+                                    page_index,
+                                    crop_index,
+                                )
+                            )
+                        )
+
+                        print(
+                            "Export unit settings:",
+                            f"page={page_index}",
+                            f"crop={crop_index}",
+                            individual_settings,
+                        )
+
+                        if individual_settings is not None:
+                            current_dpi = int(
+                                individual_settings[
+                                    "dpi"
+                                ]
+                            )
+
+                            current_jpeg_quality = max(
+                                1,
+                                min(
+                                    int(
+                                        individual_settings[
+                                            "jpeg_quality"
+                                        ]
+                                    ),
+                                    100,
+                                ),
+                            )
+
+                            current_margin_mm = float(
+                                individual_settings[
+                                    "margin_mm"
+                                ]
+                            )
+
+                            current_margin_px = int(
+                                (
+                                    current_margin_mm
+                                    / 25.4
+                                )
+                                * current_dpi
+                            )
+
                         prepared_members = []
 
                         is_group_unit = (
@@ -1303,21 +1409,21 @@ class CropExportWorker(QObject):
                                     )
 
                             crop_x = (
-                                x - self.margin_px
+                                x - current_margin_px
                             )
 
                             crop_y = (
-                                y - self.margin_px
+                                y - current_margin_px
                             )
 
                             crop_w = (
                                 w
-                                + self.margin_px * 2
+                                + current_margin_px * 2
                             )
 
                             crop_h = (
                                 h
-                                + self.margin_px * 2
+                                + current_margin_px * 2
                             )
 
                             try:
@@ -1429,10 +1535,10 @@ class CropExportWorker(QObject):
                         output_image.save(
                             output_path,
                             "JPEG",
-                            quality=self.jpeg_quality,
+                            quality=current_jpeg_quality,
                             dpi=(
-                                self.dpi,
-                                self.dpi,
+                                current_dpi,
+                                current_dpi,
                             ),
                         )
 
