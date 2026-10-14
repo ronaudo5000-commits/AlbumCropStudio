@@ -10104,14 +10104,16 @@ class MainWindow(QMainWindow):
 
                 return
 
-        dpi = self.dpi_spin.value()
+        dpi = (
+            export_dialog.selected_dpi()
+        )
 
         jpeg_quality = (
-            self.jpeg_quality_spin.value()
+            export_dialog.selected_jpeg_quality()
         )
 
         margin_mm = (
-            self.margin_spin.value()
+            export_dialog.selected_margin_mm()
         )
 
         margin_px = int(

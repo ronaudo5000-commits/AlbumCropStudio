@@ -2,13 +2,17 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
+
+from app.config import Config
 
 
 class ExportDialog(QDialog):
@@ -113,6 +117,68 @@ class ExportDialog(QDialog):
         selection_button_layout.addStretch()
 
         # ---------------------------------
+        # 出力設定
+        # ---------------------------------
+        output_settings_layout = QFormLayout()
+
+        self.dpi_spin = QSpinBox()
+        self.dpi_spin.setRange(
+            200,
+            1200,
+        )
+
+        self.dpi_spin.setSuffix(
+            self.tr(" dpi")
+        )
+
+        self.dpi_spin.setValue(
+            Config.get_dpi()
+        )
+
+        output_settings_layout.addRow(
+            self.tr("解像度"),
+            self.dpi_spin,
+        )
+
+        self.jpeg_quality_spin = QSpinBox()
+        self.jpeg_quality_spin.setRange(
+            1,
+            100,
+        )
+
+        self.jpeg_quality_spin.setSuffix(
+            self.tr(" %")
+        )
+
+        self.jpeg_quality_spin.setValue(
+            Config.get_jpeg_quality()
+        )
+
+        output_settings_layout.addRow(
+            self.tr("JPEG品質"),
+            self.jpeg_quality_spin,
+        )
+
+        self.margin_mm_spin = QSpinBox()
+        self.margin_mm_spin.setRange(
+            0,
+            20,
+        )
+
+        self.margin_mm_spin.setSuffix(
+            self.tr(" mm")
+        )
+
+        self.margin_mm_spin.setValue(
+            Config.get_margin_mm()
+        )
+
+        output_settings_layout.addRow(
+            self.tr("余白"),
+            self.margin_mm_spin,
+        )
+
+        # ---------------------------------
         # 書き出し／キャンセル
         # ---------------------------------
         self.button_box = QDialogButtonBox(
@@ -169,6 +235,18 @@ class ExportDialog(QDialog):
             selection_button_layout
         )
 
+        main_layout.addSpacing(
+            12
+        )
+
+        main_layout.addLayout(
+            output_settings_layout
+        )
+
+        main_layout.addSpacing(
+            8
+        )
+
         main_layout.addWidget(
             self.button_box
         )
@@ -220,3 +298,12 @@ class ExportDialog(QDialog):
                 )
 
         return selected_indexes
+
+    def selected_dpi(self):
+        return self.dpi_spin.value()
+
+    def selected_jpeg_quality(self):
+        return self.jpeg_quality_spin.value()
+
+    def selected_margin_mm(self):
+        return self.margin_mm_spin.value()
