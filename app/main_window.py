@@ -10217,27 +10217,7 @@ class MainWindow(QMainWindow):
         self.export_thread = QThread()
 
         self.export_worker = CropExportWorker(
-            self.image_paths,
-            self.page_rects,
-            self.page_angles,
-            self.page_group_ids,
-            self.page_mosaic_rects,
-            output_dir,
-            dpi,
-            margin_px,
-            jpeg_quality,
-            total_crops,
-            export_page_indexes,
-            page_mosaic_angles=(
-                self.page_mosaic_angles
-            ),
-            selected_export_units=(
-                selected_export_units
-            ),
-            individual_export_settings=(
-                individual_export_settings
-            ),
-            export_job=export_job,
+            export_job
         )
 
         self.export_worker.moveToThread(

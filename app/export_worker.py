@@ -37,53 +37,38 @@ class CropExportWorker(QObject):
 
     def __init__(
         self,
-        image_paths,
-        page_rects,
-        page_angles,
-        page_group_ids,
-        page_mosaic_rects,
-        output_dir,
-        dpi,
-        margin_px,
-        jpeg_quality,
-        total_crops,
-        export_page_indexes=None,
-        page_mosaic_angles=None,
-        selected_export_units=None,
-        individual_export_settings=None,
-        export_job=None,
+        export_job,
     ):
         super().__init__()
 
-        if export_job is not None:
-            image_paths = export_job.image_paths
-            page_rects = export_job.page_rects
-            page_angles = export_job.page_angles
-            page_group_ids = (
-                export_job.page_group_ids
-            )
-            page_mosaic_rects = (
-                export_job.page_mosaic_rects
-            )
-            output_dir = export_job.output_dir
-            dpi = export_job.dpi
-            margin_px = export_job.margin_px
-            jpeg_quality = (
-                export_job.jpeg_quality
-            )
-            total_crops = export_job.total_crops
-            export_page_indexes = (
-                export_job.export_page_indexes
-            )
-            page_mosaic_angles = (
-                export_job.page_mosaic_angles
-            )
-            selected_export_units = (
-                export_job.selected_export_units
-            )
-            individual_export_settings = (
-                export_job.individual_export_settings
-            )
+        image_paths = export_job.image_paths
+        page_rects = export_job.page_rects
+        page_angles = export_job.page_angles
+        page_group_ids = (
+            export_job.page_group_ids
+        )
+        page_mosaic_rects = (
+            export_job.page_mosaic_rects
+        )
+        output_dir = export_job.output_dir
+        dpi = export_job.dpi
+        margin_px = export_job.margin_px
+        jpeg_quality = (
+            export_job.jpeg_quality
+        )
+        total_crops = export_job.total_crops
+        export_page_indexes = (
+            export_job.export_page_indexes
+        )
+        page_mosaic_angles = (
+            export_job.page_mosaic_angles
+        )
+        selected_export_units = (
+            export_job.selected_export_units
+        )
+        individual_export_settings = (
+            export_job.individual_export_settings
+        )
 
         self.image_paths = list(
             image_paths
