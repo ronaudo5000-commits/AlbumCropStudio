@@ -1420,6 +1420,7 @@ class MainWindow(QMainWindow):
         self.export_process_stderr_buffer = ""
 
         self.export_running = False
+        self.export_paused = False
 
         self.detection_thread = None
         self.detection_worker = None
@@ -2862,6 +2863,28 @@ class MainWindow(QMainWindow):
             self.save_crops
         )
 
+        self.export_pause_button = QPushButton(
+            self.tr("一時停止")
+        )
+
+        self.export_pause_button.setMinimumHeight(
+            40
+        )
+
+        self.export_pause_button.setEnabled(
+            False
+        )
+
+        self.export_pause_button.clicked.connect(
+            self.toggle_export_pause
+        )
+
+        self.export_pause_button.setToolTip(
+            self.tr(
+                "書き出しを一時停止または再開します"
+            )
+        )
+
         self.export_stop_button = QPushButton(
             self.tr("停止")
         )
@@ -2869,6 +2892,34 @@ class MainWindow(QMainWindow):
         self.export_stop_button.setMinimumHeight(
             40
         )
+
+        self.export_stop_button.setStyleSheet("""
+            QPushButton {
+                font-weight: 600;
+                padding-left: 16px;
+                padding-right: 16px;
+                background-color: #b83a3a;
+                color: white;
+                border: 1px solid #b83a3a;
+                border-radius: 4px;
+            }
+
+            QPushButton:hover {
+                background-color: #cf4a4a;
+                border-color: #cf4a4a;
+            }
+
+            QPushButton:pressed {
+                background-color: #922f2f;
+                border-color: #922f2f;
+            }
+
+            QPushButton:disabled {
+                background-color: #555555;
+                border-color: #666666;
+                color: #aaaaaa;
+            }
+        """)
 
         self.export_stop_button.setEnabled(
             False
@@ -3203,6 +3254,10 @@ class MainWindow(QMainWindow):
 
         export_layout.addWidget(
             self.save_button
+        )
+
+        export_layout.addWidget(
+            self.export_pause_button
         )
 
         export_layout.addWidget(
@@ -9727,6 +9782,52 @@ class MainWindow(QMainWindow):
             self.margin_spin.value()
         )
 
+    def toggle_export_pause(
+        self,
+    ):
+        if self.export_process is None:
+            return
+
+        if (
+            self.export_process.state()
+            == QProcess.ProcessState.NotRunning
+        ):
+            return
+
+        if self.export_paused:
+            self.export_process.write(
+                b"resume\n"
+            )
+
+            self.export_paused = False
+
+            self.export_pause_button.setText(
+                self.tr("一時停止")
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "✂️ 書き出しを再開しました"
+                )
+            )
+
+        else:
+            self.export_process.write(
+                b"pause\n"
+            )
+
+            self.export_paused = True
+
+            self.export_pause_button.setText(
+                self.tr("再開")
+            )
+
+            self.status_label.setText(
+                self.tr(
+                    "⏸️ 書き出しを一時停止しました"
+                )
+            )
+
     def request_export_stop(
         self,
     ):
@@ -9740,6 +9841,10 @@ class MainWindow(QMainWindow):
             return
 
         self.export_stop_button.setEnabled(
+            False
+        )
+
+        self.export_pause_button.setEnabled(
             False
         )
 
@@ -9837,6 +9942,16 @@ class MainWindow(QMainWindow):
         self.export_process.start(
             sys.executable,
             arguments,
+        )
+
+        self.export_paused = False
+
+        self.export_pause_button.setText(
+            self.tr("一時停止")
+        )
+
+        self.export_pause_button.setEnabled(
+            True
         )
 
         self.export_stop_button.setText(

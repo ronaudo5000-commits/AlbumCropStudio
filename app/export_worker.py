@@ -1,4 +1,6 @@
 import math
+import threading
+
 from pathlib import Path
 
 from PIL import (
@@ -124,6 +126,9 @@ class CropExportWorker(QObject):
         self.total_crops = total_crops
         self.stop_requested = False
 
+        self.pause_event = threading.Event()
+        self.pause_event.set()
+
         if export_page_indexes is None:
             self.export_page_indexes = None
         else:
@@ -193,6 +198,18 @@ class CropExportWorker(QObject):
         self,
     ):
         self.stop_requested = True
+
+        self.pause_event.set()
+
+    def request_pause(
+        self,
+    ):
+        self.pause_event.clear()
+
+    def request_resume(
+        self,
+    ):
+        self.pause_event.set()
 
     def validate_crop_rect(
         self,
@@ -1567,6 +1584,11 @@ class CropExportWorker(QObject):
                             saved_count,
                             self.total_crops,
                         )
+
+                        if self.stop_requested:
+                            return saved_count
+
+                        self.pause_event.wait()
 
                         if self.stop_requested:
                             return saved_count

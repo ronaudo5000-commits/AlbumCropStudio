@@ -46,6 +46,14 @@ def main():
                     export_worker.request_stop()
                     return
 
+                if command == "pause":
+                    export_worker.request_pause()
+                    continue
+
+                if command == "resume":
+                    export_worker.request_resume()
+                    continue
+
         command_thread = threading.Thread(
             target=listen_for_commands,
             daemon=True,
