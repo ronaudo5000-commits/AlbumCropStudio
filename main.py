@@ -117,6 +117,36 @@ def main():
             )
         )
 
+    # ---------------------------------
+    # 書き出しWorkerモード
+    #
+    # PyInstallerで配布版になった場合、
+    # sys.executable は python.exe ではなく
+    # AlbumCropStudio.exe 自身を指す。
+    #
+    # --export-worker が指定されている場合は
+    # GUIを起動せず、書き出し処理だけを実行する。
+    # ---------------------------------
+    if "--export-worker" in sys.argv:
+        from app.export_process import (
+            main as export_worker_main,
+        )
+
+        worker_args = [
+            argument
+            for argument in sys.argv[1:]
+            if argument != "--export-worker"
+        ]
+
+        sys.argv = [
+            sys.argv[0],
+            *worker_args,
+        ]
+
+        sys.exit(
+            export_worker_main()
+        )
+
     logger = get_logger()
 
     try:

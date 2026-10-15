@@ -9688,13 +9688,26 @@ class MainWindow(QMainWindow):
             str(project_root)
         )
 
-        arguments = [
-            "-m",
-            "app.export_process",
-            str(
-                self.export_process_job_path
-            ),
-        ]
+        if getattr(
+            sys,
+            "frozen",
+            False,
+        ):
+            arguments = [
+                "--export-worker",
+                str(
+                    self.export_process_job_path
+                ),
+            ]
+
+        else:
+            arguments = [
+                "-m",
+                "app.export_process",
+                str(
+                    self.export_process_job_path
+                ),
+            ]
 
         self.export_process.readyReadStandardOutput.connect(
             self.read_export_process_output
