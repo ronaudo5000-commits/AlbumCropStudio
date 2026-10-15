@@ -1416,6 +1416,7 @@ class MainWindow(QMainWindow):
         self.export_process = None
         self.export_process_job_path = None
         self.export_process_stdout_buffer = ""
+        self.export_process_stdout_parse_buffer = ""
         self.export_process_stderr_buffer = ""
 
         self.export_running = False
@@ -9668,6 +9669,7 @@ class MainWindow(QMainWindow):
             )
 
         self.export_process_stdout_buffer = ""
+        self.export_process_stdout_parse_buffer = ""
         self.export_process_stderr_buffer = ""
 
         self.export_process = QProcess(
@@ -9729,6 +9731,65 @@ class MainWindow(QMainWindow):
         )
 
         self.export_process_stdout_buffer += text
+        self.export_process_stdout_parse_buffer += text
+
+        while "\n" in (
+            self.export_process_stdout_parse_buffer
+        ):
+            line, remaining = (
+                self.export_process_stdout_parse_buffer.split(
+                    "\n",
+                    1,
+                )
+            )
+
+            self.export_process_stdout_parse_buffer = (
+                remaining
+            )
+
+            line = line.strip()
+
+            if not line:
+                continue
+
+            try:
+                result = json.loads(
+                    line
+                )
+            except json.JSONDecodeError:
+                continue
+
+            if (
+                result.get("status")
+                != "progress"
+            ):
+                continue
+
+            try:
+                value = int(
+                    result["value"]
+                )
+
+                saved_count = int(
+                    result["saved_count"]
+                )
+
+                total_crops = int(
+                    result["total_crops"]
+                )
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+            ):
+                continue
+
+            self.update_export_progress(
+                value,
+                saved_count,
+                total_crops,
+            )
 
     def read_export_process_error(
         self,
@@ -9773,35 +9834,64 @@ class MainWindow(QMainWindow):
             exit_code == 0
             and stdout_text
         ):
-            try:
-                result = json.loads(
-                    stdout_text
-                )
+            result = None
+
+            stdout_lines = [
+                line.strip()
+                for line
+                in stdout_text.splitlines()
+                if line.strip()
+            ]
+
+            for line in reversed(
+                stdout_lines
+            ):
+                try:
+                    candidate = json.loads(
+                        line
+                    )
+                except json.JSONDecodeError:
+                    continue
 
                 if (
-                    result.get("status")
-                    == "finished"
+                    candidate.get("status")
+                    in (
+                        "finished",
+                        "failed",
+                    )
                 ):
+                    result = candidate
+                    break
+
+            if result is None:
+                error_message = (
+                    "書き出し結果を解析できませんでした。"
+                )
+
+            elif (
+                result.get("status")
+                == "finished"
+            ):
+                try:
                     saved_count = int(
                         result["saved_count"]
                     )
-                else:
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as e:
                     error_message = (
-                        result.get(
-                            "message",
-                            "書き出し結果が不正です",
-                        )
+                        "書き出し結果を解析できませんでした。"
+                        f"\n詳細: {e}"
                     )
 
-            except (
-                json.JSONDecodeError,
-                KeyError,
-                TypeError,
-                ValueError,
-            ) as e:
+            else:
                 error_message = (
-                    "書き出し結果を解析できませんでした。"
-                    f"\n詳細: {e}"
+                    result.get(
+                        "message",
+                        "書き出し結果が不正です",
+                    )
                 )
 
         else:
@@ -9841,6 +9931,7 @@ class MainWindow(QMainWindow):
         self.export_process = None
         self.export_process_job_path = None
         self.export_process_stdout_buffer = ""
+        self.export_process_stdout_parse_buffer = ""
         self.export_process_stderr_buffer = ""
 
         if saved_count is not None:

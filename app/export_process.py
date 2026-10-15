@@ -32,6 +32,36 @@ def main():
             export_job
         )
 
+        def send_progress(
+            value,
+            saved_count,
+            total_crops,
+        ):
+            progress_result = {
+                "status": "progress",
+                "value": int(
+                    value
+                ),
+                "saved_count": int(
+                    saved_count
+                ),
+                "total_crops": int(
+                    total_crops
+                ),
+            }
+
+            print(
+                json.dumps(
+                    progress_result,
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+
+        export_worker.progress.connect(
+            send_progress
+        )
+
         saved_count = (
             export_worker.export_images()
         )
