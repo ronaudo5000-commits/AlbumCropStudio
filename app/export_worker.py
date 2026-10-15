@@ -122,6 +122,7 @@ class CropExportWorker(QObject):
         )
 
         self.total_crops = total_crops
+        self.stop_requested = False
 
         if export_page_indexes is None:
             self.export_page_indexes = None
@@ -187,6 +188,11 @@ class CropExportWorker(QObject):
                         ),
                     ),
                 }
+
+    def request_stop(
+        self,
+    ):
+        self.stop_requested = True
 
     def validate_crop_rect(
         self,
@@ -1561,6 +1567,9 @@ class CropExportWorker(QObject):
                             saved_count,
                             self.total_crops,
                         )
+
+                        if self.stop_requested:
+                            return saved_count
 
             except Exception as e:
                 image_name = str(

@@ -1,5 +1,6 @@
 import json
 import sys
+import threading
 
 from pathlib import Path
 
@@ -31,6 +32,26 @@ def main():
         export_worker = CropExportWorker(
             export_job
         )
+
+        def listen_for_commands():
+            while True:
+                command = sys.stdin.readline()
+
+                if not command:
+                    return
+
+                command = command.strip().lower()
+
+                if command == "stop":
+                    export_worker.request_stop()
+                    return
+
+        command_thread = threading.Thread(
+            target=listen_for_commands,
+            daemon=True,
+        )
+
+        command_thread.start()
 
         def send_progress(
             value,
@@ -66,12 +87,21 @@ def main():
             export_worker.export_images()
         )
 
-        result = {
-            "status": "finished",
-            "saved_count": int(
-                saved_count
-            ),
-        }
+        if export_worker.stop_requested:
+            result = {
+                "status": "stopped",
+                "saved_count": int(
+                    saved_count
+                ),
+            }
+
+        else:
+            result = {
+                "status": "finished",
+                "saved_count": int(
+                    saved_count
+                ),
+            }
 
         print(
             json.dumps(

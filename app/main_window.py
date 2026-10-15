@@ -2862,6 +2862,28 @@ class MainWindow(QMainWindow):
             self.save_crops
         )
 
+        self.export_stop_button = QPushButton(
+            self.tr("停止")
+        )
+
+        self.export_stop_button.setMinimumHeight(
+            40
+        )
+
+        self.export_stop_button.setEnabled(
+            False
+        )
+
+        self.export_stop_button.clicked.connect(
+            self.request_export_stop
+        )
+
+        self.export_stop_button.setToolTip(
+            self.tr(
+                "現在の書き出しを安全に停止します"
+            )
+        )
+
         self.open_button.setToolTip(
             self.tr(
                 "画像またはPDFを開きます"
@@ -3179,7 +3201,13 @@ class MainWindow(QMainWindow):
         )
         export_layout.setSpacing(6)
 
-        export_layout.addWidget(self.save_button)
+        export_layout.addWidget(
+            self.save_button
+        )
+
+        export_layout.addWidget(
+            self.export_stop_button
+        )
 
         export_group.setLayout(export_layout)
 
@@ -3322,6 +3350,45 @@ class MainWindow(QMainWindow):
 
         QApplication.processEvents()
 
+    def export_stopped(
+        self,
+        saved_count,
+    ):
+        print(
+            f"{saved_count}枚の保存後に"
+            "書き出しを停止しました"
+        )
+
+        self.status_label.setText(
+            self.tr(
+                "⏹️ {count}枚で書き出しを停止しました"
+            ).format(
+                count=saved_count
+            )
+        )
+
+        self.progress_bar.setVisible(
+            False
+        )
+
+        self.save_button.setEnabled(
+            True
+        )
+
+        self.save_button.setText(
+            self.tr("切り抜き")
+        )
+
+        self.export_stop_button.setText(
+            self.tr("停止")
+        )
+
+        self.export_stop_button.setEnabled(
+            False
+        )
+
+        self.export_running = False
+
     def export_finished(self, saved_count):
         self.progress_bar.setValue(100)
 
@@ -3407,6 +3474,14 @@ class MainWindow(QMainWindow):
             self.tr("切り抜き")
         )
 
+        self.export_stop_button.setText(
+            self.tr("停止")
+        )
+
+        self.export_stop_button.setEnabled(
+            False
+        )
+
         self.export_running = False
 
     def export_failed(self, error_message):
@@ -3426,6 +3501,14 @@ class MainWindow(QMainWindow):
 
         self.save_button.setText(
             self.tr("切り抜き")
+        )
+
+        self.export_stop_button.setText(
+            self.tr("停止")
+        )
+
+        self.export_stop_button.setEnabled(
+            False
         )
 
         self.export_running = False
@@ -9644,6 +9727,36 @@ class MainWindow(QMainWindow):
             self.margin_spin.value()
         )
 
+    def request_export_stop(
+        self,
+    ):
+        if self.export_process is None:
+            return
+
+        if (
+            self.export_process.state()
+            == QProcess.ProcessState.NotRunning
+        ):
+            return
+
+        self.export_stop_button.setEnabled(
+            False
+        )
+
+        self.export_stop_button.setText(
+            self.tr("停止中…")
+        )
+
+        self.status_label.setText(
+            self.tr(
+                "⏹️ 書き出しを停止しています..."
+            )
+        )
+
+        self.export_process.write(
+            b"stop\n"
+        )
+
     def start_export_process(
         self,
         export_job,
@@ -9724,6 +9837,14 @@ class MainWindow(QMainWindow):
         self.export_process.start(
             sys.executable,
             arguments,
+        )
+
+        self.export_stop_button.setText(
+            self.tr("停止")
+        )
+
+        self.export_stop_button.setEnabled(
+            True
         )
 
     def read_export_process_output(
@@ -9841,6 +9962,7 @@ class MainWindow(QMainWindow):
         )
 
         saved_count = None
+        stopped_count = None
         error_message = None
 
         if (
@@ -9870,6 +9992,7 @@ class MainWindow(QMainWindow):
                     candidate.get("status")
                     in (
                         "finished",
+                        "stopped",
                         "failed",
                     )
                 ):
@@ -9896,6 +10019,24 @@ class MainWindow(QMainWindow):
                 ) as e:
                     error_message = (
                         "書き出し結果を解析できませんでした。"
+                        f"\n詳細: {e}"
+                    )
+
+            elif (
+                result.get("status")
+                == "stopped"
+            ):
+                try:
+                    stopped_count = int(
+                        result["saved_count"]
+                    )
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as e:
+                    error_message = (
+                        "停止結果を解析できませんでした。"
                         f"\n詳細: {e}"
                     )
 
@@ -9951,6 +10092,12 @@ class MainWindow(QMainWindow):
             self.export_finished(
                 saved_count
             )
+
+        elif stopped_count is not None:
+            self.export_stopped(
+                stopped_count
+            )
+
         else:
             self.export_failed(
                 error_message
