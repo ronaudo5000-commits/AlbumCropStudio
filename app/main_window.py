@@ -1413,6 +1413,11 @@ class MainWindow(QMainWindow):
         self.export_thread = None
         self.export_worker = None
 
+        self.export_process = None
+        self.export_process_job_path = None
+        self.export_process_stdout_buffer = ""
+        self.export_process_stderr_buffer = ""
+
         self.export_running = False
 
         self.detection_thread = None
@@ -9637,6 +9642,216 @@ class MainWindow(QMainWindow):
         Config.set_margin_mm(
             self.margin_spin.value()
         )
+
+    def start_export_process(
+        self,
+        export_job,
+    ):
+        if self.export_process is not None:
+            raise RuntimeError(
+                "書き出しプロセスはすでに起動しています"
+            )
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            suffix=".json",
+            prefix="acs_export_job_",
+            delete=False,
+        ) as job_file:
+            job_file.write(
+                export_job.to_json()
+            )
+
+            self.export_process_job_path = Path(
+                job_file.name
+            )
+
+        self.export_process_stdout_buffer = ""
+        self.export_process_stderr_buffer = ""
+
+        self.export_process = QProcess(
+            self
+        )
+
+        self.export_process.setProcessChannelMode(
+            QProcess.ProcessChannelMode.SeparateChannels
+        )
+
+        project_root = (
+            Path(__file__).resolve().parent.parent
+        )
+
+        self.export_process.setWorkingDirectory(
+            str(project_root)
+        )
+
+        arguments = [
+            "-m",
+            "app.export_process",
+            str(
+                self.export_process_job_path
+            ),
+        ]
+
+        self.export_process.readyReadStandardOutput.connect(
+            self.read_export_process_output
+        )
+
+        self.export_process.readyReadStandardError.connect(
+            self.read_export_process_error
+        )
+
+        self.export_process.finished.connect(
+            self.export_process_finished
+        )
+
+        self.export_process.start(
+            sys.executable,
+            arguments,
+        )
+
+    def read_export_process_output(
+        self,
+    ):
+        if self.export_process is None:
+            return
+
+        data = (
+            self.export_process.readAllStandardOutput()
+        )
+
+        text = bytes(
+            data
+        ).decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        self.export_process_stdout_buffer += text
+
+    def read_export_process_error(
+        self,
+    ):
+        if self.export_process is None:
+            return
+
+        data = (
+            self.export_process.readAllStandardError()
+        )
+
+        text = bytes(
+            data
+        ).decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        self.export_process_stderr_buffer += text
+
+    def export_process_finished(
+        self,
+        exit_code,
+        exit_status,
+    ):
+        if self.export_process is not None:
+            self.read_export_process_output()
+            self.read_export_process_error()
+
+        stdout_text = (
+            self.export_process_stdout_buffer.strip()
+        )
+
+        stderr_text = (
+            self.export_process_stderr_buffer.strip()
+        )
+
+        saved_count = None
+        error_message = None
+
+        if (
+            exit_code == 0
+            and stdout_text
+        ):
+            try:
+                result = json.loads(
+                    stdout_text
+                )
+
+                if (
+                    result.get("status")
+                    == "finished"
+                ):
+                    saved_count = int(
+                        result["saved_count"]
+                    )
+                else:
+                    error_message = (
+                        result.get(
+                            "message",
+                            "書き出し結果が不正です",
+                        )
+                    )
+
+            except (
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as e:
+                error_message = (
+                    "書き出し結果を解析できませんでした。"
+                    f"\n詳細: {e}"
+                )
+
+        else:
+            if stderr_text:
+                try:
+                    result = json.loads(
+                        stderr_text
+                    )
+
+                    error_message = (
+                        result.get(
+                            "message",
+                            stderr_text,
+                        )
+                    )
+
+                except json.JSONDecodeError:
+                    error_message = stderr_text
+
+            else:
+                error_message = (
+                    "書き出しプロセスが"
+                    f"終了コード {exit_code} で終了しました"
+                )
+
+        if self.export_process_job_path is not None:
+            try:
+                self.export_process_job_path.unlink(
+                    missing_ok=True
+                )
+            except OSError:
+                pass
+
+        if self.export_process is not None:
+            self.export_process.deleteLater()
+
+        self.export_process = None
+        self.export_process_job_path = None
+        self.export_process_stdout_buffer = ""
+        self.export_process_stderr_buffer = ""
+
+        if saved_count is not None:
+            self.export_finished(
+                saved_count
+            )
+        else:
+            self.export_failed(
+                error_message
+            )
+
     def save_crops(self):
         self.save_button.setEnabled(False)
 
@@ -10214,56 +10429,6 @@ class MainWindow(QMainWindow):
 
         QApplication.processEvents()
 
-        self.export_thread = QThread()
-
-        self.export_worker = CropExportWorker(
-            export_job
-        )
-
-        self.export_worker.moveToThread(
-            self.export_thread
-        )
-
-        self.export_thread.started.connect(
-            self.export_worker.run
-        )
-
-        self.export_worker.progress.connect(
-            self.update_export_progress
-        )
-
-        self.export_worker.finished.connect(
-            self.export_finished
-        )
-
-        self.export_worker.failed.connect(
-            self.export_failed
-        )
-
-        self.export_worker.finished.connect(
-            self.export_thread.quit
-        )
-
-        self.export_worker.failed.connect(
-            self.export_thread.quit
-        )
-
-        self.export_worker.finished.connect(
-            self.export_worker.deleteLater
-        )
-
-        self.export_worker.failed.connect(
-            self.export_worker.deleteLater
-        )
-
-        self.export_thread.finished.connect(
-            self.export_thread_finished
-        )
-
-        self.export_thread.finished.connect(
-            self.export_thread.deleteLater
-        )
-
         self.export_running = True
         self.save_button.setEnabled(False)
 
@@ -10271,7 +10436,15 @@ class MainWindow(QMainWindow):
             f"保存先: {output_dir}"
         )
 
-        self.export_thread.start()
+        try:
+            self.start_export_process(
+                export_job
+            )
+
+        except Exception as e:
+            self.export_failed(
+                str(e)
+            )
 
     def confirm_discard_changes(self):
         if not self.project_modified:
