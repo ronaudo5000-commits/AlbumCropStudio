@@ -1,6 +1,7 @@
 import json
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 @dataclass
 class ExportJob:
@@ -166,7 +167,9 @@ class ExportJob:
                 for page_index, mosaic_rects
                 in data["page_mosaic_rects"].items()
             },
-            output_dir=data["output_dir"],
+            output_dir=Path(
+                data["output_dir"]
+            ),
             dpi=int(
                 data["dpi"]
             ),
