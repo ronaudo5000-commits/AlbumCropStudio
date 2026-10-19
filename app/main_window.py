@@ -1152,30 +1152,7 @@ class PageListWidget(QListWidget):
                     >= page_total_count
                 )
 
-                if export_completed:
-                    progress_text = (
-                        f"✓ {page_saved_count}"
-                        f" / {page_total_count}"
-                    )
-                else:
-                    progress_text = (
-                        f"{page_saved_count}"
-                        f" / {page_total_count}"
-                    )
-
                 painter.save()
-
-                progress_font_metrics = (
-                    painter.fontMetrics()
-                )
-
-                progress_width = max(
-                    54,
-                    progress_font_metrics.horizontalAdvance(
-                        progress_text
-                    )
-                    + 12,
-                )
 
                 progress_height = 20
 
@@ -1183,6 +1160,29 @@ class PageListWidget(QListWidget):
                     self.viewMode()
                     == QListView.ViewMode.IconMode
                 ):
+                    if export_completed:
+                        progress_text = (
+                            f"✓ {page_saved_count}"
+                            f" / {page_total_count}"
+                        )
+                    else:
+                        progress_text = (
+                            f"{page_saved_count}"
+                            f" / {page_total_count}"
+                        )
+
+                    progress_font_metrics = (
+                        painter.fontMetrics()
+                    )
+
+                    progress_width = max(
+                        54,
+                        progress_font_metrics.horizontalAdvance(
+                            progress_text
+                        )
+                        + 12,
+                    )
+
                     progress_x = (
                         item_rect.left()
                         + margin
@@ -1195,11 +1195,86 @@ class PageListWidget(QListWidget):
                         - progress_height
                     )
 
+                    painter.setPen(
+                        Qt.PenStyle.NoPen
+                    )
+
+                    if export_completed:
+                        painter.setBrush(
+                            QColor(
+                                55,
+                                145,
+                                85,
+                                235,
+                            )
+                        )
+
+                    else:
+                        painter.setBrush(
+                            QColor(
+                                47,
+                                128,
+                                237,
+                                235,
+                            )
+                        )
+
+                    painter.drawRoundedRect(
+                        QRectF(
+                            progress_x,
+                            progress_y,
+                            progress_width,
+                            progress_height,
+                        ),
+                        5,
+                        5,
+                    )
+
+                    painter.setPen(
+                        QColor(
+                            255,
+                            255,
+                            255,
+                        )
+                    )
+
+                    painter.drawText(
+                        progress_x,
+                        progress_y,
+                        progress_width,
+                        progress_height,
+                        Qt.AlignmentFlag.AlignCenter,
+                        progress_text,
+                    )
+
                 else:
+                    if export_completed:
+                        compact_progress_text = (
+                            f"✓ {page_saved_count}"
+                            f"/{page_total_count}"
+                        )
+                    else:
+                        compact_progress_text = (
+                            f"{page_saved_count}"
+                            f"/{page_total_count}"
+                        )
+
+                    compact_progress_font_metrics = (
+                        painter.fontMetrics()
+                    )
+
+                    compact_progress_width = max(
+                        36,
+                        compact_progress_font_metrics.horizontalAdvance(
+                            compact_progress_text
+                        )
+                        + 8,
+                    )
+
                     progress_x = (
                         delete_x
-                        - progress_width
-                        - 6
+                        - compact_progress_width
+                        - 8
                     )
 
                     progress_y = (
@@ -1211,57 +1286,32 @@ class PageListWidget(QListWidget):
                         // 2
                     )
 
-                painter.setPen(
-                    Qt.PenStyle.NoPen
-                )
-
-                if export_completed:
-                    painter.setBrush(
-                        QColor(
-                            55,
-                            145,
-                            85,
-                            235,
+                    if export_completed:
+                        painter.setPen(
+                            QColor(
+                                105,
+                                200,
+                                125,
+                            )
                         )
-                    )
 
-                else:
-                    painter.setBrush(
-                        QColor(
-                            47,
-                            128,
-                            237,
-                            235,
+                    else:
+                        painter.setPen(
+                            QColor(
+                                110,
+                                165,
+                                235,
+                            )
                         )
-                    )
 
-                painter.drawRoundedRect(
-                    QRectF(
+                    painter.drawText(
                         progress_x,
                         progress_y,
-                        progress_width,
+                        compact_progress_width,
                         progress_height,
-                    ),
-                    5,
-                    5,
-                )
-
-                painter.setPen(
-                    QColor(
-                        255,
-                        255,
-                        255,
+                        Qt.AlignmentFlag.AlignCenter,
+                        compact_progress_text,
                     )
-                )
-
-                painter.drawText(
-                    progress_x,
-                    progress_y,
-                    progress_width,
-                    progress_height,
-                    Qt.AlignmentFlag.AlignCenter,
-                    progress_text,
-                )
 
                 painter.restore()
 
@@ -5389,6 +5439,46 @@ class MainWindow(QMainWindow):
         self.compact_view_button.setChecked(
             mode == "compact"
         )
+
+        if mode == "compact":
+            splitter_sizes = (
+                self.content_splitter.sizes()
+            )
+
+            if len(splitter_sizes) >= 3:
+                current_left_width = (
+                    splitter_sizes[0]
+                )
+
+                current_center_width = (
+                    splitter_sizes[1]
+                )
+
+                target_left_width = 280
+
+                if (
+                    current_left_width
+                    < target_left_width
+                ):
+                    available_growth = max(
+                        0,
+                        current_center_width - 320,
+                    )
+
+                    growth = min(
+                        target_left_width
+                        - current_left_width,
+                        available_growth,
+                    )
+
+                    if growth > 0:
+                        self.content_splitter.setSizes([
+                            current_left_width
+                            + growth,
+                            current_center_width
+                            - growth,
+                            splitter_sizes[2],
+                        ])
 
         self.apply_page_list_display_mode()
 

@@ -70,6 +70,12 @@ class ExportDialog(QDialog):
             True
         )
 
+        self.selection_summary_label = QLabel()
+
+        self.selection_summary_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight
+        )
+
         # ---------------------------------
         # 切り抜き一覧
         # ---------------------------------
@@ -114,6 +120,10 @@ class ExportDialog(QDialog):
             self.export_list.addItem(
                 list_item
             )
+
+        self.export_list.itemChanged.connect(
+            self.update_selection_summary
+        )
 
         # ---------------------------------
         # 全選択／全解除
@@ -387,6 +397,8 @@ class ExportDialog(QDialog):
                 0
             )
 
+        self.update_selection_summary()
+
         # ---------------------------------
         # 書き出し／キャンセル
         # ---------------------------------
@@ -429,6 +441,10 @@ class ExportDialog(QDialog):
 
         main_layout.addWidget(
             description_label
+        )
+
+        main_layout.addWidget(
+            self.selection_summary_label
         )
 
         main_layout.addSpacing(
@@ -480,6 +496,26 @@ class ExportDialog(QDialog):
             self.button_box
         )
 
+    def update_selection_summary(
+        self,
+    ):
+        selected_count = len(
+            self.selected_export_indexes()
+        )
+
+        total_count = (
+            self.export_list.count()
+        )
+
+        self.selection_summary_label.setText(
+            self.tr(
+                "選択中: {selected} / {total}"
+            ).format(
+                selected=selected_count,
+                total=total_count,
+            )
+        )
+
     def select_all_items(self):
         for row in range(
             self.export_list.count()
@@ -492,6 +528,8 @@ class ExportDialog(QDialog):
                 Qt.CheckState.Checked
             )
 
+        self.update_selection_summary()
+
     def clear_all_items(self):
         for row in range(
             self.export_list.count()
@@ -503,6 +541,8 @@ class ExportDialog(QDialog):
             list_item.setCheckState(
                 Qt.CheckState.Unchecked
             )
+
+        self.update_selection_summary()
 
     def selected_export_indexes(self):
         selected_indexes = []
