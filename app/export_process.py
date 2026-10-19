@@ -91,6 +91,36 @@ def main():
             send_progress
         )
 
+        def send_page_progress(
+            page_index,
+            saved_count,
+            total_count,
+        ):
+            page_progress_result = {
+                "status": "page_progress",
+                "page_index": int(
+                    page_index
+                ),
+                "saved_count": int(
+                    saved_count
+                ),
+                "total_count": int(
+                    total_count
+                ),
+            }
+
+            print(
+                json.dumps(
+                    page_progress_result,
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+
+        export_worker.page_progress.connect(
+            send_page_progress
+        )
+
         saved_count = (
             export_worker.export_images()
         )

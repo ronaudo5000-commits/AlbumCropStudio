@@ -586,6 +586,7 @@ class PageListWidget(QListWidget):
         self.delete_callback = None
         self.check_callback = None
         self.rect_count_callback = None
+        self.export_progress_callback = None
 
         self.hover_control = None
 
@@ -1115,6 +1116,155 @@ class PageListWidget(QListWidget):
                 )
                 painter.restore()
 
+            # ---------------------------------
+            # 書き出し進捗
+            # ---------------------------------
+            export_progress = None
+
+            if (
+                self.export_progress_callback
+                is not None
+            ):
+                export_progress = (
+                    self.export_progress_callback(
+                        row
+                    )
+                )
+
+            if export_progress is not None:
+                page_saved_count = int(
+                    export_progress.get(
+                        "saved_count",
+                        0,
+                    )
+                )
+
+                page_total_count = int(
+                    export_progress.get(
+                        "total_count",
+                        0,
+                    )
+                )
+
+                export_completed = (
+                    page_total_count > 0
+                    and page_saved_count
+                    >= page_total_count
+                )
+
+                if export_completed:
+                    progress_text = (
+                        f"✓ {page_saved_count}"
+                        f" / {page_total_count}"
+                    )
+                else:
+                    progress_text = (
+                        f"{page_saved_count}"
+                        f" / {page_total_count}"
+                    )
+
+                painter.save()
+
+                progress_font_metrics = (
+                    painter.fontMetrics()
+                )
+
+                progress_width = max(
+                    54,
+                    progress_font_metrics.horizontalAdvance(
+                        progress_text
+                    )
+                    + 12,
+                )
+
+                progress_height = 20
+
+                if (
+                    self.viewMode()
+                    == QListView.ViewMode.IconMode
+                ):
+                    progress_x = (
+                        item_rect.left()
+                        + margin
+                    )
+
+                    progress_y = (
+                        item_rect.top()
+                        + 34
+                        + 75
+                        - progress_height
+                    )
+
+                else:
+                    progress_x = (
+                        delete_x
+                        - progress_width
+                        - 6
+                    )
+
+                    progress_y = (
+                        item_rect.top()
+                        + (
+                            item_rect.height()
+                            - progress_height
+                        )
+                        // 2
+                    )
+
+                painter.setPen(
+                    Qt.PenStyle.NoPen
+                )
+
+                if export_completed:
+                    painter.setBrush(
+                        QColor(
+                            55,
+                            145,
+                            85,
+                            235,
+                        )
+                    )
+
+                else:
+                    painter.setBrush(
+                        QColor(
+                            47,
+                            128,
+                            237,
+                            235,
+                        )
+                    )
+
+                painter.drawRoundedRect(
+                    QRectF(
+                        progress_x,
+                        progress_y,
+                        progress_width,
+                        progress_height,
+                    ),
+                    5,
+                    5,
+                )
+
+                painter.setPen(
+                    QColor(
+                        255,
+                        255,
+                        255,
+                    )
+                )
+
+                painter.drawText(
+                    progress_x,
+                    progress_y,
+                    progress_width,
+                    progress_height,
+                    Qt.AlignmentFlag.AlignCenter,
+                    progress_text,
+                )
+
+                painter.restore()
+
     def mouseMoveEvent(self, event):
         pos = event.position()
 
@@ -1421,6 +1571,7 @@ class MainWindow(QMainWindow):
 
         self.export_running = False
         self.export_paused = False
+        self.export_page_progress = {}
 
         self.detection_thread = None
         self.detection_worker = None
@@ -1587,6 +1738,13 @@ class MainWindow(QMainWindow):
 
         self.page_list.rect_count_callback = (
             self.get_page_rect_count
+        )
+
+        self.page_list.export_progress_callback = (
+            lambda row:
+            self.export_page_progress.get(
+                row
+            )
         )
 
         self.page_list.setMinimumWidth(120)
@@ -3439,6 +3597,16 @@ class MainWindow(QMainWindow):
         )
 
         self.export_stop_button.setEnabled(
+            False
+        )
+
+        self.export_paused = False
+
+        self.export_pause_button.setText(
+            self.tr("一時停止")
+        )
+
+        self.export_pause_button.setEnabled(
             False
         )
 
@@ -9890,6 +10058,10 @@ class MainWindow(QMainWindow):
         self.export_process_stdout_parse_buffer = ""
         self.export_process_stderr_buffer = ""
 
+        self.export_page_progress = {}
+
+        self.page_list.viewport().update()
+
         self.export_process = QProcess(
             self
         )
@@ -10008,10 +10180,47 @@ class MainWindow(QMainWindow):
             except json.JSONDecodeError:
                 continue
 
-            if (
-                result.get("status")
-                != "progress"
-            ):
+            status = result.get(
+                "status"
+            )
+
+            if status == "page_progress":
+                try:
+                    page_index = int(
+                        result["page_index"]
+                    )
+
+                    page_saved_count = int(
+                        result["saved_count"]
+                    )
+
+                    page_total_count = int(
+                        result["total_count"]
+                    )
+
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ):
+                    continue
+
+                self.export_page_progress[
+                    page_index
+                ] = {
+                    "saved_count": (
+                        page_saved_count
+                    ),
+                    "total_count": (
+                        page_total_count
+                    ),
+                }
+
+                self.page_list.viewport().update()
+
+                continue
+
+            if status != "progress":
                 continue
 
             try:

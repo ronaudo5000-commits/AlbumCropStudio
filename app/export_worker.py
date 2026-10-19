@@ -34,6 +34,13 @@ class CropExportWorker(QObject):
         int,
         int,
     )
+
+    page_progress = Signal(
+        int,
+        int,
+        int,
+    )
+
     finished = Signal(int)
     failed = Signal(str)
 
@@ -1276,6 +1283,27 @@ class CropExportWorker(QObject):
                 page_group_ids,
             )
 
+            page_total_count = 0
+
+            for crop_index, _ in enumerate(
+                crop_units,
+                start=1,
+            ):
+                if (
+                    self.selected_export_units
+                    is not None
+                    and (
+                        page_index,
+                        crop_index,
+                    )
+                    not in self.selected_export_units
+                ):
+                    continue
+
+                page_total_count += 1
+
+            page_saved_count = 0
+
             try:
                 with Image.open(
                     image_path
@@ -1570,6 +1598,7 @@ class CropExportWorker(QObject):
                         )
 
                         saved_count += 1
+                        page_saved_count += 1
 
                         progress_value = int(
                             (
@@ -1583,6 +1612,12 @@ class CropExportWorker(QObject):
                             progress_value,
                             saved_count,
                             self.total_crops,
+                        )
+
+                        self.page_progress.emit(
+                            page_index,
+                            page_saved_count,
+                            page_total_count,
                         )
 
                         if self.stop_requested:
