@@ -13,7 +13,9 @@ from PySide6.QtCore import (
 )
 
 from PySide6.QtGui import (
+    QColor,
     QIcon,
+    QPalette,
     QPixmap,
 )
 
@@ -164,6 +166,93 @@ def main():
             )
 
         app = QApplication(sys.argv)
+
+        app.setStyle(
+            "Fusion"
+        )
+
+        dark_palette = QPalette()
+
+        dark_palette.setColor(
+            QPalette.ColorRole.Window,
+            QColor(30, 30, 30),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.WindowText,
+            QColor(230, 230, 230),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.Base,
+            QColor(24, 24, 24),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.AlternateBase,
+            QColor(38, 38, 38),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.ToolTipBase,
+            QColor(45, 45, 45),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.ToolTipText,
+            QColor(245, 245, 245),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.Text,
+            QColor(230, 230, 230),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.Button,
+            QColor(45, 45, 45),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.ButtonText,
+            QColor(230, 230, 230),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.BrightText,
+            QColor(255, 90, 90),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.Highlight,
+            QColor(47, 128, 237),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.HighlightedText,
+            QColor(255, 255, 255),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorRole.PlaceholderText,
+            QColor(145, 145, 145),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorGroup.Disabled,
+            QPalette.ColorRole.Text,
+            QColor(120, 120, 120),
+        )
+
+        dark_palette.setColor(
+            QPalette.ColorGroup.Disabled,
+            QPalette.ColorRole.ButtonText,
+            QColor(120, 120, 120),
+        )
+
+        app.setPalette(
+            dark_palette
+        )
 
         # ---------------------------------
         # プロジェクトルート
