@@ -1623,6 +1623,9 @@ class MainWindow(QMainWindow):
         self.export_paused = False
         self.export_page_progress = {}
 
+        self.export_queue = []
+        self.current_export_job = None
+
         self.detection_thread = None
         self.detection_worker = None
 
@@ -10120,6 +10123,37 @@ class MainWindow(QMainWindow):
             b"stop\n"
         )
 
+    def enqueue_export_job(
+        self,
+        export_job,
+    ):
+        self.export_queue.append(
+            export_job
+        )
+
+        if (
+            self.export_process is None
+            and self.current_export_job is None
+        ):
+            self.start_next_export_job()
+
+    def start_next_export_job(
+        self,
+    ):
+        if not self.export_queue:
+            return
+
+        if self.export_process is not None:
+            return
+
+        self.current_export_job = (
+            self.export_queue.pop(0)
+        )
+
+        self.start_export_process(
+            self.current_export_job
+        )
+
     def start_export_process(
         self,
         export_job,
@@ -10267,7 +10301,11 @@ class MainWindow(QMainWindow):
                 result = json.loads(
                     line
                 )
+
             except json.JSONDecodeError:
+                print(
+                    line
+                )
                 continue
 
             status = result.get(
@@ -10502,10 +10540,15 @@ class MainWindow(QMainWindow):
         self.export_process_stdout_parse_buffer = ""
         self.export_process_stderr_buffer = ""
 
+        self.current_export_job = None
+
         if saved_count is not None:
             self.export_finished(
                 saved_count
             )
+
+            if self.export_queue:
+                self.start_next_export_job()
 
         elif stopped_count is not None:
             self.export_stopped(
@@ -11102,7 +11145,7 @@ class MainWindow(QMainWindow):
         )
 
         try:
-            self.start_export_process(
+            self.enqueue_export_job(
                 export_job
             )
 

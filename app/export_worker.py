@@ -3,8 +3,11 @@ import threading
 
 from pathlib import Path
 
+import numpy as np
+
 from PIL import (
     Image,
+    ImageCms,
     ImageDraw,
 )
 
@@ -217,6 +220,241 @@ class CropExportWorker(QObject):
         self,
     ):
         self.pause_event.set()
+
+    def detect_source_color_space(
+        self,
+        source_image,
+    ):
+        icc_profile = source_image.info.get(
+            "icc_profile"
+        )
+
+        exif = source_image.getexif()
+
+        exif_color_space = exif.get(
+            0xA001
+        )
+
+        interoperability_index = None
+
+        try:
+            interoperability_ifd = exif.get_ifd(
+                0xA005
+            )
+
+            interoperability_index = (
+                interoperability_ifd.get(
+                    0x0001
+                )
+            )
+
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            AttributeError,
+        ):
+            interoperability_index = None
+
+        if isinstance(
+            interoperability_index,
+            bytes,
+        ):
+            interoperability_index = (
+                interoperability_index.decode(
+                    "ascii",
+                    errors="ignore",
+                )
+            )
+
+        if interoperability_index is not None:
+            interoperability_index = str(
+                interoperability_index
+            ).strip(
+                "\x00"
+            )
+
+        if icc_profile:
+            detected_color_space = (
+                "embedded ICC profile"
+            )
+
+        elif (
+            exif_color_space == 1
+            or interoperability_index == "R98"
+        ):
+            detected_color_space = "sRGB"
+
+        elif interoperability_index == "R03":
+            detected_color_space = "Adobe RGB"
+
+        elif exif_color_space == 65535:
+            detected_color_space = (
+                "uncalibrated / unknown"
+            )
+
+        else:
+            detected_color_space = "unknown"
+
+        return {
+            "detected": detected_color_space,
+            "has_icc_profile": bool(
+                icc_profile
+            ),
+            "exif_color_space": (
+                exif_color_space
+            ),
+            "interoperability_index": (
+                interoperability_index
+            ),
+        }
+
+    def build_srgb_icc_profile(
+        self,
+    ):
+        srgb_profile = ImageCms.createProfile(
+            "sRGB"
+        )
+
+        return ImageCms.ImageCmsProfile(
+            srgb_profile
+        ).tobytes()
+
+    def convert_adobe_rgb_to_srgb(
+        self,
+        image,
+    ):
+        if image.mode != "RGB":
+            image = image.convert(
+                "RGB"
+            )
+
+        source_array = np.asarray(
+            image,
+            dtype=np.uint8,
+        )
+
+        output_array = np.empty_like(
+            source_array
+        )
+
+        adobe_gamma = (
+            563.0 / 256.0
+        )
+
+        adobe_to_xyz = np.array(
+            [
+                [
+                    0.5767309,
+                    0.1855540,
+                    0.1881852,
+                ],
+                [
+                    0.2973769,
+                    0.6273491,
+                    0.0752741,
+                ],
+                [
+                    0.0270343,
+                    0.0706872,
+                    0.9911085,
+                ],
+            ],
+            dtype=np.float32,
+        )
+
+        xyz_to_srgb = np.array(
+            [
+                [
+                    3.2404542,
+                    -1.5371385,
+                    -0.4985314,
+                ],
+                [
+                    -0.9692660,
+                    1.8760108,
+                    0.0415560,
+                ],
+                [
+                    0.0556434,
+                    -0.2040259,
+                    1.0572252,
+                ],
+            ],
+            dtype=np.float32,
+        )
+
+        conversion_matrix = (
+            xyz_to_srgb
+            @ adobe_to_xyz
+        )
+
+        chunk_height = 256
+
+        for top in range(
+            0,
+            source_array.shape[0],
+            chunk_height,
+        ):
+            bottom = min(
+                top + chunk_height,
+                source_array.shape[0],
+            )
+
+            encoded = (
+                source_array[
+                    top:bottom
+                ].astype(
+                    np.float32
+                )
+                / 255.0
+            )
+
+            linear_adobe = np.power(
+                encoded,
+                adobe_gamma,
+            )
+
+            linear_srgb = (
+                linear_adobe
+                @ conversion_matrix.T
+            )
+
+            linear_srgb = np.clip(
+                linear_srgb,
+                0.0,
+                1.0,
+            )
+
+            encoded_srgb = np.where(
+                linear_srgb <= 0.0031308,
+                linear_srgb * 12.92,
+                (
+                    1.055
+                    * np.power(
+                        linear_srgb,
+                        1.0 / 2.4,
+                    )
+                    - 0.055
+                ),
+            )
+
+            output_array[
+                top:bottom
+            ] = np.clip(
+                np.rint(
+                    encoded_srgb * 255.0
+                ),
+                0,
+                255,
+            ).astype(
+                np.uint8
+            )
+
+        return Image.fromarray(
+            output_array,
+            mode="RGB",
+        )
 
     def validate_crop_rect(
         self,
@@ -1308,6 +1546,25 @@ class CropExportWorker(QObject):
                 with Image.open(
                     image_path
                 ) as source_image:
+                    color_space_info = (
+                        self.detect_source_color_space(
+                            source_image
+                        )
+                    )
+
+                    print(
+                        "export color space "
+                        f"file={image_path} "
+                        f"detected="
+                        f"{color_space_info['detected']} "
+                        f"icc="
+                        f"{color_space_info['has_icc_profile']} "
+                        f"exif_color_space="
+                        f"{color_space_info['exif_color_space']} "
+                        f"interoperability="
+                        f"{color_space_info['interoperability_index']}"
+                    )
+
                     image = source_image.convert(
                         "RGB"
                     )
@@ -1587,14 +1844,60 @@ class CropExportWorker(QObject):
                             )
                         )
 
-                        output_image.save(
-                            output_path,
-                            "JPEG",
-                            quality=current_jpeg_quality,
-                            dpi=(
+                        output_icc_profile = None
+
+                        detected_color_space = (
+                            color_space_info[
+                                "detected"
+                            ]
+                        )
+
+                        if (
+                            detected_color_space
+                            == "Adobe RGB"
+                        ):
+                            output_image = (
+                                self.convert_adobe_rgb_to_srgb(
+                                    output_image
+                                )
+                            )
+
+                            output_icc_profile = (
+                                self.build_srgb_icc_profile()
+                            )
+
+                        elif (
+                            detected_color_space
+                            == "sRGB"
+                        ):
+                            output_icc_profile = (
+                                self.build_srgb_icc_profile()
+                            )
+
+                        save_options = {
+                            "quality": (
+                                current_jpeg_quality
+                            ),
+                            "dpi": (
                                 current_dpi,
                                 current_dpi,
                             ),
+                        }
+
+                        if current_jpeg_quality == 100:
+                            save_options[
+                                "subsampling"
+                            ] = 0
+
+                        if output_icc_profile:
+                            save_options[
+                                "icc_profile"
+                            ] = output_icc_profile
+
+                        output_image.save(
+                            output_path,
+                            "JPEG",
+                            **save_options,
                         )
 
                         saved_count += 1
