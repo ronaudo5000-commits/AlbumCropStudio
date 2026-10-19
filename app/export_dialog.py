@@ -253,6 +253,29 @@ class ExportDialog(QDialog):
         )
 
         # ---------------------------------
+        # 書き出しジョブ要約
+        # ---------------------------------
+        self.job_summary_label = QLabel()
+
+        self.job_summary_label.setWordWrap(
+            True
+        )
+
+        self.job_summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
+        self.job_summary_label.setStyleSheet("""
+            QLabel {
+                padding: 10px;
+                background-color: #252525;
+                border: 1px solid #444444;
+                border-radius: 5px;
+                color: #dddddd;
+            }
+        """)
+
+        # ---------------------------------
         # 個別設定
         # ---------------------------------
         self.selected_item_label = QLabel(
@@ -392,6 +415,22 @@ class ExportDialog(QDialog):
             self.save_current_individual_settings
         )
 
+        self.output_dir_edit.textChanged.connect(
+            self.update_job_summary
+        )
+
+        self.dpi_spin.valueChanged.connect(
+            self.update_job_summary
+        )
+
+        self.jpeg_quality_spin.valueChanged.connect(
+            self.update_job_summary
+        )
+
+        self.margin_mm_spin.valueChanged.connect(
+            self.update_job_summary
+        )
+
         if self.export_list.count() > 0:
             self.export_list.setCurrentRow(
                 0
@@ -473,6 +512,14 @@ class ExportDialog(QDialog):
         )
 
         main_layout.addWidget(
+            self.job_summary_label
+        )
+
+        main_layout.addSpacing(
+            12
+        )
+
+        main_layout.addWidget(
             self.selected_item_label
         )
 
@@ -496,8 +543,72 @@ class ExportDialog(QDialog):
             self.button_box
         )
 
+    def update_job_summary(
+        self,
+        *args,
+    ):
+        selected_indexes = (
+            self.selected_export_indexes()
+        )
+
+        selected_count = len(
+            selected_indexes
+        )
+
+        total_count = (
+            self.export_list.count()
+        )
+
+        output_directory = (
+            self.selected_output_directory()
+        )
+
+        if not output_directory:
+            output_directory = self.tr(
+                "未選択"
+            )
+
+        selected_index_set = set(
+            selected_indexes
+        )
+
+        individual_count = sum(
+            1
+            for export_index
+            in self.individual_settings
+            if export_index
+            in selected_index_set
+        )
+
+        summary_text = self.tr(
+            "今回の書き出し\n"
+            "選択: {selected} / {total}\n"
+            "保存先: {output_directory}\n"
+            "共通設定: {dpi} dpi / "
+            "JPEG {jpeg_quality}% / "
+            "余白 {margin_mm} mm\n"
+            "個別設定: {individual_count}件"
+        ).format(
+            selected=selected_count,
+            total=total_count,
+            output_directory=output_directory,
+            dpi=self.dpi_spin.value(),
+            jpeg_quality=(
+                self.jpeg_quality_spin.value()
+            ),
+            margin_mm=(
+                self.margin_mm_spin.value()
+            ),
+            individual_count=individual_count,
+        )
+
+        self.job_summary_label.setText(
+            summary_text
+        )
+
     def update_selection_summary(
         self,
+        *args,
     ):
         selected_count = len(
             self.selected_export_indexes()
@@ -515,6 +626,8 @@ class ExportDialog(QDialog):
                 total=total_count,
             )
         )
+
+        self.update_job_summary()
 
     def select_all_items(self):
         for row in range(
@@ -662,6 +775,8 @@ class ExportDialog(QDialog):
                 None,
             )
 
+            self.update_job_summary()
+
             return
 
         self.individual_settings[
@@ -677,6 +792,8 @@ class ExportDialog(QDialog):
                 self.individual_margin_mm_spin.value()
             ),
         }
+
+        self.update_job_summary()
 
     def load_individual_settings(
         self,
