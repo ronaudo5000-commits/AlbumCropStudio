@@ -1854,6 +1854,16 @@ class CropExportWorker(QObject):
 
                         if (
                             detected_color_space
+                            == "embedded ICC profile"
+                        ):
+                            output_icc_profile = (
+                                source_image.info.get(
+                                    "icc_profile"
+                                )
+                            )
+
+                        elif (
+                            detected_color_space
                             == "Adobe RGB"
                         ):
                             output_image = (
