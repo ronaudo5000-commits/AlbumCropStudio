@@ -3532,6 +3532,18 @@ class MainWindow(QMainWindow):
             self.progress_bar
         )
 
+        self.export_queue_label = QLabel(
+            self.tr("書き出し待機: 0件")
+        )
+
+        self.export_queue_label.setVisible(
+            False
+        )
+
+        status_layout.addWidget(
+            self.export_queue_label
+        )
+
         status_layout.addStretch()
 
         main_layout.addLayout(
@@ -5157,12 +5169,6 @@ class MainWindow(QMainWindow):
     def update_export_button_state(
         self,
     ):
-        if self.export_running:
-            self.save_button.setEnabled(
-                False
-            )
-            return
-
         if not self.image_paths:
             self.save_button.setEnabled(
                 False
@@ -10101,6 +10107,14 @@ class MainWindow(QMainWindow):
         ):
             return
 
+        waiting_count = len(
+            self.export_queue
+        )
+
+        self.export_queue.clear()
+
+        self.update_export_queue_label()
+
         self.export_stop_button.setEnabled(
             False
         )
@@ -10113,15 +10127,51 @@ class MainWindow(QMainWindow):
             self.tr("停止中…")
         )
 
-        self.status_label.setText(
-            self.tr(
-                "⏹️ 書き出しを停止しています..."
+        if waiting_count > 0:
+            self.status_label.setText(
+                self.tr(
+                    "⏹️ 書き出しを停止しています..."
+                    " 待機中の{count}件も取り消しました"
+                ).format(
+                    count=waiting_count
+                )
             )
-        )
+
+        else:
+            self.status_label.setText(
+                self.tr(
+                    "⏹️ 書き出しを停止しています..."
+                )
+            )
 
         self.export_process.write(
             b"stop\n"
         )
+
+    def update_export_queue_label(
+        self,
+    ):
+        waiting_count = len(
+            self.export_queue
+        )
+
+        if waiting_count > 0:
+            self.export_queue_label.setText(
+                self.tr(
+                    "書き出し待機: {count}件"
+                ).format(
+                    count=waiting_count
+                )
+            )
+
+            self.export_queue_label.setVisible(
+                True
+            )
+
+        else:
+            self.export_queue_label.setVisible(
+                False
+            )
 
     def enqueue_export_job(
         self,
@@ -10130,6 +10180,8 @@ class MainWindow(QMainWindow):
         self.export_queue.append(
             export_job
         )
+
+        self.update_export_queue_label()
 
         if (
             self.export_process is None
@@ -10149,6 +10201,8 @@ class MainWindow(QMainWindow):
         self.current_export_job = (
             self.export_queue.pop(0)
         )
+
+        self.update_export_queue_label()
 
         self.start_export_process(
             self.current_export_job
@@ -10257,6 +10311,22 @@ class MainWindow(QMainWindow):
         self.export_stop_button.setEnabled(
             True
         )
+
+        self.export_running = True
+
+        self.progress_bar.setValue(
+            0
+        )
+
+        self.progress_bar.setVisible(
+            True
+        )
+
+        self.save_button.setText(
+            self.tr("切り抜き")
+        )
+
+        self.update_export_button_state()
 
     def read_export_process_output(
         self,
@@ -11148,6 +11218,12 @@ class MainWindow(QMainWindow):
             self.enqueue_export_job(
                 export_job
             )
+
+            self.save_button.setText(
+                self.tr("切り抜き")
+            )
+
+            self.update_export_button_state()
 
         except Exception as e:
             self.export_failed(
