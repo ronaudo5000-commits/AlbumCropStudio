@@ -1672,6 +1672,10 @@ class MainWindow(QMainWindow):
 
         self.image_paths = []
         self.current_page_index = -1
+
+        self.page_source_sizes = {}
+        self.page_thumbnail_base_pixmaps = {}
+
         self.page_rects = {}
         self.page_angles = {}
         self.page_aspect_modes = {}
@@ -2712,6 +2716,24 @@ class MainWindow(QMainWindow):
 
         edit_menu.addAction(
             self.undo_action
+        )
+
+        # 削除したページを復元する専用操作
+        self.restore_page_action = QAction(
+            self.tr("削除したページを復元"),
+            self,
+        )
+
+        self.restore_page_action.setShortcut(
+            QKeySequence("Ctrl+Shift+Z")
+        )
+
+        self.restore_page_action.triggered.connect(
+            self.restore_deleted_page
+        )
+
+        edit_menu.addAction(
+            self.restore_page_action
         )
 
         self.redo_action = QAction(
@@ -4929,10 +4951,229 @@ class MainWindow(QMainWindow):
 
         self.thumbnail_thread.start()
 
+    def update_page_thumbnail_overlay(
+        self,
+        row,
+    ):
+        if (
+            row < 0
+            or row >= len(self.image_paths)
+            or row >= self.page_list.count()
+        ):
+            return
+
+        image_path = self.image_paths[
+            row
+        ]
+
+        base_thumbnail = (
+            self.page_thumbnail_base_pixmaps.get(
+                image_path
+            )
+        )
+
+        source_size = (
+            self.page_source_sizes.get(
+                image_path
+            )
+        )
+
+        if (
+            base_thumbnail is None
+            or base_thumbnail.isNull()
+            or source_size is None
+            or len(source_size) < 2
+        ):
+            return
+
+        source_width = float(
+            source_size[0]
+        )
+
+        source_height = float(
+            source_size[1]
+        )
+
+        if (
+            source_width <= 0
+            or source_height <= 0
+        ):
+            return
+
+        thumbnail = base_thumbnail.copy()
+
+        if row == self.current_page_index:
+            rects = list(
+                self.preview_area.rects
+            )
+
+            angles = list(
+                self.preview_area.rect_angles
+            )
+
+        else:
+            rects = list(
+                self.page_rects.get(
+                    row,
+                    [],
+                )
+            )
+
+            angles = list(
+                self.page_angles.get(
+                    row,
+                    [],
+                )
+            )
+
+        scale_x = (
+            thumbnail.width()
+            / source_width
+        )
+
+        scale_y = (
+            thumbnail.height()
+            / source_height
+        )
+
+        painter = QPainter(
+            thumbnail
+        )
+
+        painter.setRenderHint(
+            QPainter.RenderHint.Antialiasing,
+            True,
+        )
+
+        for (
+            rect_index,
+            rect,
+        ) in enumerate(
+            rects
+        ):
+            if len(rect) < 4:
+                continue
+
+            (
+                x,
+                y,
+                w,
+                h,
+            ) = rect
+
+            angle = 0.0
+
+            if rect_index < len(
+                angles
+            ):
+                try:
+                    angle = float(
+                        angles[
+                            rect_index
+                        ]
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    angle = 0.0
+
+            screen_x = (
+                float(x)
+                * scale_x
+            )
+
+            screen_y = (
+                float(y)
+                * scale_y
+            )
+
+            screen_w = (
+                float(w)
+                * scale_x
+            )
+
+            screen_h = (
+                float(h)
+                * scale_y
+            )
+
+            center_x = (
+                screen_x
+                + screen_w / 2
+            )
+
+            center_y = (
+                screen_y
+                + screen_h / 2
+            )
+
+            painter.save()
+
+            painter.translate(
+                center_x,
+                center_y,
+            )
+
+            painter.rotate(
+                angle
+            )
+
+            pen = QPen(
+                QColor(
+                    255,
+                    40,
+                    40,
+                )
+            )
+
+            pen.setWidthF(
+                1.5
+            )
+
+            painter.setPen(
+                pen
+            )
+
+            painter.setBrush(
+                Qt.BrushStyle.NoBrush
+            )
+
+            painter.drawRect(
+                QRectF(
+                    -screen_w / 2,
+                    -screen_h / 2,
+                    screen_w,
+                    screen_h,
+                )
+            )
+
+            painter.restore()
+
+        painter.end()
+
+        item = self.page_list.item(
+            row
+        )
+
+        if item is None:
+            return
+
+        item.setIcon(
+            QIcon(
+                thumbnail
+            )
+        )
+
+        self.page_list.viewport().update()
+
     def apply_generated_thumbnail(
         self,
         file_path,
         thumbnail_image,
+        source_width,
+        source_height,
     ):
         if (
             thumbnail_image is None
@@ -4948,6 +5189,17 @@ class MainWindow(QMainWindow):
             # Worker処理中にページが削除された場合
             return
 
+        if (
+            source_width > 0
+            and source_height > 0
+        ):
+            self.page_source_sizes[
+                file_path
+            ] = (
+                int(source_width),
+                int(source_height),
+            )
+
         item = self.page_list.item(
             row
         )
@@ -4962,13 +5214,13 @@ class MainWindow(QMainWindow):
         if thumbnail.isNull():
             return
 
-        item.setIcon(
-            QIcon(
-                thumbnail
-            )
-        )
+        self.page_thumbnail_base_pixmaps[
+            file_path
+        ] = thumbnail.copy()
 
-        self.page_list.viewport().update()
+        self.update_page_thumbnail_overlay(
+            row
+        )
 
     def thumbnail_generation_failed(
         self,
@@ -5427,6 +5679,11 @@ class MainWindow(QMainWindow):
             item.setText(
                 file_name
             )
+
+        self.update_page_thumbnail_overlay(
+            row
+        )
+
         self.update_current_rect_count_status()
 
     def set_page_list_display_mode(
@@ -8265,6 +8522,15 @@ class MainWindow(QMainWindow):
         self.apply_page_list_display_mode()
         self.preview_area.update()
 
+        # ---------------------------------
+        # プロジェクト読込後、
+        # 全ページのサムネイルを再生成し、
+        # 保存済み切り抜き枠を反映する
+        # ---------------------------------
+        self.start_thumbnail_generation(
+            self.image_paths
+        )
+
     def change_page_from_list(self, row):
         if row < 0:
             return
@@ -9242,6 +9508,17 @@ class MainWindow(QMainWindow):
 
         self.update_crop_preview()
         self.update_page_label()
+
+        # ---------------------------------
+        # ページ復元後、全サムネイルの
+        # 切り抜き枠を再描画する
+        # ---------------------------------
+        for row in range(
+            len(self.image_paths)
+        ):
+            self.update_page_thumbnail_overlay(
+                row
+            )
 
     def show_previous_page(self):
         if not self.image_paths:

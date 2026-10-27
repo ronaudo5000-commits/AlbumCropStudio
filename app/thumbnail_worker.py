@@ -14,6 +14,8 @@ class ThumbnailWorker(QObject):
     thumbnail_ready = Signal(
         str,
         object,
+        int,
+        int,
     )
 
     failed = Signal(
@@ -89,6 +91,12 @@ class ThumbnailWorker(QObject):
                     self.thumbnail_ready.emit(
                         str(file_path),
                         thumbnail_image,
+                        int(
+                            source_size.width()
+                        ),
+                        int(
+                            source_size.height()
+                        ),
                     )
 
                 except Exception as e:
