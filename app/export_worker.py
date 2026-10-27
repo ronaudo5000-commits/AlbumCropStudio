@@ -1,3 +1,4 @@
+import io
 import math
 import threading
 
@@ -319,6 +320,58 @@ class CropExportWorker(QObject):
         return ImageCms.ImageCmsProfile(
             srgb_profile
         ).tobytes()
+
+    def convert_embedded_icc_to_srgb(
+        self,
+        image,
+        icc_profile,
+    ):
+        if not icc_profile:
+            raise ValueError(
+                "埋め込みICCプロファイルがありません"
+            )
+
+        try:
+            source_profile = (
+                ImageCms.ImageCmsProfile(
+                    io.BytesIO(
+                        icc_profile
+                    )
+                )
+            )
+
+            srgb_profile = (
+                ImageCms.createProfile(
+                    "sRGB"
+                )
+            )
+
+            converted_image = (
+                ImageCms.profileToProfile(
+                    image,
+                    source_profile,
+                    srgb_profile,
+                    renderingIntent=(
+                        ImageCms.Intent.PERCEPTUAL
+                    ),
+                    outputMode="RGB",
+                )
+            )
+
+        except (
+            ImageCms.PyCMSError,
+            OSError,
+            TypeError,
+            ValueError,
+        ) as e:
+            raise ValueError(
+                (
+                    "埋め込みICCプロファイルから"
+                    "sRGBへの変換に失敗しました"
+                )
+            ) from e
+
+        return converted_image
 
     def convert_adobe_rgb_to_srgb(
         self,
@@ -1565,9 +1618,23 @@ class CropExportWorker(QObject):
                         f"{color_space_info['interoperability_index']}"
                     )
 
-                    image = source_image.convert(
-                        "RGB"
-                    )
+                    if (
+                        color_space_info["detected"]
+                        == "embedded ICC profile"
+                    ):
+                        image = (
+                            self.convert_embedded_icc_to_srgb(
+                                source_image,
+                                source_image.info.get(
+                                    "icc_profile"
+                                ),
+                            )
+                        )
+
+                    else:
+                        image = source_image.convert(
+                            "RGB"
+                        )
 
                     image_width = image.width
                     image_height = image.height
@@ -1857,9 +1924,7 @@ class CropExportWorker(QObject):
                             == "embedded ICC profile"
                         ):
                             output_icc_profile = (
-                                source_image.info.get(
-                                    "icc_profile"
-                                )
+                                self.build_srgb_icc_profile()
                             )
 
                         elif (
