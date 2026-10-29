@@ -2562,6 +2562,10 @@ class MainWindow(QMainWindow):
             self.save_settings
         )
 
+        self.margin_spin.valueChanged.connect(
+            self.update_crop_preview
+        )
+
         self.jpeg_quality_spin.valueChanged.connect(
             self.save_settings
         )
@@ -12777,6 +12781,7 @@ class MainWindow(QMainWindow):
     def create_composite_crop_preview_pixmap(
         self,
         member_indexes,
+        margin_px=0,
     ):
         if not member_indexes:
             return QPixmap()
@@ -12816,12 +12821,43 @@ class MainWindow(QMainWindow):
                     ]
                 )
 
+            # 書き出し処理と同様に、
+            # 各構成枠を余白分だけ拡張する
+            crop_x = x - margin_px
+            crop_y = y - margin_px
+            crop_w = w + margin_px * 2
+            crop_h = h + margin_px * 2
+
+            # 元画像の範囲内に制限する
+            left = max(
+                0,
+                int(round(crop_x)),
+            )
+
+            top = max(
+                0,
+                int(round(crop_y)),
+            )
+
+            right = min(
+                self.current_pixmap.width(),
+                int(round(crop_x + crop_w)),
+            )
+
+            bottom = min(
+                self.current_pixmap.height(),
+                int(round(crop_y + crop_h)),
+            )
+
+            if right <= left or bottom <= top:
+                continue
+
             valid_members.append(
                 {
-                    "x": float(x),
-                    "y": float(y),
-                    "w": float(w),
-                    "h": float(h),
+                    "x": float(left),
+                    "y": float(top),
+                    "w": float(right - left),
+                    "h": float(bottom - top),
                     "angle": angle,
                 }
             )
@@ -13012,6 +13048,14 @@ class MainWindow(QMainWindow):
             self.build_preview_crop_units()
         )
 
+        preview_margin_px = int(
+            (
+                self.margin_spin.value()
+                / 25.4
+            )
+            * self.dpi_spin.value()
+        )
+
         mosaic_rects = (
             self.preview_area.mosaic_rects
         )
@@ -13058,12 +13102,43 @@ class MainWindow(QMainWindow):
                     )
                 )
 
+                # 書き出しと同様に、
+                # 切り抜き範囲を余白分だけ拡張する
+                crop_x = x - preview_margin_px
+                crop_y = y - preview_margin_px
+                crop_w = w + preview_margin_px * 2
+                crop_h = h + preview_margin_px * 2
+
+                # 元画像の範囲内に収める
+                left = max(
+                    0,
+                    int(round(crop_x)),
+                )
+
+                top = max(
+                    0,
+                    int(round(crop_y)),
+                )
+
+                right = min(
+                    source_pixmap.width(),
+                    int(round(crop_x + crop_w)),
+                )
+
+                bottom = min(
+                    source_pixmap.height(),
+                    int(round(crop_y + crop_h)),
+                )
+
+                if right <= left or bottom <= top:
+                    continue
+
                 crop_pixmap = (
                     self.create_rotated_crop_pixmap(
-                        x,
-                        y,
-                        w,
-                        h,
+                        left,
+                        top,
+                        right - left,
+                        bottom - top,
                         angle,
                         source_pixmap,
                     )
@@ -13081,6 +13156,7 @@ class MainWindow(QMainWindow):
                 crop_pixmap = (
                     self.create_composite_crop_preview_pixmap(
                         member_indexes,
+                        preview_margin_px,
                     )
                 )
 
