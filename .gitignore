@@ -31,3 +31,6 @@ dist/
 # Operating-system files
 .DS_Store
 Thumbs.db
+
+# Local build backups
+/build_backup_*/
