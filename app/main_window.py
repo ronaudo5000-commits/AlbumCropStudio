@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 from io import BytesIO
 from PIL import Image
-import pymupdf
 import traceback
 
 import time
@@ -2844,6 +2843,19 @@ class MainWindow(QMainWindow):
             quick_start_action
         )
 
+        beta_detection_action = QAction(
+            self.tr("自動検出（β版）について"),
+            self,
+        )
+
+        beta_detection_action.triggered.connect(
+            self.show_beta_detection_info
+        )
+
+        help_menu.addAction(
+            beta_detection_action
+        )
+
         help_menu.addSeparator()
 
         about_action = QAction(
@@ -2930,7 +2942,7 @@ class MainWindow(QMainWindow):
         )
 
         self.detect_button = QPushButton(
-            self.tr("写真を自動検出")
+            self.tr("写真を自動検出（β版）")
         )
         self.detect_button.setMinimumHeight(40)
         self.detect_button.clicked.connect(
@@ -3192,8 +3204,10 @@ class MainWindow(QMainWindow):
 
         self.detect_button.setToolTip(
             self.tr(
-                "画像の中にある写真を自動検出して、"
-                "切り抜き枠を作成します"
+                "自動検出機能は現在β版です。\n"
+                "画像によっては検出漏れや誤検出が発生します。\n"
+                "検出結果を確認し、必要に応じて"
+                "切り抜き枠を手動で修正してください。"
             )
         )
 
@@ -3854,7 +3868,7 @@ class MainWindow(QMainWindow):
         )
 
         self.detect_button.setText(
-            self.tr("写真を自動検出")
+            self.tr("写真を自動検出（β版）")
             if enabled
             else self.tr("検出中…")
         )
@@ -4167,105 +4181,6 @@ class MainWindow(QMainWindow):
                 max_pages=max_pages
             ),
         )
-
-    def convert_pdf_to_images(
-        self,
-        pdf_path,
-        max_pages=None,
-    ):
-        converted_paths = []
-
-        try:
-            document = pymupdf.open(
-                pdf_path
-            )
-
-            pdf_name = Path(
-                pdf_path
-            ).stem
-
-            total_page_count = (
-                document.page_count
-            )
-
-            page_count = total_page_count
-
-            if max_pages is not None:
-                page_count = min(
-                    page_count,
-                    max_pages,
-                )
-
-            was_limited = (
-                max_pages is not None
-                and total_page_count
-                > max_pages
-            )
-
-            for page_index in range(
-                page_count
-            ):
-                page = document.load_page(
-                    page_index
-                )
-
-                pixmap = page.get_pixmap(
-                    dpi=300,
-                    colorspace=pymupdf.csRGB,
-                    alpha=False,
-                )
-
-                output_path = (
-                    self.pdf_temp_dir
-                    / (
-                        f"{pdf_name}_"
-                        f"page_{page_index + 1:04}.png"
-                    )
-                )
-
-                success = pixmap.save(
-                    str(output_path)
-                )
-
-                print(
-                    f"保存先: {output_path}"
-                )
-
-                print(
-                    f"保存成功: {success}"
-                )
-
-                print(
-                    f"存在確認: {output_path.exists()}"
-                )
-
-                converted_paths.append(
-                    str(output_path)
-                )
-
-            document.close()
-
-        except Exception as e:
-            print(
-                f"PDF変換エラー: {e}"
-            )
-
-            QMessageBox.critical(
-                self,
-                self.tr(
-                    "PDF読み込みエラー"
-                ),
-                self.tr(
-                    "PDFを画像へ変換できませんでした。\n\n"
-                    "ファイルが破損しているか、"
-                    "対応していないPDF形式の"
-                    "可能性があります。"
-                ),
-            )
-
-            return [], False
-
-        return converted_paths, was_limited
 
     def start_pdf_conversion(
         self,
@@ -11658,6 +11573,22 @@ class MainWindow(QMainWindow):
                 "「切り抜き」から画像を書き出します。\n\n"
                 "作業内容は「作業を保存」で"
                 "プロジェクトとして保存できます。"
+            ),
+        )
+
+    def show_beta_detection_info(self):
+        QMessageBox.information(
+            self,
+            self.tr("自動検出（β版）について"),
+            self.tr(
+                "写真の自動検出機能は、現在β版です。\n\n"
+                "画像の背景、写真の配置、境界線などにより、"
+                "検出漏れや誤検出が発生する場合があります。\n\n"
+                "自動検出後は、切り抜き枠の位置や大きさを"
+                "確認してください。\n"
+                "必要に応じて、枠の追加・修正・削除を"
+                "手動で行うことができます。\n\n"
+                "この機能は今後も改善を継続する予定です。"
             ),
         )
 

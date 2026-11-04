@@ -80,6 +80,10 @@ try {
         --noconfirm `
         $SpecFile
 
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstallerのビルドに失敗しました。終了コード: $LASTEXITCODE"
+    }
+
     if (-not (Test-Path $DistDir)) {
         throw "dist\AlbumCropStudio が生成されませんでした。"
     }

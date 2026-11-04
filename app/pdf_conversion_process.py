@@ -1,10 +1,12 @@
 import argparse
+import ctypes
 import json
 import sys
 import time
+from ctypes import wintypes
 from pathlib import Path
 
-import pymupdf
+import pypdfium2 as pdfium
 
 
 def send_message(
@@ -59,7 +61,7 @@ def convert_pdf(
             exist_ok=True,
         )
 
-        document = pymupdf.open(
+        document = pdfium.PdfDocument(
             pdf_path
         )
 
@@ -68,7 +70,7 @@ def convert_pdf(
         ).stem
 
         total_page_count = (
-            document.page_count
+            len(document)
         )
 
         page_count = (
@@ -90,27 +92,35 @@ def convert_pdf(
         for page_index in range(
             page_count
         ):
-            page = document.load_page(
-                page_index
-            )
+            page = document[page_index]
 
-            pixmap = page.get_pixmap(
-                dpi=300,
-                colorspace=pymupdf.csRGB,
-                alpha=False,
-            )
-
-            output_path = (
-                output_dir
-                / (
-                    f"{pdf_name}_"
-                    f"page_{page_index + 1:04}.png"
+            try:
+                bitmap = page.render(
+                    scale=300 / 72,
                 )
-            )
 
-            pixmap.save(
-                str(output_path)
-            )
+                try:
+                    image = (
+                        bitmap.to_pil().convert("RGB")
+                    )
+
+                    output_path = (
+                        output_dir
+                        / (
+                            f"{pdf_name}_"
+                            f"page_{page_index + 1:04}.png"
+                        )
+                    )
+
+                    image.save(
+                        str(output_path)
+                    )
+
+                finally:
+                    bitmap.close()
+
+            finally:
+                page.close()
 
             converted_paths.append(
                 str(output_path)
