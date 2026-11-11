@@ -1,11 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from importlib.metadata import distribution
+from pathlib import Path
+
+
+# インストール済みpypdfium2のライセンス文書を取得
+pdfium_package = distribution("pypdfium2")
+
+pdfium_license_dir = Path(
+    pdfium_package.locate_file(
+        f"pypdfium2-{pdfium_package.version}.dist-info/licenses"
+    )
+)
+
+if not pdfium_license_dir.is_dir():
+    raise FileNotFoundError(
+        f"PDFiumライセンスフォルダが見つかりません: "
+        f"{pdfium_license_dir}"
+    )
+
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
 datas=[
+    (
+        str(pdfium_license_dir),
+        'licenses/pypdfium2',
+    ),
     (
         'resources/app_icon.png',
         'resources',

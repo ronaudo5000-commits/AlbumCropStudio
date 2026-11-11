@@ -18,25 +18,89 @@ def send_message(
         **data,
     }
 
-    # ---------------------------------
-    # QProcessの標準出力はWindows環境で
-    # 必ずしもUTF-8になるとは限らない。
-    #
-    # 日本語を含むファイルパスが文字化けすると、
-    # AlbumCrop Studio本体が存在しないパスとして
-    # 受け取ってしまうため、
-    # JSON通信はASCIIのみで送信する。
-    #
-    # json.loads() 時に \uXXXX は
-    # 元のUnicode文字列へ自動復元される。
-    # ---------------------------------
-    print(
+    # 日本語のファイルパスを安全に扱うため、
+    # JSON通信はASCII形式にする。
+    message_bytes = (
         json.dumps(
             message,
             ensure_ascii=True,
-        ),
-        flush=True,
-    )
+        ) + "\n"
+    ).encode("ascii")
+
+    if (
+        sys.platform == "win32"
+        and getattr(sys, "frozen", False)
+    ):
+        # PyInstallerのGUI版では、
+        # Pythonのstdoutが使えない場合がある。
+        # Windowsの標準出力ハンドルを利用する。
+        kernel32 = ctypes.WinDLL(
+            "kernel32",
+            use_last_error=True,
+        )
+
+        kernel32.GetStdHandle.argtypes = [
+            wintypes.DWORD,
+        ]
+        kernel32.GetStdHandle.restype = (
+            wintypes.HANDLE
+        )
+
+        kernel32.WriteFile.argtypes = [
+            wintypes.HANDLE,
+            wintypes.LPCVOID,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            wintypes.LPVOID,
+        ]
+        kernel32.WriteFile.restype = (
+            wintypes.BOOL
+        )
+
+        stdout_handle = kernel32.GetStdHandle(
+            0xFFFFFFF5
+        )
+
+        if stdout_handle in (
+            None,
+            0,
+            ctypes.c_void_p(-1).value,
+        ):
+            raise OSError(
+                "PDF Workerの標準出力を取得できません。"
+            )
+
+        buffer = ctypes.create_string_buffer(
+            message_bytes
+        )
+
+        written = wintypes.DWORD(0)
+
+        success = kernel32.WriteFile(
+            stdout_handle,
+            buffer,
+            len(message_bytes),
+            ctypes.byref(written),
+            None,
+        )
+
+        if (
+            not success
+            or written.value != len(message_bytes)
+        ):
+            error_code = ctypes.get_last_error()
+            raise OSError(
+                "PDF Workerの通知送信に失敗しました。"
+                f" Windows error: {error_code}"
+            )
+
+    else:
+        # 開発環境では従来どおりprintを使用。
+        print(
+            message_bytes.decode("ascii"),
+            end="",
+            flush=True,
+        )
 
 
 def convert_pdf(
