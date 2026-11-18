@@ -4807,6 +4807,16 @@ class MainWindow(QMainWindow):
             return
 
         # ---------------------------------
+        # 診断用：
+        # PDF変換中はサムネイル生成を待機させる
+        # ---------------------------------
+        if self.pdf_conversion_running:
+            for file_path in paths:
+                if file_path not in self.thumbnail_pending_paths:
+                    self.thumbnail_pending_paths.append(file_path)
+            return
+
+        # ---------------------------------
         # PDF変換は現在QProcessによって
         # 別プロセスで実行しているため、
         # PDF変換中でもサムネイル生成を許可する。
