@@ -8833,6 +8833,16 @@ class MainWindow(QMainWindow):
             new_export_enabled
         )
 
+        # 削除していないページの書き出し進捗を保持し、
+        # 新しいページ番号に付け替える
+        old_export_page_progress = self.export_page_progress
+
+        self.export_page_progress = {
+            new_index: old_export_page_progress[old_index].copy()
+            for old_index, new_index in index_map.items()
+            if old_index in old_export_page_progress
+        }
+
         # ---------------------------------
         # QListWidgetはSignalと描画を止めて
         # まとめて削除する
@@ -9061,6 +9071,46 @@ class MainWindow(QMainWindow):
             return
 
         deleted = self.deleted_pages_stack.pop()
+
+        # ページ復元によって変わるページ番号に合わせて、
+        # 残存ページの書き出し進捗を付け替える
+        if deleted.get("type") == "group":
+            restore_indices = sorted(
+                page["index"]
+                for page in deleted["pages"]
+            )
+        else:
+            restore_indices = [
+                deleted["index"]
+            ]
+
+        new_progress = dict(
+            self.export_page_progress
+        )
+
+        current_length = len(
+            self.image_paths
+        )
+
+        for index in restore_indices:
+            insert_at = min(
+                index,
+                current_length
+            )
+
+            new_progress = {
+                (
+                    old_index + 1
+                    if old_index >= insert_at
+                    else old_index
+                ): progress
+                for old_index, progress
+                in new_progress.items()
+            }
+
+            current_length += 1
+
+        self.export_page_progress = new_progress
 
         # 複数ページ削除のUndo
         if deleted.get("type") == "group":
