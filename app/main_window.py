@@ -2231,12 +2231,23 @@ class MainWindow(QMainWindow):
                     page_id,
                 )
 
+            import copy
+
+            # PhotoCanvasが保存した編集前の状態を取得
+            before_state = None
+
+            if self.preview_area.undo_stack:
+                before_state = copy.deepcopy(
+                    self.preview_area.undo_stack[-1]
+                )
+
             self._canvas_undo_events.append(
                 {
                     "type": "rect_edit",
                     "page_id": page_id,
                     "page_index": page_index,
                     "image_path": self.image_paths[page_index],
+                    "before": before_state,
                 }
             )
 
@@ -9015,6 +9026,33 @@ class MainWindow(QMainWindow):
             }
         )
 
+        # 共通Undo用にページ削除操作を記録する
+        import copy
+
+        self._canvas_undo_events.append(
+            {
+                "type": "page_delete",
+                "deleted_pages": copy.deepcopy(
+                    self.deleted_pages_stack[-1]
+                ),
+            }
+        )
+
+        # 準備段階の記録件数を制限
+        if len(self._canvas_undo_events) > 30:
+            self._canvas_undo_events.pop(0)
+
+        # 共通Undo履歴の記録順序を確認する一時診断
+        print("[COMMON UNDO HISTORY]")
+
+        for number, entry in enumerate(
+            self._canvas_undo_events,
+            start=1,
+        ):
+            print(
+                f"  {number}: {entry['type']}"
+            )
+
         # ---------------------------------
         # 全ページ削除後
         # ---------------------------------
@@ -9685,6 +9723,22 @@ class MainWindow(QMainWindow):
             self.update_page_thumbnail_overlay(
                 row
             )
+
+        # 復元が完了したページ削除操作を共通履歴から除外
+        # 別の操作履歴は残し、対応する削除履歴だけを探す
+        for event_index in range(
+            len(self._canvas_undo_events) - 1,
+            -1,
+            -1,
+        ):
+            event = self._canvas_undo_events[event_index]
+
+            if (
+                event.get("type") == "page_delete"
+                and event.get("deleted_pages") == deleted
+            ):
+                self._canvas_undo_events.pop(event_index)
+                break
 
     def show_previous_page(self):
         if not self.image_paths:
