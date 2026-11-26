@@ -2248,6 +2248,25 @@ class MainWindow(QMainWindow):
                     self.preview_area.undo_stack[-1]
                 )
 
+            # 次の編集開始時に、直前の編集結果を確定する
+            previous_entry = self.undo_history.peek_undo()
+
+            if (
+                previous_entry is not None
+                and previous_entry.get("type") == "rect_edit"
+                and previous_entry.get("page_id") == page_id
+                and previous_entry.get("after") is None
+                and before_state is not None
+            ):
+                previous_entry["after"] = copy.deepcopy(
+                    before_state
+                )
+
+                print(
+                    "[UNDO SNAPSHOT COMPLETED] "
+                    f"after={len(previous_entry['after']['rects'])}"
+                )
+
             self._canvas_undo_events.append(
                 {
                     "type": "rect_edit",
@@ -2316,11 +2335,30 @@ class MainWindow(QMainWindow):
             if current_page_id != entry.get("page_id"):
                 return
 
+            # PhotoCanvasがUndo直前に保存した
+            # 編集後の状態を共通履歴にも保持する
+            if not self.preview_area.redo_stack:
+                return
+
+            import copy
+
+            entry["after"] = copy.deepcopy(
+                self.preview_area.redo_stack[-1]
+            )
+
+            # 編集後の状態を保存できた場合だけ
+            # 共通履歴をRedo側へ移す
             self.undo_history.commit_undo()
 
             print(
                 "[UNDO HISTORY SYNC] "
                 "rect edit moved to redo"
+            )
+
+            print(
+                "[UNDO SNAPSHOT] "
+                f"before={len(entry['before']['rects'])} "
+                f"after={len(entry['after']['rects'])}"
             )
 
         self.preview_area.undo_completed_callback = (
@@ -2892,7 +2930,7 @@ class MainWindow(QMainWindow):
         )
 
         self.undo_action.triggered.connect(
-            self.preview_area.undo
+            self.undo_with_page_fallback
         )
 
         edit_menu.addAction(
@@ -2927,7 +2965,7 @@ class MainWindow(QMainWindow):
         )
 
         self.redo_action.triggered.connect(
-            self.preview_area.redo
+            self.redo_with_page_fallback
         )
 
         edit_menu.addAction(
@@ -6042,11 +6080,24 @@ class MainWindow(QMainWindow):
             or self.has_bulk_paste_undo()
         )
 
-        redo_available = (
-            bool(
-                self.preview_area.redo_stack
+        common_redo_entry = (
+            self.undo_history.peek_redo()
+        )
+
+        common_redo_available = (
+            common_redo_entry is not None
+            and common_redo_entry.get("type") == "rect_edit"
+            and isinstance(
+                common_redo_entry.get("after"),
+                dict,
             )
+            and bool(common_redo_entry.get("page_id"))
+        )
+
+        redo_available = (
+            bool(self.preview_area.redo_stack)
             or self.has_bulk_paste_redo()
+            or common_redo_available
         )
 
         selected_indexes = set(
@@ -6341,13 +6392,23 @@ class MainWindow(QMainWindow):
             self.update_crop_preview()
             self.update_current_rect_count_status()
 
+
         self.apply_page_list_display_mode()
+
+        # 復元されたページのサムネイルを更新
+        for row in states:
+            if (
+                isinstance(row, int)
+                and 0 <= row < len(self.image_paths)
+            ):
+                self.update_page_thumbnail_overlay(row)
 
         self.page_list.viewport().update()
 
         self.mark_project_modified()
 
         return True
+
 
     def undo_bulk_paste_if_available(
         self,
@@ -6910,15 +6971,29 @@ class MainWindow(QMainWindow):
             self.update_current_rect_count_status()
             self.update_page_label()
 
+
         # ページ一覧の枠数表示を最後に一度だけ更新
         self.apply_page_list_display_mode()
 
         if pasted_page_count > 0:
+
+            # 一括貼り付け後の切り抜き枠を
+            # 対象ページのサムネイルに反映する
+            for row in valid_rows:
+                before_state = before_states.get(row, {})
+                after_state = after_states.get(row, {})
+
+                if before_state != after_state:
+                    self.update_page_thumbnail_overlay(row)
+
+            self.page_list.viewport().update()
+
             self.bulk_paste_undo_state = {
                 "before": before_states,
                 "after": after_states,
                 "page_count": pasted_page_count,
             }
+
 
             self.bulk_paste_redo_state = None
 
@@ -8714,6 +8789,46 @@ class MainWindow(QMainWindow):
 
         self.save_current_page_rects()
 
+        # ページを離れる前に編集後の状態を保存する
+        entry = self.undo_history.peek_undo()
+
+        if (
+            entry is not None
+            and entry.get("type") == "rect_edit"
+            and entry.get("after") is None
+        ):
+            page_item = self.page_list.item(
+                self.current_page_index
+            )
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            if (
+                page_item is not None
+                and page_item.data(page_id_role)
+                == entry.get("page_id")
+            ):
+                import copy
+
+                entry["after"] = copy.deepcopy(
+                    {
+                        "rects": self.preview_area.rects,
+                        "angles": self.preview_area.rect_angles,
+                        "aspect_modes": self.preview_area.rect_aspect_modes,
+                        "group_ids": self.preview_area.rect_group_ids,
+                        "mosaic_rects": self.preview_area.mosaic_rects,
+                        "mosaic_angles": self.preview_area.mosaic_rect_angles,
+                    }
+                )
+
+                print(
+                    "[UNDO PAGE SNAPSHOT] "
+                    f"before={len(entry['before']['rects'])} "
+                    f"after={len(entry['after']['rects'])}"
+                )
+
         # 別ページの編集履歴を誤適用しないため、
         # 共通Undo完成までページ切り替え時に履歴をクリアする
         self.preview_area.undo_stack.clear()
@@ -9934,6 +10049,53 @@ class MainWindow(QMainWindow):
                     self.undo_history.undo_stack.pop(event_index)
                     break
 
+
+    def undo_with_page_fallback(self):
+        """既存Undoとページをまたぐ共通Undoの振り分け。"""
+
+        # 一括貼り付けの履歴がある場合は、
+        # 専用Undoを最優先で実行する
+        if self.has_bulk_paste_undo():
+            self.undo_bulk_paste_if_available()
+            return
+
+        entry = self.undo_history.peek_undo()
+
+
+        if (
+            entry is not None
+            and entry.get("type") == "rect_edit"
+            and isinstance(entry.get("before"), dict)
+            and isinstance(entry.get("after"), dict)
+        ):
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            current_item = self.page_list.item(
+                self.current_page_index
+            )
+
+            current_page_id = (
+                current_item.data(page_id_role)
+                if current_item is not None
+                else None
+            )
+
+            # 別ページの編集履歴はPhotoCanvasに渡さない
+            if current_page_id != entry.get("page_id"):
+                self.undo_last_action()
+                return
+
+            # 現在ページでも、切り替えによって
+            # PhotoCanvas履歴が消えている場合は共通Undoを使用
+            if not self.preview_area.undo_stack:
+                self.undo_last_action()
+                return
+
+        # 通常のUndoは従来の処理を使用
+        self.preview_area.undo()
+
     def undo_last_action(self):
         """共通Undoの実行窓口。"""
 
@@ -9958,39 +10120,222 @@ class MainWindow(QMainWindow):
             return
 
         if operation_type == "rect_edit":
-            # 編集元のページ以外にはUndoを実行しない
-            page_index = self.current_page_index
+            import copy
 
-            if not (
-                0 <= page_index < len(self.image_paths)
-            ):
+            before_state = entry.get("before")
+
+            if not isinstance(before_state, dict):
                 return
 
-            page_item = self.page_list.item(
-                page_index
-            )
-
-            if page_item is None:
-                return
-
+            # ページ番号ではなく固有IDから対象を探す
             page_id_role = (
                 Qt.ItemDataRole.UserRole.value + 1
             )
 
-            current_page_id = page_item.data(
-                page_id_role
+            target_row = -1
+
+            for row in range(self.page_list.count()):
+                item = self.page_list.item(row)
+
+                if (
+                    item is not None
+                    and item.data(page_id_role)
+                    == entry.get("page_id")
+                ):
+                    target_row = row
+                    break
+
+            if target_row < 0:
+                return
+
+            # 編集後の状態をRedo用に確保する
+            if target_row == self.current_page_index:
+                entry["after"] = copy.deepcopy(
+                    {
+                        "rects": self.preview_area.rects,
+                        "angles": self.preview_area.rect_angles,
+                        "aspect_modes": self.preview_area.rect_aspect_modes,
+                        "group_ids": self.preview_area.rect_group_ids,
+                        "mosaic_rects": self.preview_area.mosaic_rects,
+                        "mosaic_angles": self.preview_area.mosaic_rect_angles,
+                    }
+                )
+            elif not isinstance(entry.get("after"), dict):
+                # 編集後の状態が未確定なら実行しない
+                return
+
+            # 編集元のページへ移動する
+            if target_row != self.current_page_index:
+                self.change_page_from_list(target_row)
+                self.page_list.setCurrentRow(target_row)
+
+            if self.current_page_index != target_row:
+                return
+
+            # 切り抜き枠の編集前の状態を復元する
+            restored = self.restore_page_rect_states(
+                {target_row: before_state}
             )
 
-            if current_page_id != entry.get("page_id"):
+            if not restored:
                 return
 
-            # 同じページでも、履歴が失われていれば実行しない
-            if not self.preview_area.undo_stack:
-                return
+            # モザイク情報も同じ状態へ戻す
+            self.page_mosaic_rects[target_row] = [
+                tuple(rect)
+                for rect in before_state.get(
+                    "mosaic_rects", []
+                )
+            ]
 
-            # 現段階では既存の枠編集Undoを使用
-            self.preview_area.undo()
+            self.page_mosaic_angles[target_row] = list(
+                before_state.get("mosaic_angles", [])
+            )
+
+            self.restore_current_page_mosaic_rects()
+
+            # 古いPhotoCanvas履歴を誤適用させない
+            self.preview_area.undo_stack.clear()
+            self.preview_area.redo_stack.clear()
+
+            self.save_current_page_rects()
+            self.update_page_thumbnail_overlay(target_row)
+            self.preview_area.update()
+
+            # 復元が成功した後に履歴を移動
+            self.undo_history.commit_undo()
+
+            print(
+                "[COMMON UNDO EXECUTED] "
+                f"page={target_row + 1} "
+                f"rects={len(self.preview_area.rects)}"
+            )
+
             return
+
+
+    def redo_with_page_fallback(self):
+        """既存Redoを優先し、必要な場合だけ共通Redoを使う。"""
+
+        # PhotoCanvasのRedo履歴があれば従来処理を優先
+        if self.preview_area.redo_stack:
+            self.preview_area.redo()
+            return
+
+        # 一括貼り付けのRedoも従来処理を優先
+        if self.has_bulk_paste_redo():
+            self.preview_area.redo()
+            return
+
+        entry = self.undo_history.peek_redo()
+
+        # 共通履歴に切り抜き枠編集がある場合だけ実行
+        if (
+            entry is not None
+            and entry.get("type") == "rect_edit"
+            and isinstance(entry.get("after"), dict)
+            and entry.get("page_id")
+        ):
+            self.redo_last_rect_edit()
+            return
+
+        # その他の操作は従来処理へ
+        self.preview_area.redo()
+
+
+
+    def redo_last_rect_edit(self):
+        """切り抜き枠編集の共通Redoを実行する。"""
+
+        import copy
+
+        entry = self.undo_history.peek_redo()
+
+        if entry is None:
+            return
+
+        # 現段階では切り抜き枠の編集だけを対象にする
+        if entry.get("type") != "rect_edit":
+            return
+
+        after_state = entry.get("after")
+
+        if not isinstance(after_state, dict):
+            return
+
+        page_id = entry.get("page_id")
+
+        if not page_id:
+            return
+
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        target_row = -1
+
+        # ページ固有IDから復元先を探す
+        for row in range(self.page_list.count()):
+            item = self.page_list.item(row)
+
+            if (
+                item is not None
+                and item.data(page_id_role) == page_id
+            ):
+                target_row = row
+                break
+
+        if target_row < 0:
+            return
+
+        # 対象ページへ移動する
+        if target_row != self.current_page_index:
+            self.change_page_from_list(target_row)
+            self.page_list.setCurrentRow(target_row)
+
+        if self.current_page_index != target_row:
+            return
+
+        # 編集後の状態を復元する
+        restored = self.restore_page_rect_states(
+            {
+                target_row: copy.deepcopy(after_state)
+            }
+        )
+
+        if not restored:
+            return
+
+        # モザイク情報も復元する
+        self.page_mosaic_rects[target_row] = [
+            tuple(rect)
+            for rect in after_state.get(
+                "mosaic_rects", []
+            )
+        ]
+
+        self.page_mosaic_angles[target_row] = list(
+            after_state.get("mosaic_angles", [])
+        )
+
+        self.restore_current_page_mosaic_rects()
+
+        # 古いPhotoCanvas履歴の誤適用を防ぐ
+        self.preview_area.undo_stack.clear()
+        self.preview_area.redo_stack.clear()
+
+        self.save_current_page_rects()
+        self.update_page_thumbnail_overlay(target_row)
+        self.preview_area.update()
+
+        # 復元が成功した場合だけ履歴を移動する
+        self.undo_history.commit_redo()
+
+        print(
+            "[COMMON REDO EXECUTED] "
+            f"page={target_row + 1} "
+            f"rects={len(self.preview_area.rects)}"
+        )
 
     def show_previous_page(self):
         if not self.image_paths:
