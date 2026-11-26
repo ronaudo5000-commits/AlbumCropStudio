@@ -1683,6 +1683,13 @@ class MainWindow(QMainWindow):
         self.page_mosaic_angles = {}
         self.deleted_pages_stack = []
 
+        # 共通Undo・Redo履歴管理
+        from app.undo_history import UndoHistory
+
+        self.undo_history = UndoHistory(
+            max_entries=30
+        )
+
         self.page_export_enabled = []
 
         # 複数ページへの一括貼り付けUndo / Redo
@@ -2255,8 +2262,113 @@ class MainWindow(QMainWindow):
             if len(self._canvas_undo_events) > 30:
                 self._canvas_undo_events.pop(0)
 
+            # 新しい共通Undo履歴にも編集操作を登録
+            import copy
+
+            self.undo_history.record(
+                copy.deepcopy(
+                    self._canvas_undo_events[-1]
+                )
+            )
+
+            # 一時診断：登録された操作の種類を確認
+            latest_entry = self.undo_history.peek_undo()
+
+            print(
+                "[UNDO HISTORY RECORD]",
+                latest_entry["type"],
+            )
+
         self.preview_area.undo_state_saved_callback = (
             record_canvas_undo_event
+        )
+
+        # 切り抜き枠のUndo完了時に共通履歴を同期する
+        def on_canvas_undo_completed():
+            entry = self.undo_history.peek_undo()
+
+            if entry is None:
+                return
+
+            if entry.get("type") != "rect_edit":
+                return
+
+            page_index = self.current_page_index
+
+            if not (
+                0 <= page_index < len(self.image_paths)
+            ):
+                return
+
+            page_item = self.page_list.item(page_index)
+
+            if page_item is None:
+                return
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            current_page_id = page_item.data(
+                page_id_role
+            )
+
+            if current_page_id != entry.get("page_id"):
+                return
+
+            self.undo_history.commit_undo()
+
+            print(
+                "[UNDO HISTORY SYNC] "
+                "rect edit moved to redo"
+            )
+
+        self.preview_area.undo_completed_callback = (
+            on_canvas_undo_completed
+        )
+
+        # 切り抜き枠のRedo完了時に共通履歴を同期する
+        def on_canvas_redo_completed():
+            entry = self.undo_history.peek_redo()
+
+            if entry is None:
+                return
+
+            if entry.get("type") != "rect_edit":
+                return
+
+            page_index = self.current_page_index
+
+            if not (
+                0 <= page_index < len(self.image_paths)
+            ):
+                return
+
+            page_item = self.page_list.item(page_index)
+
+            if page_item is None:
+                return
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            current_page_id = page_item.data(
+                page_id_role
+            )
+
+            if current_page_id != entry.get("page_id"):
+                return
+
+            self.undo_history.commit_redo()
+
+            print(
+                "[UNDO HISTORY SYNC] "
+                "rect edit moved back to undo"
+            )
+
+        self.preview_area.redo_completed_callback = (
+            on_canvas_redo_completed
         )
 
         self.preview_area.external_undo_callback = (
@@ -8178,6 +8290,12 @@ class MainWindow(QMainWindow):
         self.deleted_pages_stack = []
         self.page_export_enabled = []
 
+        # 別プロジェクトの操作履歴を引き継がない
+        self.undo_history.clear()
+        self._canvas_undo_events.clear()
+        self.preview_area.undo_stack.clear()
+        self.preview_area.redo_stack.clear()
+
         self.page_list.clear()
 
         # 保存されたページ情報を復元
@@ -9042,6 +9160,21 @@ class MainWindow(QMainWindow):
         if len(self._canvas_undo_events) > 30:
             self._canvas_undo_events.pop(0)
 
+        # 新しい共通Undo履歴にもページ削除を登録
+        self.undo_history.record(
+            copy.deepcopy(
+                self._canvas_undo_events[-1]
+            )
+        )
+
+        # 一時診断：新しい履歴への登録を確認
+        latest_entry = self.undo_history.peek_undo()
+
+        print(
+            "[UNDO HISTORY RECORD]",
+            latest_entry["type"],
+        )
+
         # 共通Undo履歴の記録順序を確認する一時診断
         print("[COMMON UNDO HISTORY]")
 
@@ -9241,6 +9374,35 @@ class MainWindow(QMainWindow):
     def restore_deleted_page(self):
         if not self.deleted_pages_stack:
             return
+
+        # 復元対象がすでに存在する場合、
+        # 同じページを重複して挿入しない
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        existing_page_ids = {
+            self.page_list.item(row).data(page_id_role)
+            for row in range(self.page_list.count())
+        }
+
+        pending = self.deleted_pages_stack[-1]
+
+        pending_pages = (
+            pending["pages"]
+            if pending.get("type") == "group"
+            else [pending]
+        )
+
+        for page in pending_pages:
+            page_id = page.get("page_id")
+
+            if page_id and page_id in existing_page_ids:
+                print(
+                    "[UNDO RESTORE BLOCKED] "
+                    "page already exists"
+                )
+                return
 
         deleted = self.deleted_pages_stack.pop()
 
@@ -9739,6 +9901,96 @@ class MainWindow(QMainWindow):
             ):
                 self._canvas_undo_events.pop(event_index)
                 break
+
+        # 復元したページ削除の履歴を同期する
+        latest_entry = self.undo_history.peek_undo()
+
+        if (
+            latest_entry is not None
+            and latest_entry.get("type") == "page_delete"
+            and latest_entry.get("deleted_pages") == deleted
+        ):
+            # 最新操作のUndoなのでRedo履歴へ移す
+            self.undo_history.commit_undo()
+
+            print(
+                "[UNDO HISTORY SYNC] "
+                "page deletion moved to redo"
+            )
+        else:
+            # 専用復元操作で古い削除履歴を復元した場合は、
+            # 該当する記録だけを取り除く
+            for event_index in range(
+                len(self.undo_history.undo_stack) - 1,
+                -1,
+                -1,
+            ):
+                event = self.undo_history.undo_stack[event_index]
+
+                if (
+                    event.get("type") == "page_delete"
+                    and event.get("deleted_pages") == deleted
+                ):
+                    self.undo_history.undo_stack.pop(event_index)
+                    break
+
+    def undo_last_action(self):
+        """共通Undoの実行窓口。"""
+
+        entry = self.undo_history.peek_undo()
+
+        if entry is None:
+            return
+
+        operation_type = entry.get("type")
+
+        if operation_type == "page_delete":
+            # 復元対象が既存の削除履歴と一致する場合のみ実行
+            if not self.deleted_pages_stack:
+                return
+
+            deleted = self.deleted_pages_stack[-1]
+
+            if entry.get("deleted_pages") != deleted:
+                return
+
+            self.restore_deleted_page()
+            return
+
+        if operation_type == "rect_edit":
+            # 編集元のページ以外にはUndoを実行しない
+            page_index = self.current_page_index
+
+            if not (
+                0 <= page_index < len(self.image_paths)
+            ):
+                return
+
+            page_item = self.page_list.item(
+                page_index
+            )
+
+            if page_item is None:
+                return
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            current_page_id = page_item.data(
+                page_id_role
+            )
+
+            if current_page_id != entry.get("page_id"):
+                return
+
+            # 同じページでも、履歴が失われていれば実行しない
+            if not self.preview_area.undo_stack:
+                return
+
+            # 現段階では既存の枠編集Undoを使用
+            self.preview_area.undo()
+            return
 
     def show_previous_page(self):
         if not self.image_paths:
