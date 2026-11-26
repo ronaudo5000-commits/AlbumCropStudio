@@ -2197,6 +2197,8 @@ class MainWindow(QMainWindow):
         self._canvas_undo_events = []
 
         def record_canvas_undo_event():
+            import uuid
+
             page_index = self.current_page_index
 
             if not (
@@ -2204,15 +2206,41 @@ class MainWindow(QMainWindow):
             ):
                 return
 
+            page_item = self.page_list.item(
+                page_index
+            )
+
+            if page_item is None:
+                return
+
+            # 既存のUserRoleは書き出し対象フラグに使用中。
+            # その次のロールにページ固有IDを保存する。
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            page_id = page_item.data(
+                page_id_role
+            )
+
+            if not page_id:
+                page_id = uuid.uuid4().hex
+
+                page_item.setData(
+                    page_id_role,
+                    page_id,
+                )
+
             self._canvas_undo_events.append(
                 {
                     "type": "rect_edit",
+                    "page_id": page_id,
                     "page_index": page_index,
                     "image_path": self.image_paths[page_index],
                 }
             )
 
-            # 準備段階の記録が増え続けないよう制限
+            # 準備段階の記録件数を制限
             if len(self._canvas_undo_events) > 30:
                 self._canvas_undo_events.pop(0)
 
@@ -4784,6 +4812,18 @@ class MainWindow(QMainWindow):
                 True,
             )
 
+            # 新規読み込み時にページ固有IDを発行
+            import uuid
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            item.setData(
+                page_id_role,
+                uuid.uuid4().hex,
+            )
+
             self.page_list.addItem(
                 item
             )
@@ -7038,9 +7078,34 @@ class MainWindow(QMainWindow):
             else:
                 export_enabled = True
 
+            # プロジェクト保存時にもページ固有IDを保持
+            import uuid
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            page_item = self.page_list.item(page_index)
+
+            page_id = (
+                page_item.data(page_id_role)
+                if page_item is not None
+                else None
+            )
+
+            if not page_id:
+                page_id = uuid.uuid4().hex
+
+                if page_item is not None:
+                    page_item.setData(
+                        page_id_role,
+                        page_id,
+                    )
+
             pages.append(
                 {
                     "image_path": image_path,
+                    "page_id": page_id,
                     "rects": [
                         list(rect)
                         for rect in rects
@@ -8355,6 +8420,27 @@ class MainWindow(QMainWindow):
                 export_enabled,
             )
 
+            # 保存されたページ固有IDを復元する
+            import uuid
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            page_id = page_data.get(
+                "page_id"
+            )
+
+            # 古いプロジェクトにはIDがないため、
+            # その場合は新しいIDを発行する
+            if not isinstance(page_id, str) or not page_id:
+                page_id = uuid.uuid4().hex
+
+            item.setData(
+                page_id_role,
+                page_id,
+            )
+
             self.page_list.addItem(
                 item
             )
@@ -8669,9 +8755,25 @@ class MainWindow(QMainWindow):
             else:
                 deleted_export_enabled = True
 
+            # 削除するページの固有IDを取得する
+            page_item = self.page_list.item(
+                delete_index
+            )
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            deleted_page_id = (
+                page_item.data(page_id_role)
+                if page_item is not None
+                else None
+            )
+
             deleted_group.append(
                 {
                     "index": delete_index,
+                    "page_id": deleted_page_id,
                     "path": (
                         old_image_paths[
                             delete_index
@@ -9463,6 +9565,59 @@ class MainWindow(QMainWindow):
             )
 
             self.current_page_index = restore_index
+
+        # 復元したページに元の固有IDを引き継ぐ
+        import uuid
+
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        restored_pages = (
+            deleted["pages"]
+            if deleted.get("type") == "group"
+            else [deleted]
+        )
+
+        for page in restored_pages:
+            restore_index = page["index"]
+
+            if not (
+                0 <= restore_index < self.page_list.count()
+            ):
+                continue
+
+            item = self.page_list.item(restore_index)
+
+            if item is None:
+                continue
+
+            page_id = page.get("page_id")
+
+            if not page_id:
+                page_id = uuid.uuid4().hex
+
+            item.setData(
+                page_id_role,
+                page_id,
+            )
+
+            # Undo統合のための一時診断
+            original_id = page.get("page_id")
+            restored_id = item.data(page_id_role)
+
+            if original_id is None:
+                result = "NEW_ID（削除前はIDなし）"
+            elif original_id == restored_id:
+                result = "OK（同じIDを維持）"
+            else:
+                result = "NG（IDが一致しない）"
+
+            print(
+                f"[UNDO PAGE ID] "
+                f"page={restore_index + 1} "
+                f"result={result}"
+            )
 
         # 復元後の現在ページを表示
         self.load_image(
