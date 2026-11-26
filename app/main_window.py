@@ -11990,12 +11990,6 @@ class MainWindow(QMainWindow):
         event.ignore()
 
     def keyPressEvent(self, event):
-        if event.matches(
-            QKeySequence.StandardKey.Undo
-        ):
-            self.restore_deleted_page()
-            return
-
         super().keyPressEvent(event)
 
     def apply_mosaic_to_preview_pixmap(
