@@ -307,6 +307,16 @@ class PhotoCanvas(QWidget):
 
         self.redo_stack.clear()
 
+        # 共通Undo履歴管理への通知口
+        callback = getattr(
+            self,
+            "undo_state_saved_callback",
+            None,
+        )
+
+        if callable(callback):
+            callback()
+
     def undo(self):
         if self.external_undo_callback is not None:
             if self.external_undo_callback():

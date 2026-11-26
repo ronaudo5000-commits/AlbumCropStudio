@@ -2193,6 +2193,33 @@ class MainWindow(QMainWindow):
 
         self.preview_area = PhotoCanvas()
 
+        # 共通Undoに向けた編集操作の記録（準備段階）
+        self._canvas_undo_events = []
+
+        def record_canvas_undo_event():
+            page_index = self.current_page_index
+
+            if not (
+                0 <= page_index < len(self.image_paths)
+            ):
+                return
+
+            self._canvas_undo_events.append(
+                {
+                    "type": "rect_edit",
+                    "page_index": page_index,
+                    "image_path": self.image_paths[page_index],
+                }
+            )
+
+            # 準備段階の記録が増え続けないよう制限
+            if len(self._canvas_undo_events) > 30:
+                self._canvas_undo_events.pop(0)
+
+        self.preview_area.undo_state_saved_callback = (
+            record_canvas_undo_event
+        )
+
         self.preview_area.external_undo_callback = (
             self.undo_bulk_paste_if_available
         )
@@ -8471,6 +8498,11 @@ class MainWindow(QMainWindow):
             return
 
         self.save_current_page_rects()
+
+        # 別ページの編集履歴を誤適用しないため、
+        # 共通Undo完成までページ切り替え時に履歴をクリアする
+        self.preview_area.undo_stack.clear()
+        self.preview_area.redo_stack.clear()
 
         self.current_page_index = row
 
