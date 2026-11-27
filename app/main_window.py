@@ -6080,17 +6080,33 @@ class MainWindow(QMainWindow):
             key_event
         )
 
+
     def update_edit_menu_state(self):
+        common_undo_entry = (
+            self.undo_history.peek_undo()
+        )
+
+        common_bulk_undo_available = (
+            common_undo_entry is not None
+            and common_undo_entry.get("type") == "bulk_paste"
+        )
+
+        common_page_delete_undo_available = (
+            common_undo_entry is not None
+            and common_undo_entry.get("type") == "page_delete"
+        )
+
         undo_available = (
-            bool(
-                self.preview_area.undo_stack
-            )
+            bool(self.preview_area.undo_stack)
             or self.has_bulk_paste_undo()
+            or common_bulk_undo_available
+            or common_page_delete_undo_available
         )
 
         common_redo_entry = (
             self.undo_history.peek_redo()
         )
+
 
         common_redo_available = (
             common_redo_entry is not None
@@ -6102,11 +6118,19 @@ class MainWindow(QMainWindow):
             and bool(common_redo_entry.get("page_id"))
         )
 
+
+        common_bulk_redo_available = (
+            common_redo_entry is not None
+            and common_redo_entry.get("type") == "bulk_paste"
+        )
+
         redo_available = (
             bool(self.preview_area.redo_stack)
             or self.has_bulk_paste_redo()
             or common_redo_available
+            or common_bulk_redo_available
         )
+
 
         selected_indexes = set(
             self.preview_area.selected_rects
@@ -6636,6 +6660,9 @@ class MainWindow(QMainWindow):
 
         self.undo_history.commit_undo()
 
+        # 共通Undo後のメニューとショートカットを更新
+        self.update_edit_menu_state()
+
         page_count = entry.get(
             "page_count",
             0,
@@ -6683,6 +6710,9 @@ class MainWindow(QMainWindow):
             return False
 
         self.undo_history.commit_redo()
+
+        # 共通Redo後のメニューとショートカットを更新
+        self.update_edit_menu_state()
 
         page_count = entry.get(
             "page_count",
@@ -7363,14 +7393,24 @@ class MainWindow(QMainWindow):
             )
 
 
+
             if bulk_history_entry is not None:
-                # 旧履歴と共通履歴に同じ操作IDを持たせる
                 bulk_history_entry["operation_id"] = (
                     bulk_operation_id
                 )
 
+                # 一括貼り付けを共通履歴へ正式登録
+                self.undo_history.record(
+                    bulk_history_entry
+                )
+
+                # この操作は共通履歴が管理するため、
+                # 旧方式には同じ操作を残さない
+                self.bulk_paste_undo_state = None
+                self.bulk_paste_redo_state = None
+
                 print(
-                    "[BULK HISTORY PREPARED] "
+                    "[BULK HISTORY REGISTERED] "
                     f"pages={bulk_history_entry['page_count']} "
                     f"ids={len(bulk_history_entry['page_ids'])} "
                     f"operation_id={bulk_operation_id[:8]}"
@@ -7380,6 +7420,7 @@ class MainWindow(QMainWindow):
                 print(
                     "[BULK HISTORY PREPARE FAILED]"
                 )
+
 
             self.mark_project_modified()
 
@@ -9873,6 +9914,9 @@ class MainWindow(QMainWindow):
 
         self.apply_page_list_display_mode()
 
+        # ページ削除後のUndo有効状態を更新
+        self.update_edit_menu_state()
+
     def restore_deleted_page(self):
         if not self.deleted_pages_stack:
             return
@@ -10442,6 +10486,15 @@ class MainWindow(QMainWindow):
         """既存Undoとページをまたぐ共通Undoの振り分け。"""
 
         entry = self.undo_history.peek_undo()
+
+        # 最新の操作がページ削除なら、
+        # 既存の共通Undo処理でページを復元する
+        if (
+            entry is not None
+            and entry.get("type") == "page_delete"
+        ):
+            self.undo_last_action()
+            return
 
         # 共通履歴の最新操作が一括貼り付けなら
         # 共通Undoを優先する
