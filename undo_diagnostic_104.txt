@@ -1,0 +1,894 @@
+﻿
+============================================================
+undo_with_page_fallback
+============================================================
+    def undo_with_page_fallback(self):
+        """既存Undoとページをまたぐ共通Undoの振り分け。"""
+
+        entry = self.undo_history.peek_undo()
+
+        # 最新の操作がページ削除なら、
+        # 既存の共通Undo処理でページを復元する
+        if (
+            entry is not None
+            and entry.get("type") == "page_delete"
+        ):
+            self.undo_last_action()
+            return
+
+        # 共通履歴の最新操作が一括貼り付けなら
+        # 共通Undoを優先する
+        if (
+            entry is not None
+            and entry.get("type") == "bulk_paste"
+        ):
+            self.undo_common_bulk_paste()
+            return
+
+        # 従来の一括貼り付け履歴も引き続き利用する
+        if self.has_bulk_paste_undo():
+            self.undo_bulk_paste_if_available()
+            return
+
+
+
+        if (
+            entry is not None
+            and entry.get("type") == "rect_edit"
+            and isinstance(entry.get("before"), dict)
+            and isinstance(entry.get("after"), dict)
+        ):
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            current_item = self.page_list.item(
+                self.current_page_index
+            )
+
+            current_page_id = (
+                current_item.data(page_id_role)
+                if current_item is not None
+                else None
+            )
+
+            # 別ページの編集履歴はPhotoCanvasに渡さない
+            if current_page_id != entry.get("page_id"):
+                self.undo_last_action()
+                return
+
+            # 現在ページでも、切り替えによって
+            # PhotoCanvas履歴が消えている場合は共通Undoを使用
+            if not self.preview_area.undo_stack:
+                self.undo_last_action()
+                return
+
+        # 通常のUndoは従来の処理を使用
+        self.preview_area.undo()
+
+
+============================================================
+undo_last_action
+============================================================
+    def undo_last_action(self):
+        """共通Undoの実行窓口。"""
+
+        entry = self.undo_history.peek_undo()
+
+        if entry is None:
+            return
+
+        operation_type = entry.get("type")
+
+        if operation_type == "page_delete":
+            # 復元対象が既存の削除履歴と一致する場合のみ実行
+            if not self.deleted_pages_stack:
+                return
+
+            deleted = self.deleted_pages_stack[-1]
+
+            if entry.get("deleted_pages") != deleted:
+                return
+
+            self.restore_deleted_page()
+            return
+
+        if operation_type == "rect_edit":
+            import copy
+
+            before_state = entry.get("before")
+
+            if not isinstance(before_state, dict):
+                return
+
+            # ページ番号ではなく固有IDから対象を探す
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            target_row = -1
+
+            for row in range(self.page_list.count()):
+                item = self.page_list.item(row)
+
+                if (
+                    item is not None
+                    and item.data(page_id_role)
+                    == entry.get("page_id")
+                ):
+                    target_row = row
+                    break
+
+            if target_row < 0:
+                return
+
+            # 編集後の状態をRedo用に確保する
+            if target_row == self.current_page_index:
+                entry["after"] = copy.deepcopy(
+                    {
+                        "rects": self.preview_area.rects,
+                        "angles": self.preview_area.rect_angles,
+                        "aspect_modes": self.preview_area.rect_aspect_modes,
+                        "group_ids": self.preview_area.rect_group_ids,
+                        "mosaic_rects": self.preview_area.mosaic_rects,
+                        "mosaic_angles": self.preview_area.mosaic_rect_angles,
+                    }
+                )
+            elif not isinstance(entry.get("after"), dict):
+                # 編集後の状態が未確定なら実行しない
+                return
+
+            # 編集元のページへ移動する
+            if target_row != self.current_page_index:
+                self.change_page_from_list(target_row)
+                self.page_list.setCurrentRow(target_row)
+
+            if self.current_page_index != target_row:
+                return
+
+            # 切り抜き枠の編集前の状態を復元する
+            restored = self.restore_page_rect_states(
+                {target_row: before_state}
+            )
+
+            if not restored:
+                return
+
+            # モザイク情報も同じ状態へ戻す
+            self.page_mosaic_rects[target_row] = [
+                tuple(rect)
+                for rect in before_state.get(
+                    "mosaic_rects", []
+                )
+            ]
+
+            self.page_mosaic_angles[target_row] = list(
+                before_state.get("mosaic_angles", [])
+            )
+
+            self.restore_current_page_mosaic_rects()
+
+            # 古いPhotoCanvas履歴を誤適用させない
+            self.preview_area.undo_stack.clear()
+            self.preview_area.redo_stack.clear()
+
+            self.save_current_page_rects()
+            self.update_page_thumbnail_overlay(target_row)
+            self.preview_area.update()
+
+            # 復元が成功した後に履歴を移動
+            self.undo_history.commit_undo()
+
+            print(
+                "[COMMON UNDO EXECUTED] "
+                f"page={target_row + 1} "
+                f"rects={len(self.preview_area.rects)}"
+            )
+
+            return
+
+
+============================================================
+restore_deleted_page
+============================================================
+    def restore_deleted_page(self):
+        if not self.deleted_pages_stack:
+            return
+
+        # 復元対象がすでに存在する場合、
+        # 同じページを重複して挿入しない
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        existing_page_ids = {
+            self.page_list.item(row).data(page_id_role)
+            for row in range(self.page_list.count())
+        }
+
+        pending = self.deleted_pages_stack[-1]
+
+        pending_pages = (
+            pending["pages"]
+            if pending.get("type") == "group"
+            else [pending]
+        )
+
+        for page in pending_pages:
+            page_id = page.get("page_id")
+
+            if page_id and page_id in existing_page_ids:
+                print(
+                    "[UNDO RESTORE BLOCKED] "
+                    "page already exists"
+                )
+                return
+
+        deleted = self.deleted_pages_stack.pop()
+
+        # ページ復元によって変わるページ番号に合わせて、
+        # 残存ページの書き出し進捗を付け替える
+        if deleted.get("type") == "group":
+            restore_indices = sorted(
+                page["index"]
+                for page in deleted["pages"]
+            )
+        else:
+            restore_indices = [
+                deleted["index"]
+            ]
+
+        new_progress = dict(
+            self.export_page_progress
+        )
+
+        current_length = len(
+            self.image_paths
+        )
+
+        for index in restore_indices:
+            insert_at = min(
+                index,
+                current_length
+            )
+
+            new_progress = {
+                (
+                    old_index + 1
+                    if old_index >= insert_at
+                    else old_index
+                ): progress
+                for old_index, progress
+                in new_progress.items()
+            }
+
+            current_length += 1
+
+        self.export_page_progress = new_progress
+
+        # 複数ページ削除のUndo
+        if deleted.get("type") == "group":
+            pages = sorted(
+                deleted["pages"],
+                key=lambda page: page["index"],
+            )
+
+            for page in pages:
+                restore_index = page["index"]
+                restore_path = page["path"]
+                restore_rects = page["rects"]
+                restore_angles = page.get(
+                    "angles",
+                    [],
+                )
+
+                restore_aspect_modes = page.get(
+                    "aspect_modes",
+                    [],
+                )
+
+                restore_group_ids = page.get(
+                    "group_ids",
+                    [],
+                )
+
+                restore_mosaic_rects = page.get(
+                    "mosaic_rects",
+                    [],
+                )
+
+                restore_mosaic_angles = page.get(
+                    "mosaic_angles",
+                    [],
+                )
+
+                restore_export_enabled = bool(
+                    page.get(
+                        "export_enabled",
+                        True,
+                    )
+                )
+
+                if restore_index > len(self.image_paths):
+                    restore_index = len(self.image_paths)
+
+                self.image_paths.insert(
+                    restore_index,
+                    restore_path,
+                )
+
+                self.page_export_enabled.insert(
+                    restore_index,
+                    restore_export_enabled,
+                )
+
+                new_page_rects = {}
+
+                for old_index, rects in self.page_rects.items():
+                    if old_index >= restore_index:
+                        new_page_rects[old_index + 1] = rects
+                    else:
+                        new_page_rects[old_index] = rects
+
+                new_page_rects[restore_index] = list(
+                    restore_rects
+                )
+
+                new_page_angles = {}
+
+                for old_index, angles in self.page_angles.items():
+                    if old_index >= restore_index:
+                        new_page_angles[old_index + 1] = angles
+                    else:
+                        new_page_angles[old_index] = angles
+
+                new_page_angles[
+                    restore_index
+                ] = list(
+                    restore_angles
+                )
+
+                new_page_aspect_modes = {}
+
+                for (
+                    old_index,
+                    aspect_modes,
+                ) in self.page_aspect_modes.items():
+                    if old_index >= restore_index:
+                        new_page_aspect_modes[
+                            old_index + 1
+                        ] = aspect_modes
+                    else:
+                        new_page_aspect_modes[
+                            old_index
+                        ] = aspect_modes
+
+                new_page_aspect_modes[
+                    restore_index
+                ] = list(
+                    restore_aspect_modes
+                )
+
+                self.page_angles = (
+                    new_page_angles
+                )
+
+                self.page_aspect_modes = (
+                    new_page_aspect_modes
+                )
+
+                new_page_group_ids = {}
+
+                for (
+                    old_index,
+                    group_ids,
+                ) in self.page_group_ids.items():
+                    if old_index >= restore_index:
+                        new_page_group_ids[
+                            old_index + 1
+                        ] = group_ids
+                    else:
+                        new_page_group_ids[
+                            old_index
+                        ] = group_ids
+
+                new_page_group_ids[
+                    restore_index
+                ] = list(
+                    restore_group_ids
+                )
+
+                self.page_group_ids = (
+                    new_page_group_ids
+                )
+
+                new_page_mosaic_rects = {}
+
+                for (
+                    old_index,
+                    mosaic_rects,
+                ) in self.page_mosaic_rects.items():
+                    if old_index >= restore_index:
+                        new_page_mosaic_rects[
+                            old_index + 1
+                        ] = mosaic_rects
+                    else:
+                        new_page_mosaic_rects[
+                            old_index
+                        ] = mosaic_rects
+
+                new_page_mosaic_rects[
+                    restore_index
+                ] = [
+                    tuple(rect)
+                    for rect in restore_mosaic_rects
+                ]
+
+                self.page_mosaic_rects = (
+                    new_page_mosaic_rects
+                )
+
+                new_page_mosaic_angles = {}
+
+                for (
+                    old_index,
+                    mosaic_angles,
+                ) in self.page_mosaic_angles.items():
+                    if old_index >= restore_index:
+                        new_page_mosaic_angles[
+                            old_index + 1
+                        ] = mosaic_angles
+                    else:
+                        new_page_mosaic_angles[
+                            old_index
+                        ] = mosaic_angles
+
+                new_page_mosaic_angles[
+                    restore_index
+                ] = list(
+                    restore_mosaic_angles
+                )
+
+                self.page_mosaic_angles = (
+                    new_page_mosaic_angles
+                )
+
+                self.page_rects = new_page_rects
+
+                item_name = Path(restore_path).name
+
+                thumbnail = QPixmap(restore_path)
+
+                item = QListWidgetItem(
+                    QIcon(thumbnail),
+                    item_name,
+                )
+
+                item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    restore_export_enabled,
+                )
+
+                self.page_list.insertItem(
+                    restore_index,
+                    item,
+                )
+
+            first_index = pages[0]["index"]
+
+            self.current_page_index = min(
+                first_index,
+                len(self.image_paths) - 1,
+            )
+
+        # 1ページ削除のUndo
+        else:
+            restore_index = deleted["index"]
+            restore_path = deleted["path"]
+            restore_rects = deleted["rects"]
+
+            restore_aspect_modes = deleted.get(
+                "aspect_modes",
+                [],
+            )
+
+            restore_export_enabled = bool(
+                deleted.get(
+                    "export_enabled",
+                    True,
+                )
+            )
+
+            if restore_index > len(self.image_paths):
+                restore_index = len(self.image_paths)
+
+            self.image_paths.insert(
+                restore_index,
+                restore_path,
+            )
+
+            self.page_export_enabled.insert(
+                restore_index,
+                restore_export_enabled,
+            )
+
+            new_page_rects = {}
+
+            for old_index, rects in self.page_rects.items():
+                if old_index >= restore_index:
+                    new_page_rects[old_index + 1] = rects
+                else:
+                    new_page_rects[old_index] = rects
+
+            new_page_rects[
+                restore_index
+            ] = list(
+                restore_rects
+            )
+
+            new_page_aspect_modes = {}
+
+            for (
+                old_index,
+                aspect_modes,
+            ) in self.page_aspect_modes.items():
+                if old_index >= restore_index:
+                    new_page_aspect_modes[
+                        old_index + 1
+                    ] = aspect_modes
+                else:
+                    new_page_aspect_modes[
+                        old_index
+                    ] = aspect_modes
+
+            new_page_aspect_modes[
+                restore_index
+            ] = list(
+                restore_aspect_modes
+            )
+
+            self.page_rects = new_page_rects
+
+            self.page_aspect_modes = (
+                new_page_aspect_modes
+            )
+
+            item_name = Path(
+                restore_path
+            ).name
+
+            thumbnail = QPixmap(
+                restore_path
+            )
+
+            if not thumbnail.isNull():
+                thumbnail = thumbnail.scaled(
+                    120,
+                    90,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+
+            item = QListWidgetItem(
+                QIcon(thumbnail),
+                item_name,
+            )
+
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                restore_export_enabled,
+            )
+
+            self.page_list.insertItem(
+                restore_index,
+                item,
+            )
+
+            self.current_page_index = restore_index
+
+        # 復元したページに元の固有IDを引き継ぐ
+        import uuid
+
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        restored_pages = (
+            deleted["pages"]
+            if deleted.get("type") == "group"
+            else [deleted]
+        )
+
+        for page in restored_pages:
+            restore_index = page["index"]
+
+            if not (
+                0 <= restore_index < self.page_list.count()
+            ):
+                continue
+
+            item = self.page_list.item(restore_index)
+
+            if item is None:
+                continue
+
+            page_id = page.get("page_id")
+
+            if not page_id:
+                page_id = uuid.uuid4().hex
+
+            item.setData(
+                page_id_role,
+                page_id,
+            )
+
+            # Undo統合のための一時診断
+            original_id = page.get("page_id")
+            restored_id = item.data(page_id_role)
+
+            if original_id is None:
+                result = "NEW_ID（削除前はIDなし）"
+            elif original_id == restored_id:
+                result = "OK（同じIDを維持）"
+            else:
+                result = "NG（IDが一致しない）"
+
+            print(
+                f"[UNDO PAGE ID] "
+                f"page={restore_index + 1} "
+                f"result={result}"
+            )
+
+        # 復元後の現在ページを表示
+        self.load_image(
+            self.image_paths[self.current_page_index]
+        )
+
+        saved_rects = self.page_rects.get(
+            self.current_page_index,
+            [],
+        )
+
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.set_rects(
+            list(saved_rects),
+            group_ids=saved_group_ids,
+        )
+
+        self.detected_rects = list(
+            saved_rects
+        )
+
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(self.preview_area.rect_angles) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(0.0)
+
+        self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
+
+        self.preview_area.update()
+
+        self.page_list.setCurrentRow(
+            self.current_page_index
+        )
+
+        # 復元前の選択位置が残らないようにする
+        self.page_list.clearSelection()
+
+        # 復元したページだけを選択する
+        for page in restored_pages:
+            restore_index = page["index"]
+
+            if 0 <= restore_index < self.page_list.count():
+                item = self.page_list.item(restore_index)
+
+                if item is not None:
+                    item.setSelected(True)
+
+        self.delete_page_button.setEnabled(True)
+
+        self.update_current_rect_count_status()
+
+        self.update_crop_preview()
+        self.update_page_label()
+
+        # ---------------------------------
+        # ページ復元後、全サムネイルの
+        # 切り抜き枠を再描画する
+        # ---------------------------------
+        for row in range(
+            len(self.image_paths)
+        ):
+            self.update_page_thumbnail_overlay(
+                row
+            )
+
+        # 復元が完了したページ削除操作を共通履歴から除外
+        # 別の操作履歴は残し、対応する削除履歴だけを探す
+        for event_index in range(
+            len(self._canvas_undo_events) - 1,
+            -1,
+            -1,
+        ):
+            event = self._canvas_undo_events[event_index]
+
+            if (
+                event.get("type") == "page_delete"
+                and event.get("deleted_pages") == deleted
+            ):
+                self._canvas_undo_events.pop(event_index)
+                break
+
+        # 復元したページ削除の履歴を同期する
+        latest_entry = self.undo_history.peek_undo()
+
+        if (
+            latest_entry is not None
+            and latest_entry.get("type") == "page_delete"
+            and latest_entry.get("deleted_pages") == deleted
+        ):
+            # 最新操作のUndoなのでRedo履歴へ移す
+            self.undo_history.commit_undo()
+
+            print(
+                "[UNDO HISTORY SYNC] "
+                "page deletion moved to redo"
+            )
+        else:
+            # 専用復元操作で古い削除履歴を復元した場合は、
+            # 該当する記録だけを取り除く
+            for event_index in range(
+                len(self.undo_history.undo_stack) - 1,
+                -1,
+                -1,
+            ):
+                event = self.undo_history.undo_stack[event_index]
+
+                if (
+                    event.get("type") == "page_delete"
+                    and event.get("deleted_pages") == deleted
+                ):
+                    self.undo_history.undo_stack.pop(event_index)
+                    break
+
+        # ページ復元後のUndo／Redo有効状態を更新
+        self.update_edit_menu_state()
+
+
+============================================================
+change_page_from_list
+============================================================
+    def change_page_from_list(self, row):
+        if row < 0:
+            return
+
+        if row >= len(self.image_paths):
+            return
+
+        if row == self.current_page_index:
+            return
+
+        self.save_current_page_rects()
+
+        # ページを離れる前に編集後の状態を保存する
+        entry = self.undo_history.peek_undo()
+
+        if (
+            entry is not None
+            and entry.get("type") == "rect_edit"
+            and entry.get("after") is None
+        ):
+            page_item = self.page_list.item(
+                self.current_page_index
+            )
+
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            if (
+                page_item is not None
+                and page_item.data(page_id_role)
+                == entry.get("page_id")
+            ):
+                import copy
+
+                entry["after"] = copy.deepcopy(
+                    {
+                        "rects": self.preview_area.rects,
+                        "angles": self.preview_area.rect_angles,
+                        "aspect_modes": self.preview_area.rect_aspect_modes,
+                        "group_ids": self.preview_area.rect_group_ids,
+                        "mosaic_rects": self.preview_area.mosaic_rects,
+                        "mosaic_angles": self.preview_area.mosaic_rect_angles,
+                    }
+                )
+
+                print(
+                    "[UNDO PAGE SNAPSHOT] "
+                    f"before={len(entry['before']['rects'])} "
+                    f"after={len(entry['after']['rects'])}"
+                )
+
+        # 別ページの編集履歴を誤適用しないため、
+        # 共通Undo完成までページ切り替え時に履歴をクリアする
+        self.preview_area.undo_stack.clear()
+        self.preview_area.redo_stack.clear()
+
+        self.current_page_index = row
+
+        self.load_image(
+            self.image_paths[
+                self.current_page_index
+            ]
+        )
+
+        saved_rects = self.page_rects.get(
+            self.current_page_index,
+            [],
+        )
+
+        saved_group_ids = (
+            self.page_group_ids.get(
+                self.current_page_index,
+                [],
+            )
+        )
+
+        self.preview_area.set_rects(
+            saved_rects,
+            group_ids=saved_group_ids,
+        )
+
+        self.detected_rects = list(
+            saved_rects
+        )
+
+        saved_angles = self.page_angles.get(
+            self.current_page_index,
+            [],
+        )
+
+        self.preview_area.rect_angles = list(
+            saved_angles
+        )
+
+        while len(
+            self.preview_area.rect_angles
+        ) < len(
+            self.preview_area.rects
+        ):
+            self.preview_area.rect_angles.append(
+                0.0
+            )
+
+        self.restore_current_page_aspect_modes()
+        self.restore_current_page_mosaic_rects()
+
+        self.preview_area.update()
+
+        self.update_current_rect_count_status()
+
+        self.delete_page_button.setEnabled(
+            True
+        )
+
+        self.update_crop_preview()
+        self.update_page_label()
+

@@ -2306,6 +2306,9 @@ class MainWindow(QMainWindow):
                 latest_entry["type"],
             )
 
+            # 新しい枠編集後、Undo/Redoの有効状態を更新
+            self.update_edit_menu_state()
+
         self.preview_area.undo_state_saved_callback = (
             record_canvas_undo_event
         )
@@ -6124,11 +6127,17 @@ class MainWindow(QMainWindow):
             and common_redo_entry.get("type") == "bulk_paste"
         )
 
+        common_page_delete_redo_available = (
+            common_redo_entry is not None
+            and common_redo_entry.get("type") == "page_delete"
+        )
+
         redo_available = (
             bool(self.preview_area.redo_stack)
             or self.has_bulk_paste_redo()
             or common_redo_available
             or common_bulk_redo_available
+            or common_page_delete_redo_available
         )
 
 
@@ -8799,6 +8808,10 @@ class MainWindow(QMainWindow):
         self.preview_area.undo_stack.clear()
         self.preview_area.redo_stack.clear()
 
+        # 旧方式の一括貼り付け履歴も初期化する
+        self.bulk_paste_undo_state = None
+        self.bulk_paste_redo_state = None
+
         self.page_list.clear()
 
         # 保存されたページ情報を復元
@@ -9326,11 +9339,37 @@ class MainWindow(QMainWindow):
     def delete_current_page(
         self,
         row=None,
+        record_history=True,
+        rows=None,
     ):
         if isinstance(row, bool):
             row = None
 
-        if row is not None:
+        # Redoではページ固有IDから特定した
+        # ページ番号を直接指定できるようにする
+        if rows is not None:
+            if (
+                not isinstance(rows, (list, tuple))
+                or not rows
+                or any(
+                    type(index) is not int
+                    or index < 0
+                    or index >= len(self.image_paths)
+                    for index in rows
+                )
+                or len(set(rows)) != len(rows)
+            ):
+                print(
+                    "[PAGE DELETE BLOCKED] invalid rows"
+                )
+                return
+
+            selected_rows = sorted(
+                rows,
+                reverse=True,
+            )
+
+        elif row is not None:
             if (
                 row < 0
                 or row >= len(self.image_paths)
@@ -9687,36 +9726,44 @@ class MainWindow(QMainWindow):
             }
         )
 
-        # 共通Undo用にページ削除操作を記録する
-        import copy
 
-        self._canvas_undo_events.append(
-            {
-                "type": "page_delete",
-                "deleted_pages": copy.deepcopy(
-                    self.deleted_pages_stack[-1]
-                ),
-            }
-        )
+        # 通常の削除では共通履歴へ登録する。
+        # Redoから再削除する場合は二重登録しない。
+        if record_history:
+            import copy
 
-        # 準備段階の記録件数を制限
-        if len(self._canvas_undo_events) > 30:
-            self._canvas_undo_events.pop(0)
-
-        # 新しい共通Undo履歴にもページ削除を登録
-        self.undo_history.record(
-            copy.deepcopy(
-                self._canvas_undo_events[-1]
+            self._canvas_undo_events.append(
+                {
+                    "type": "page_delete",
+                    "deleted_pages": copy.deepcopy(
+                        self.deleted_pages_stack[-1]
+                    ),
+                }
             )
-        )
 
-        # 一時診断：新しい履歴への登録を確認
-        latest_entry = self.undo_history.peek_undo()
+            # 準備段階の記録件数を制限
+            if len(self._canvas_undo_events) > 30:
+                self._canvas_undo_events.pop(0)
 
-        print(
-            "[UNDO HISTORY RECORD]",
-            latest_entry["type"],
-        )
+            # 共通Undo履歴へ登録
+            self.undo_history.record(
+                copy.deepcopy(
+                    self._canvas_undo_events[-1]
+                )
+            )
+
+            latest_entry = self.undo_history.peek_undo()
+
+            print(
+                "[UNDO HISTORY RECORD]",
+                latest_entry["type"],
+            )
+        else:
+            print(
+                "[PAGE DELETE REDO MODE] "
+                "history registration skipped"
+            )
+
 
         # 共通Undo履歴の記録順序を確認する一時診断
         print("[COMMON UNDO HISTORY]")
@@ -9809,7 +9856,8 @@ class MainWindow(QMainWindow):
 
             self.page_list.viewport().update()
 
-            return
+            # 全ページ削除が正常に完了
+            return True
 
         # ---------------------------------
         # 一部削除の場合は、
@@ -9916,6 +9964,9 @@ class MainWindow(QMainWindow):
 
         # ページ削除後のUndo有効状態を更新
         self.update_edit_menu_state()
+
+        # 一部ページ削除が正常に完了
+        return True
 
     def restore_deleted_page(self):
         if not self.deleted_pages_stack:
@@ -10414,6 +10465,19 @@ class MainWindow(QMainWindow):
             self.current_page_index
         )
 
+        # 復元前の選択位置が残らないようにする
+        self.page_list.clearSelection()
+
+        # 復元したページだけを選択する
+        for page in restored_pages:
+            restore_index = page["index"]
+
+            if 0 <= restore_index < self.page_list.count():
+                item = self.page_list.item(restore_index)
+
+                if item is not None:
+                    item.setSelected(True)
+
         self.delete_page_button.setEnabled(True)
 
         self.update_current_rect_count_status()
@@ -10479,6 +10543,9 @@ class MainWindow(QMainWindow):
                 ):
                     self.undo_history.undo_stack.pop(event_index)
                     break
+
+        # ページ復元後のUndo／Redo有効状態を更新
+        self.update_edit_menu_state()
 
 
 
@@ -10663,7 +10730,143 @@ class MainWindow(QMainWindow):
 
             return
 
+    def resolve_page_delete_redo_rows(self, entry):
+        """ページ削除Redoの対象を固有IDで特定する。"""
 
+        if not isinstance(entry, dict):
+            return None
+
+        if entry.get("type") != "page_delete":
+            return None
+
+        deleted = entry.get("deleted_pages")
+
+        if not isinstance(deleted, dict):
+            return None
+
+        if deleted.get("type") == "group":
+            pages = deleted.get("pages")
+        else:
+            pages = [deleted]
+
+        if not isinstance(pages, list) or not pages:
+            return None
+
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        target_rows = []
+        used_rows = set()
+
+        for page in pages:
+            if not isinstance(page, dict):
+                return None
+
+            page_id = page.get("page_id")
+            image_path = page.get("path")
+
+            if not page_id or not isinstance(image_path, str):
+                return None
+
+            matches = []
+
+            for row in range(self.page_list.count()):
+                item = self.page_list.item(row)
+
+                if (
+                    item is not None
+                    and item.data(page_id_role) == page_id
+                ):
+                    matches.append(row)
+
+            # 対象が存在しない、または重複している場合は中止
+            if len(matches) != 1:
+                return None
+
+            target_row = matches[0]
+
+            # IDだけでなく画像パスも照合する
+            if (
+                target_row >= len(self.image_paths)
+                or self.image_paths[target_row] != image_path
+                or target_row in used_rows
+            ):
+                return None
+
+            used_rows.add(target_row)
+            target_rows.append(target_row)
+
+        # ページ削除は後ろから実行する
+        return sorted(target_rows, reverse=True)
+
+    def redo_last_page_delete(self):
+        """共通履歴を使ってページ削除をやり直す。"""
+
+        entry = self.undo_history.peek_redo()
+
+        if (
+            entry is None
+            or entry.get("type") != "page_delete"
+        ):
+            return False
+
+        target_rows = self.resolve_page_delete_redo_rows(
+            entry
+        )
+
+        if not target_rows:
+            print(
+                "[PAGE DELETE REDO BLOCKED] "
+                "target pages not found"
+            )
+            return False
+
+        before_page_count = len(self.image_paths)
+        before_stack_count = len(self.deleted_pages_stack)
+
+        # 新しい履歴を登録せずに削除する
+        result = self.delete_current_page(
+            rows=target_rows,
+            record_history=False,
+        )
+
+        # 削除処理が完了したことを確認する
+        if (
+            result is not True
+            or len(self.image_paths)
+            != before_page_count - len(target_rows)
+            or len(self.deleted_pages_stack)
+            != before_stack_count + 1
+        ):
+            print(
+                "[PAGE DELETE REDO FAILED] "
+                "deletion result mismatch"
+            )
+            return False
+
+        # 復元用に保存された削除データも照合する
+        if (
+            self.deleted_pages_stack[-1]
+            != entry.get("deleted_pages")
+        ):
+            print(
+                "[PAGE DELETE REDO WARNING] "
+                "deleted snapshot mismatch"
+            )
+            return False
+
+        # 削除成功を確認してから履歴を移動する
+        self.undo_history.commit_redo()
+
+        self.update_edit_menu_state()
+
+        print(
+            "[COMMON PAGE DELETE REDO] "
+            f"pages={len(target_rows)}"
+        )
+
+        return True
 
     def redo_with_page_fallback(self):
         """既存Redoと共通Redoの振り分け。"""
@@ -10676,6 +10879,15 @@ class MainWindow(QMainWindow):
         )
 
         entry = self.undo_history.peek_redo()
+
+        # 最新操作がページ削除なら、
+        # 共通履歴から削除をやり直す
+        if (
+            entry is not None
+            and entry.get("type") == "page_delete"
+        ):
+            self.redo_last_page_delete()
+            return
 
         # 共通履歴の最新操作が一括貼り付けなら
         # 共通Redoを優先する

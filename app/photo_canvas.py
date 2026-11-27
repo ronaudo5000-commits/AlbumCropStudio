@@ -477,6 +477,16 @@ class PhotoCanvas(QWidget):
         self.rects_changed.emit()
         self.update()
 
+        # 枠編集のUndoが完了したことを外部へ通知
+        callback = getattr(
+            self,
+            "undo_completed_callback",
+            None,
+        )
+
+        if callable(callback):
+            callback()
+
     def redo(self):
         if self.external_redo_callback is not None:
             if self.external_redo_callback():
@@ -636,6 +646,16 @@ class PhotoCanvas(QWidget):
 
         self.rects_changed.emit()
         self.update()
+
+        # 枠編集のRedoが完了したことを外部へ通知
+        callback = getattr(
+            self,
+            "redo_completed_callback",
+            None,
+        )
+
+        if callable(callback):
+            callback()
 
     def set_add_mode(self, enabled):
         self.add_mode = enabled
