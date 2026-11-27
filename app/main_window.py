@@ -57,11 +57,15 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QComboBox,
     QDialog,
+    QInputDialog,
     QGraphicsScene,
     QGraphicsView,
+    QStackedWidget,
 )
 
 from app.photo_canvas import PhotoCanvas
+from app.multi_page_overview import MultiPageOverview
+
 from app.version import (
     APP_NAME,
     APP_VERSION,
@@ -2584,8 +2588,43 @@ class MainWindow(QMainWindow):
             6
         )
 
+        # ---------------------------------
+        # 中央画面の表示切り替え基盤
+        # 0: 1枚表示（従来の編集画面）
+        # 1: 複数枚表示（現在は閲覧専用）
+        # ---------------------------------
+        self.central_view_stack = QStackedWidget()
+
+        self.multi_page_overview = (
+            MultiPageOverview()
+        )
+
+        self.central_view_stack.addWidget(
+            self.preview_area
+        )
+
+        # 複数枚表示は縦スクロール可能にする
+        self.multi_page_scroll = QScrollArea()
+
+        self.multi_page_scroll.setWidgetResizable(
+            True
+        )
+
+        self.multi_page_scroll.setWidget(
+            self.multi_page_overview
+        )
+
+        self.central_view_stack.addWidget(
+            self.multi_page_scroll
+        )
+
+        # 初期状態は従来の1枚表示
+        self.central_view_stack.setCurrentIndex(
+            0
+        )
+
         preview_layout.addWidget(
-            self.preview_area,
+            self.central_view_stack,
             1,
         )
 
@@ -2618,6 +2657,54 @@ class MainWindow(QMainWindow):
 
         preview_control_layout.addLayout(
             zoom_layout
+        )
+
+        # ---------------------------------
+        # 中央画面：1枚表示／複数枚表示
+        # ---------------------------------
+        self.single_view_button = QPushButton(
+            self.tr("1枚表示")
+        )
+
+        self.multi_view_button = QPushButton(
+            self.tr("複数枚表示")
+        )
+
+        self.single_view_button.setCheckable(True)
+        self.multi_view_button.setCheckable(True)
+
+        self.single_view_button.setChecked(True)
+
+        self.central_view_button_group = QButtonGroup(
+            self
+        )
+
+        self.central_view_button_group.setExclusive(
+            True
+        )
+
+        self.central_view_button_group.addButton(
+            self.single_view_button
+        )
+
+        self.central_view_button_group.addButton(
+            self.multi_view_button
+        )
+
+        self.single_view_button.clicked.connect(
+            lambda: self.set_central_view_mode("single")
+        )
+
+        self.multi_view_button.clicked.connect(
+            lambda: self.set_central_view_mode("multi")
+        )
+
+        preview_control_layout.addWidget(
+            self.single_view_button
+        )
+
+        preview_control_layout.addWidget(
+            self.multi_view_button
         )
 
         preview_layout.addWidget(
@@ -3105,6 +3192,23 @@ class MainWindow(QMainWindow):
         file_menu.addAction(
             self.load_project_action
         )
+
+        file_menu.addSeparator()
+
+        self.multi_page_overview_action = QAction(
+            self.tr("最大5枚を一覧表示"),
+            self,
+        )
+
+        self.multi_page_overview_action.triggered.connect(
+            self.show_multi_page_overview
+        )
+
+        # 中央画面に複数枚表示を統合したため、
+        # 旧・別ウィンドウ方式はメニューから外す
+        # file_menu.addAction(
+        #     self.multi_page_overview_action
+        # )
 
         file_menu.addSeparator()
 
@@ -5854,6 +5958,93 @@ class MainWindow(QMainWindow):
 
         self.update_current_rect_count_status()
 
+    def set_central_view_mode(self, mode):
+        if mode == "multi":
+            if not self.image_paths:
+                QMessageBox.information(
+                    self,
+                    self.tr("複数枚表示"),
+                    self.tr(
+                        "先に画像を読み込んでください。"
+                    ),
+                )
+
+                self.single_view_button.setChecked(
+                    True
+                )
+                return
+
+            # 現在のページ一覧から最大5枚を表示
+            self.multi_page_overview.set_pages(
+                self.image_paths[:5]
+            )
+
+            self.central_view_stack.setCurrentWidget(
+                self.multi_page_scroll
+            )
+
+            self.multi_view_button.setChecked(
+                True
+            )
+
+        elif mode == "single":
+            self.central_view_stack.setCurrentWidget(
+                self.preview_area
+            )
+
+            self.single_view_button.setChecked(
+                True
+            )
+
+    def show_multi_page_overview(self):
+        # 画像がない場合は一覧を開かない
+        if not self.image_paths:
+            QMessageBox.information(
+                self,
+                self.tr("最大5枚を一覧表示"),
+                self.tr(
+                    "先に画像を読み込んでください。"
+                ),
+            )
+            return
+
+        dialog = QDialog(self)
+
+        dialog.setWindowTitle(
+            self.tr("画像一覧（最大5枚・表示のみ）")
+        )
+
+        dialog.resize(
+            1100,
+            700,
+        )
+
+        layout = QVBoxLayout(dialog)
+
+        message = QLabel(
+            self.tr(
+                "先頭から最大5枚を表示しています。"
+                "この画面では切り抜き枠を編集できません。"
+            )
+        )
+
+        message.setWordWrap(True)
+
+        layout.addWidget(message)
+
+        overview = MultiPageOverview(dialog)
+
+        overview.set_pages(
+            self.image_paths[:5]
+        )
+
+        layout.addWidget(
+            overview,
+            1,
+        )
+
+        dialog.exec()
+
     def set_page_list_display_mode(
         self,
         mode,
@@ -8010,8 +8201,8 @@ class MainWindow(QMainWindow):
             != self.recovery_file_path
         ]
 
-        recovery_path = None
-        recovery_data = None
+        # 有効なRecovery候補をすべて収集する
+        valid_recovery_candidates = []
 
         for candidate_path in recovery_files:
             candidate_data = (
@@ -8023,15 +8214,89 @@ class MainWindow(QMainWindow):
             if candidate_data is None:
                 continue
 
-            recovery_path = candidate_path
-            recovery_data = candidate_data
-            break
+            valid_recovery_candidates.append(
+                (
+                    candidate_path,
+                    candidate_data,
+                )
+            )
 
-        if (
-            recovery_path is None
-            or recovery_data is None
-        ):
+        if not valid_recovery_candidates:
             return
+
+        # 複数のRecoveryがある場合は選択してもらう
+        if len(valid_recovery_candidates) > 1:
+            recovery_labels = []
+
+            for candidate_path, candidate_data in (
+                valid_recovery_candidates
+            ):
+                saved_at = candidate_data.get(
+                    "saved_at"
+                )
+
+                if isinstance(saved_at, (int, float)):
+                    saved_at_text = time.strftime(
+                        "%Y/%m/%d %H:%M:%S",
+                        time.localtime(saved_at),
+                    )
+                else:
+                    saved_at_text = self.tr(
+                        "日時不明"
+                    )
+
+                source_path = candidate_data.get(
+                    "source_project_path"
+                )
+
+                if source_path:
+                    project_name = Path(
+                        source_path
+                    ).name
+                else:
+                    project_name = self.tr(
+                        "未保存の作業"
+                    )
+
+                recovery_labels.append(
+                    f"{saved_at_text} | "
+                    f"{project_name} | "
+                    f"{candidate_path.name}"
+                )
+
+            selected_label, accepted = (
+                QInputDialog.getItem(
+                    self,
+                    self.tr("復元する作業の選択"),
+                    self.tr(
+                        "復元する作業を選択してください。\n"
+                        "選択しなかったデータは削除されません。"
+                    ),
+                    recovery_labels,
+                    0,
+                    False,
+                )
+            )
+
+            if not accepted:
+                return
+
+            selected_index = (
+                recovery_labels.index(
+                    selected_label
+                )
+            )
+
+            recovery_path, recovery_data = (
+                valid_recovery_candidates[
+                    selected_index
+                ]
+            )
+
+        else:
+            recovery_path, recovery_data = (
+                valid_recovery_candidates[0]
+            )
 
         project_data = recovery_data.get(
             "project_data"
