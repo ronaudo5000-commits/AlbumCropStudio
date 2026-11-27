@@ -2203,10 +2203,18 @@ class MainWindow(QMainWindow):
         # 共通Undoに向けた編集操作の記録（準備段階）
         self._canvas_undo_events = []
 
+
         def record_canvas_undo_event():
+            # 一括貼り付けは共通履歴へ
+            # 1操作として登録する予定のため、
+            # 通常の枠編集として二重登録しない
+            if self.bulk_paste_in_progress:
+                return
+
             import uuid
 
             page_index = self.current_page_index
+
 
             if not (
                 0 <= page_index < len(self.image_paths)
@@ -6297,21 +6305,62 @@ class MainWindow(QMainWindow):
 
         return states
 
+
     def restore_page_rect_states(
         self,
         states,
     ):
-        if not states:
+        if not isinstance(states, dict) or not states:
             return False
+
+        # 復元を始める前に全ページを検証する
+        sequence_keys = (
+            "rects",
+            "angles",
+            "aspect_modes",
+            "group_ids",
+        )
 
         for row, state in states.items():
             if (
-                row < 0
+                not isinstance(row, int)
+                or isinstance(row, bool)
+                or row < 0
                 or row >= len(self.image_paths)
+                or not isinstance(state, dict)
             ):
-                continue
+                print(
+                    "[RESTORE INVALID PAGE] "
+                    f"row={row}"
+                )
+                return False
+
+            for key in sequence_keys:
+                value = state.get(key, [])
+
+                if not isinstance(value, (list, tuple)):
+                    print(
+                        "[RESTORE INVALID DATA] "
+                        f"row={row} key={key}"
+                    )
+                    return False
+
+            for rect in state.get("rects", []):
+                if (
+                    not isinstance(rect, (list, tuple))
+                    or len(rect) != 4
+                ):
+                    print(
+                        "[RESTORE INVALID RECT] "
+                        f"row={row}"
+                    )
+                    return False
+
+        # 基本検証が通った場合だけ復元する
+        for row, state in states.items():
 
             self.page_rects[row] = [
+
                 tuple(rect)
                 for rect in state.get(
                     "rects",
@@ -6410,6 +6459,253 @@ class MainWindow(QMainWindow):
         return True
 
 
+    def build_bulk_paste_history_entry(
+        self,
+        before_states,
+        after_states,
+        page_count,
+    ):
+        """一括貼り付けの共通Undo履歴データを作成する。"""
+
+        import copy
+
+        page_ids = {}
+
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        for row in after_states:
+            if not isinstance(row, int):
+                return None
+
+            if not (0 <= row < self.page_list.count()):
+                return None
+
+            item = self.page_list.item(row)
+
+            if item is None:
+                return None
+
+
+            page_id = item.data(page_id_role)
+
+            if not page_id:
+                import uuid
+
+                page_id = uuid.uuid4().hex
+
+                item.setData(
+                    page_id_role,
+                    page_id,
+                )
+
+            page_ids[row] = page_id
+
+
+        return {
+            "type": "bulk_paste",
+            "page_ids": page_ids,
+            "before": copy.deepcopy(before_states),
+            "after": copy.deepcopy(after_states),
+            "page_count": page_count,
+        }
+
+
+    def resolve_bulk_paste_history_rows(
+        self,
+        entry,
+    ):
+        """ページ固有IDから一括貼り付けの復元先を取得する。"""
+
+        if not isinstance(entry, dict):
+            return None
+
+        page_ids = entry.get("page_ids")
+
+        if not isinstance(page_ids, dict) or not page_ids:
+            return None
+
+        page_id_role = (
+            Qt.ItemDataRole.UserRole.value + 1
+        )
+
+        current_rows_by_id = {}
+
+        for row in range(self.page_list.count()):
+            item = self.page_list.item(row)
+
+            if item is None:
+                continue
+
+            page_id = item.data(page_id_role)
+
+            if page_id:
+                current_rows_by_id[page_id] = row
+
+        resolved_rows = {}
+
+        for original_row, page_id in page_ids.items():
+            if page_id not in current_rows_by_id:
+                return None
+
+            resolved_rows[original_row] = (
+                current_rows_by_id[page_id]
+            )
+
+        return resolved_rows
+
+
+    def restore_bulk_paste_history_entry(
+        self,
+        entry,
+        state_key,
+    ):
+        """一括貼り付け履歴をページ固有IDで復元する。"""
+
+        import copy
+
+        if state_key not in ("before", "after"):
+            return False
+
+        if not isinstance(entry, dict):
+            return False
+
+        states = entry.get(state_key)
+
+        if not isinstance(states, dict) or not states:
+            return False
+
+        resolved_rows = (
+            self.resolve_bulk_paste_history_rows(
+                entry
+            )
+        )
+
+        if resolved_rows is None:
+            return False
+
+        # 一部のページだけを復元しないよう、
+        # 全対象ページを先に検証する
+        if set(states.keys()) != set(resolved_rows.keys()):
+            return False
+
+        restored_states = {}
+
+        for original_row, state in states.items():
+            current_row = resolved_rows[original_row]
+
+            if current_row in restored_states:
+                return False
+
+            if not isinstance(state, dict):
+                return False
+
+            restored_states[current_row] = (
+                copy.deepcopy(state)
+            )
+
+        return self.restore_page_rect_states(
+            restored_states
+        )
+
+
+    def undo_common_bulk_paste(self):
+        """共通履歴から一括貼り付けをUndoする。"""
+
+        entry = self.undo_history.peek_undo()
+
+        if (
+            entry is None
+            or entry.get("type") != "bulk_paste"
+        ):
+            return False
+
+        restored = (
+            self.restore_bulk_paste_history_entry(
+                entry,
+                "before",
+            )
+        )
+
+        if not restored:
+            print(
+                "[COMMON BULK UNDO FAILED]"
+            )
+            return False
+
+        self.undo_history.commit_undo()
+
+        page_count = entry.get(
+            "page_count",
+            0,
+        )
+
+        self.status_label.setText(
+            self.tr(
+                "{count}画像への"
+                "一括貼り付けを元に戻しました。"
+            ).format(
+                count=page_count
+            )
+        )
+
+        print(
+            "[COMMON BULK UNDO] "
+            f"pages={page_count}"
+        )
+
+        return True
+
+
+    def redo_common_bulk_paste(self):
+        """共通履歴から一括貼り付けをRedoする。"""
+
+        entry = self.undo_history.peek_redo()
+
+        if (
+            entry is None
+            or entry.get("type") != "bulk_paste"
+        ):
+            return False
+
+        restored = (
+            self.restore_bulk_paste_history_entry(
+                entry,
+                "after",
+            )
+        )
+
+        if not restored:
+            print(
+                "[COMMON BULK REDO FAILED]"
+            )
+            return False
+
+        self.undo_history.commit_redo()
+
+        page_count = entry.get(
+            "page_count",
+            0,
+        )
+
+        self.status_label.setText(
+            self.tr(
+                "{count}画像への"
+                "一括貼り付けをやり直しました。"
+            ).format(
+                count=page_count
+            )
+        )
+
+        print(
+            "[COMMON BULK REDO] "
+            f"pages={page_count}"
+        )
+
+        return True
+
+
     def undo_bulk_paste_if_available(
         self,
     ):
@@ -6435,6 +6731,9 @@ class MainWindow(QMainWindow):
         )
 
         self.bulk_paste_undo_state = None
+
+        # Undo後のRedo操作をすぐに有効化する
+        self.update_edit_menu_state()
 
         page_count = undo_state.get(
             "page_count",
@@ -6523,11 +6822,58 @@ class MainWindow(QMainWindow):
             )
             return 0
 
+
         # 現在ページの未保存状態を先に保持する
         self.save_current_page_rects()
 
+        # 一括貼り付け前に、直前の通常編集の
+        # 未確定スナップショットを確定する
+        latest_entry = self.undo_history.peek_undo()
+
+        if (
+            latest_entry is not None
+            and latest_entry.get("type") == "rect_edit"
+            and latest_entry.get("after") is None
+        ):
+            page_id_role = (
+                Qt.ItemDataRole.UserRole.value + 1
+            )
+
+            current_item = self.page_list.item(
+                self.current_page_index
+            )
+
+            current_page_id = (
+                current_item.data(page_id_role)
+                if current_item is not None
+                else None
+            )
+
+            if (
+                current_page_id is not None
+                and current_page_id == latest_entry.get("page_id")
+            ):
+                import copy
+
+                latest_entry["after"] = copy.deepcopy(
+                    {
+                        "rects": self.preview_area.rects,
+                        "angles": self.preview_area.rect_angles,
+                        "aspect_modes": self.preview_area.rect_aspect_modes,
+                        "group_ids": self.preview_area.rect_group_ids,
+                        "mosaic_rects": self.preview_area.mosaic_rects,
+                        "mosaic_angles": self.preview_area.mosaic_rect_angles,
+                    }
+                )
+
+                print(
+                    "[UNDO BEFORE BULK SNAPSHOT] "
+                    f"rects={len(latest_entry['after']['rects'])}"
+                )
+
         # 一括貼り付け前の対象ページ状態を保存する
         before_states = (
+
             self.capture_page_rect_states(
                 valid_rows
             )
@@ -6988,16 +7334,57 @@ class MainWindow(QMainWindow):
 
             self.page_list.viewport().update()
 
+
+            # 一括貼り付け操作ごとに固有IDを発行する
+            import uuid
+
+            bulk_operation_id = uuid.uuid4().hex
+
             self.bulk_paste_undo_state = {
+                "operation_id": bulk_operation_id,
                 "before": before_states,
                 "after": after_states,
                 "page_count": pasted_page_count,
             }
 
 
+
+
             self.bulk_paste_redo_state = None
 
+            # 共通Undo用の履歴データを生成する
+            # この段階ではまだ登録しない
+            bulk_history_entry = (
+                self.build_bulk_paste_history_entry(
+                    before_states,
+                    after_states,
+                    pasted_page_count,
+                )
+            )
+
+
+            if bulk_history_entry is not None:
+                # 旧履歴と共通履歴に同じ操作IDを持たせる
+                bulk_history_entry["operation_id"] = (
+                    bulk_operation_id
+                )
+
+                print(
+                    "[BULK HISTORY PREPARED] "
+                    f"pages={bulk_history_entry['page_count']} "
+                    f"ids={len(bulk_history_entry['page_ids'])} "
+                    f"operation_id={bulk_operation_id[:8]}"
+                )
+
+            else:
+                print(
+                    "[BULK HISTORY PREPARE FAILED]"
+                )
+
             self.mark_project_modified()
+
+            # 一括貼り付け後にUndo/Redoの有効状態を更新
+            self.update_edit_menu_state()
 
         return pasted_page_count
 
@@ -10050,16 +10437,26 @@ class MainWindow(QMainWindow):
                     break
 
 
+
     def undo_with_page_fallback(self):
         """既存Undoとページをまたぐ共通Undoの振り分け。"""
 
-        # 一括貼り付けの履歴がある場合は、
-        # 専用Undoを最優先で実行する
+        entry = self.undo_history.peek_undo()
+
+        # 共通履歴の最新操作が一括貼り付けなら
+        # 共通Undoを優先する
+        if (
+            entry is not None
+            and entry.get("type") == "bulk_paste"
+        ):
+            self.undo_common_bulk_paste()
+            return
+
+        # 従来の一括貼り付け履歴も引き続き利用する
         if self.has_bulk_paste_undo():
             self.undo_bulk_paste_if_available()
             return
 
-        entry = self.undo_history.peek_undo()
 
 
         if (
@@ -10214,8 +10611,27 @@ class MainWindow(QMainWindow):
             return
 
 
+
     def redo_with_page_fallback(self):
-        """既存Redoを優先し、必要な場合だけ共通Redoを使う。"""
+        """既存Redoと共通Redoの振り分け。"""
+
+        print(
+            "[REDO DIAG] "
+            f"bulk_redo={self.has_bulk_paste_redo()} "
+            f"canvas_redo={len(self.preview_area.redo_stack)} "
+            f"common_redo={self.undo_history.peek_redo() is not None}"
+        )
+
+        entry = self.undo_history.peek_redo()
+
+        # 共通履歴の最新操作が一括貼り付けなら
+        # 共通Redoを優先する
+        if (
+            entry is not None
+            and entry.get("type") == "bulk_paste"
+        ):
+            self.redo_common_bulk_paste()
+            return
 
         # PhotoCanvasのRedo履歴があれば従来処理を優先
         if self.preview_area.redo_stack:
@@ -10223,6 +10639,7 @@ class MainWindow(QMainWindow):
             return
 
         # 一括貼り付けのRedoも従来処理を優先
+
         if self.has_bulk_paste_redo():
             self.preview_area.redo()
             return
